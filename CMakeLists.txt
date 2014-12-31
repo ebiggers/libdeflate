@@ -64,12 +64,6 @@ else()
 	add_definitions(-DUNSAFE_DECOMPRESSION=0)
 endif()
 
-option(BUILD_EXAMPLES "Build the example programs" OFF)
-if(BUILD_EXAMPLES)
-	add_executable(benchmark examples/benchmark.c)
-	target_link_libraries(benchmark deflate)
-endif()
-
 add_library(deflate SHARED ${LIB_SOURCES})
 add_library(deflatestatic STATIC ${LIB_SOURCES})
 
@@ -81,3 +75,7 @@ install(TARGETS deflate deflatestatic
 	ARCHIVE DESTINATION "${CMAKE_INSTALL_PREFIX}/lib")
 
 install(FILES libdeflate.h DESTINATION "${CMAKE_INSTALL_PREFIX}/include")
+
+option(BUILD_BENCHMARK "Build benchmark program" OFF)
+add_executable(benchmark test/benchmark.c)
+target_link_libraries(benchmark deflate -lz)
