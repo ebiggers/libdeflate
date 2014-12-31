@@ -43,7 +43,7 @@ gzip_decompress(struct deflate_decompressor *d,
 
 	/* Extra field */
 	if (flg & GZIP_FEXTRA) {
-		u16 xlen = get_unaligned_u16_be(in_next);
+		u16 xlen = get_unaligned_u16_le(in_next);
 		in_next += 2;
 
 		if (in_end - in_next < (u32)xlen + GZIP_FOOTER_SIZE)
@@ -87,12 +87,12 @@ gzip_decompress(struct deflate_decompressor *d,
 	in_next = in_end - GZIP_FOOTER_SIZE;
 
 	/* CRC32 */
-	if (crc32(out, out_nbytes) != get_unaligned_u32_be(in_next))
+	if (crc32(out, out_nbytes) != get_unaligned_u32_le(in_next))
 		return false;
 	in_next += 4;
 
 	/* ISIZE */
-	if ((u32)out_nbytes != get_unaligned_u32_be(in_next))
+	if ((u32)out_nbytes != get_unaligned_u32_le(in_next))
 		return false;
 
 	return true;
