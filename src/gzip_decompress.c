@@ -34,8 +34,7 @@ gzip_decompress(struct deflate_decompressor *d,
 	/* MTIME */
 	in_next += 4;
 	/* XFL */
-	if (*in_next++ & GZIP_XFL_RESERVED)
-		return false;
+	in_next += 1;
 	/* OS */
 	in_next += 1;
 
