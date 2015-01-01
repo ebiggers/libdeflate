@@ -87,7 +87,7 @@ gzip_decompress(struct deflate_decompressor *d,
 	in_next = in_end - GZIP_FOOTER_SIZE;
 
 	/* CRC32 */
-	if (crc32(out, out_nbytes) != get_unaligned_u32_le(in_next))
+	if (crc32_gzip(out, out_nbytes) != get_unaligned_u32_le(in_next))
 		return false;
 	in_next += 4;
 

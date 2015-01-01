@@ -53,7 +53,7 @@ gzip_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 	out_next += deflate_size;
 
 	/* CRC32 */
-	put_unaligned_u32_le(crc32(in, in_size), out_next);
+	put_unaligned_u32_le(crc32_gzip(in, in_size), out_next);
 	out_next += 4;
 
 	/* ISIZE */
