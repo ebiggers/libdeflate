@@ -35,22 +35,62 @@
  */
 #define MAX_BYTES_PER_CHUNK	5552
 
+/* Number of bytes to process per loop iteration  */
+#define UNROLL_FACTOR	4
+
 u32
 adler32(const u8 *buffer, size_t size)
 {
 	u32 s1 = 1;
 	u32 s2 = 0;
 	const u8 *p = buffer;
-	const u8 * const end = p + size;
+	const u8 *end = p + size;
 	while (p != end) {
-		const u8 *chunk_end = p + min(end - p,
-					      MAX_BYTES_PER_CHUNK);
-		do {
+		size_t chunk_size = min(end - p, MAX_BYTES_PER_CHUNK);
+		const u8 *chunk_end = p + chunk_size;
+
+	#if UNROLL_FACTOR > 1
+		size_t num_unrolled_iterations = chunk_size / UNROLL_FACTOR;
+		while (num_unrolled_iterations--) {
 			s1 += *p++;
 			s2 += s1;
-		} while (p != chunk_end);
-		s1 %= 65521;
-		s2 %= 65521;
+		#if UNROLL_FACTOR >= 2
+			s1 += *p++;
+			s2 += s1;
+		#endif
+		#if UNROLL_FACTOR >= 3
+			s1 += *p++;
+			s2 += s1;
+		#endif
+		#if UNROLL_FACTOR >= 4
+			s1 += *p++;
+			s2 += s1;
+		#endif
+		#if UNROLL_FACTOR >= 5
+			s1 += *p++;
+			s2 += s1;
+		#endif
+		#if UNROLL_FACTOR >= 6
+			s1 += *p++;
+			s2 += s1;
+		#endif
+		#if UNROLL_FACTOR >= 7
+			s1 += *p++;
+			s2 += s1;
+		#endif
+		#if UNROLL_FACTOR >= 8
+			s1 += *p++;
+			s2 += s1;
+		#endif
+			BUILD_BUG_ON(UNROLL_FACTOR > 8);
+		}
+	#endif /* UNROLL_FACTOR > 1 */
+		while (p != chunk_end) {
+			s1 += *p++;
+			s2 += s1;
+		}
+		s1 %= DIVISOR;
+		s2 %= DIVISOR;
 	}
 	return (s2 << 16) | s1;
 }
