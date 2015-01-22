@@ -60,7 +60,7 @@ static inline bool
 matchfinder_memset_init_okay(void)
 {
 	/* All bytes must match in order to use memset.  */
-	const pos_t v = MATCHFINDER_INITVAL;
+	const pos_t v = MATCHFINDER_NULL;
 	if (sizeof(pos_t) == 2)
 		return (u8)v == (u8)(v >> 8);
 	if (sizeof(pos_t) == 4)
@@ -93,12 +93,12 @@ matchfinder_init(pos_t *data, size_t num_entries)
 #endif
 
 	if (matchfinder_memset_init_okay()) {
-		memset(data, (u8)MATCHFINDER_INITVAL, size);
+		memset(data, (u8)MATCHFINDER_NULL, size);
 		return;
 	}
 
 	for (size_t i = 0; i < num_entries; i++)
-		data[i] = MATCHFINDER_INITVAL;
+		data[i] = MATCHFINDER_NULL;
 }
 
 #if MATCHFINDER_IS_SLIDING

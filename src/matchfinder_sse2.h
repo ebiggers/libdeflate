@@ -16,9 +16,9 @@ matchfinder_init_sse2(pos_t *data, size_t size)
 		return false;
 
 	if (sizeof(pos_t) == 2)
-		v = _mm_set1_epi16(MATCHFINDER_INITVAL);
+		v = _mm_set1_epi16((u16)MATCHFINDER_NULL);
 	else if (sizeof(pos_t) == 4)
-		v = _mm_set1_epi32(MATCHFINDER_INITVAL);
+		v = _mm_set1_epi32((u32)MATCHFINDER_NULL);
 	else
 		return false;
 

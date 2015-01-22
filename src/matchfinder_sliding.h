@@ -13,18 +13,18 @@ typedef s16 pos_t;
 typedef s32 pos_t;
 #endif
 
-#define MATCHFINDER_INITVAL ((pos_t)-MATCHFINDER_WINDOW_SIZE)
+#define MATCHFINDER_NULL ((pos_t)-MATCHFINDER_WINDOW_SIZE)
 
 /* In the sliding window case, positions are stored relative to 'in_base'.  */
 
 static inline bool
-matchfinder_match_in_window(pos_t cur_match, const u8 *in_base, const u8 *in_next)
+matchfinder_node_valid(pos_t cur_node, const u8 *in_base, const u8 *in_next)
 {
-	return cur_match > (pos_t)((in_next - in_base) - MATCHFINDER_WINDOW_SIZE);
+	return cur_node > (pos_t)((in_next - in_base) - MATCHFINDER_WINDOW_SIZE);
 }
 
 static inline pos_t
-matchfinder_slot_for_match(pos_t cur_match)
+matchfinder_slot_for_match(pos_t cur_node)
 {
-	return cur_match & (MATCHFINDER_WINDOW_SIZE - 1);
+	return cur_node & (MATCHFINDER_WINDOW_SIZE - 1);
 }

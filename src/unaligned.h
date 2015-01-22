@@ -1,7 +1,7 @@
 /*
  * unaligned.h
  *
- * Inline functions for unaligned memory access.
+ * Inline functions for unaligned memory accesses.
  */
 
 #pragma once
@@ -213,4 +213,37 @@ put_unaligned_u32_be(u32 v, void *p)
 		p8[2] = (v >> 8) & 0xFF;
 		p8[3] = (v >> 0) & 0xFF;
 	}
+}
+
+/*
+ * Given a 32-bit value that was loaded with the platform's native endianness,
+ * return a 32-bit value whose high-order 8 bits are 0 and whose low-order 24
+ * bits contain the first 3 bytes, arranged in octets in a platform-dependent
+ * order, at the memory location from which the input 32-bit value was loaded.
+ */
+static inline u32
+loaded_u32_to_u24(u32 v)
+{
+	if (CPU_IS_LITTLE_ENDIAN)
+		return v & 0xFFFFFF;
+	else
+		return v >> 8;
+}
+
+/*
+ * Load the next 3 bytes from the memory location @p into the 24 low-order bits
+ * of a 32-bit value.  The order in which the 3 bytes will be arranged as octets
+ * in the 24 bits is platform-dependent.  At least LOAD_U24_REQUIRED_NBYTES
+ * bytes must be available at @p; note that this may be more than 3.
+ */
+static inline u32
+load_u24_unaligned(const u8 *p)
+{
+#if UNALIGNED_ACCESS_IS_FAST
+#  define LOAD_U24_REQUIRED_NBYTES 4
+	return loaded_u32_to_u24(load_u32_unaligned(p));
+#else
+#  define LOAD_U24_REQUIRED_NBYTES 3
+	return ((u32)p[0] << 0) | ((u32)p[1] << 8) | ((u32)p[2] << 16);
+#endif
 }

@@ -24,12 +24,12 @@ lz_extend(const u8 * const strptr, const u8 * const matchptr,
 
 		if (likely(max_len - len >= 4 * WORDSIZE)) {
 
-		#define COMPARE_WORD_STEP					\
-			v_word = load_word_unaligned(&matchptr[len]) ^		\
-				 load_word_unaligned(&strptr[len]);		\
-			if (v_word != 0)					\
-				goto word_differs;				\
-			len += WORDSIZE;					\
+		#define COMPARE_WORD_STEP				\
+			v_word = load_word_unaligned(&matchptr[len]) ^	\
+				 load_word_unaligned(&strptr[len]);	\
+			if (v_word != 0)				\
+				goto word_differs;			\
+			len += WORDSIZE;				\
 
 			COMPARE_WORD_STEP
 			COMPARE_WORD_STEP

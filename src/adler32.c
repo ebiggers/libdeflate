@@ -39,7 +39,7 @@
 #define UNROLL_FACTOR	4
 
 u32
-adler32(const u8 *buffer, size_t size)
+adler32(const void *buffer, size_t size)
 {
 	u32 s1 = 1;
 	u32 s2 = 0;

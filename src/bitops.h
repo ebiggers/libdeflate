@@ -11,7 +11,8 @@
 
 /* Find Last Set bit   */
 
-static inline unsigned fls32(u32 v)
+static inline unsigned
+fls32(u32 v)
 {
 #ifdef compiler_fls32
 	return compiler_fls32(v);
@@ -23,7 +24,8 @@ static inline unsigned fls32(u32 v)
 #endif
 }
 
-static inline unsigned fls64(u64 v)
+static inline unsigned
+fls64(u64 v)
 {
 #ifdef compiler_fls64
 	return compiler_fls64(v);
@@ -35,7 +37,8 @@ static inline unsigned fls64(u64 v)
 #endif
 }
 
-static inline unsigned flsw(machine_word_t v)
+static inline unsigned
+flsw(machine_word_t v)
 {
 	BUILD_BUG_ON(WORDSIZE != 4 && WORDSIZE != 8);
 	if (WORDSIZE == 4)
@@ -46,7 +49,8 @@ static inline unsigned flsw(machine_word_t v)
 
 /* Find First Set bit   */
 
-static inline unsigned ffs32(u32 v)
+static inline unsigned
+ffs32(u32 v)
 {
 #ifdef compiler_ffs32
 	return compiler_ffs32(v);
@@ -58,7 +62,8 @@ static inline unsigned ffs32(u32 v)
 #endif
 }
 
-static inline unsigned ffs64(u64 v)
+static inline unsigned
+ffs64(u64 v)
 {
 #ifdef compiler_ffs64
 	return compiler_ffs64(v);
@@ -70,7 +75,8 @@ static inline unsigned ffs64(u64 v)
 #endif
 }
 
-static inline unsigned ffsw(machine_word_t v)
+static inline unsigned
+ffsw(machine_word_t v)
 {
 	BUILD_BUG_ON(WORDSIZE != 4 && WORDSIZE != 8);
 	if (WORDSIZE == 4)

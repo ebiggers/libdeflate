@@ -1,7 +1,9 @@
 /*
  * libdeflate.h
  *
- * Public header for the DEFLATE compression library.
+ * Public header for libdeflate.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #ifndef LIBDEFLATE_H
@@ -26,7 +28,9 @@ struct deflate_compressor;
  * fastest, 6 = medium/default, 9 = slowest).  The return value is a pointer to
  * the new DEFLATE compressor, or NULL if out of memory.
  *
- * Note: the sliding window size is defined at compilation time (default 32768).
+ * Note: for compression, the sliding window size is defined at compilation time
+ * to 32768, the largest size permissible in the DEFLATE format.  It cannot be
+ * changed at runtime.
  */
 extern struct deflate_compressor *
 deflate_alloc_compressor(unsigned int compression_level);
@@ -44,7 +48,7 @@ deflate_compress(struct deflate_compressor *compressor,
 		 void *out, size_t out_nbytes_avail);
 
 /*
- * Like deflate_compress(), but store the data in the zlib wrapper format.
+ * Like deflate_compress(), but stores the data in the zlib wrapper format.
  */
 extern size_t
 zlib_compress(struct deflate_compressor *compressor,
@@ -52,7 +56,7 @@ zlib_compress(struct deflate_compressor *compressor,
 	      void *out, size_t out_nbytes_avail);
 
 /*
- * Like deflate_compress(), but store the data in the gzip wrapper format.
+ * Like deflate_compress(), but stores the data in the gzip wrapper format.
  */
 extern size_t
 gzip_compress(struct deflate_compressor *compressor,
@@ -61,7 +65,8 @@ gzip_compress(struct deflate_compressor *compressor,
 
 /*
  * deflate_free_compressor() frees a DEFLATE compressor that was allocated with
- * deflate_alloc_compressor().
+ * deflate_alloc_compressor().  If a NULL pointer is passed in, no action is
+ * taken.
  */
 extern void
 deflate_free_compressor(struct deflate_compressor *compressor);
@@ -79,7 +84,9 @@ struct deflate_decompressor;
  *
  * This function takes no parameters, and the returned decompressor is valid for
  * decompressing data that was compressed at any compression level and with any
- * sliding window size.
+ * sliding window size.  It can also be used for any wrapper format (raw
+ * DEFLATE, zlib, or gzip); however, the appropriate decompression function must
+ * be called.
  */
 extern struct deflate_decompressor *
 deflate_alloc_decompressor(void);
@@ -118,7 +125,8 @@ gzip_decompress(struct deflate_decompressor *decompressor,
 
 /*
  * deflate_free_decompressor() frees a DEFLATE decompressor that was allocated
- * with deflate_alloc_decompressor().
+ * with deflate_alloc_decompressor().  If a NULL pointer is passed in, no action
+ * is taken.
  */
 extern void
 deflate_free_decompressor(struct deflate_decompressor *decompressor);

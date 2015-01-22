@@ -71,9 +71,9 @@
  *			else
  *				multiple = 0;
  *
- * 			remainder >>= 1;
- * 			remainder |= (u32)bit << 31;
- * 			remainder ^= multiple;
+ *			remainder >>= 1;
+ *			remainder |= (u32)bit << 31;
+ *			remainder ^= multiple;
  *		}
  *
  *		return ~remainder;
@@ -108,7 +108,7 @@
  *				multiple = divisor;
  *			else
  *				multiple = 0;
- * 			remainder >>= 1;
+ *			remainder >>= 1;
  *			remainder ^= multiple;
  *		}
  *

@@ -1961,9 +1961,7 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 	struct lz_match *cache_end;
 	const u8 *in_block_begin;
 	const u8 *in_block_end;
-	unsigned num_matches;
-	unsigned best_len;
-	unsigned long prev_hash = 0;
+	u32 next_hash = 0;
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	deflate_reset_symbol_frequencies(c);
@@ -1991,6 +1989,9 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 
 		/* Find all match possibilities in this block.  */
 		do {
+			struct lz_match *matches;
+			unsigned best_len;
+
 			/* Decrease the maximum and nice match lengths if we're
 			 * approaching the end of the input buffer.  */
 			if (unlikely(max_len > in_end - in_next)) {
@@ -2028,71 +2029,68 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 			 *   search for matches at almost all positions, so this
 			 *   advantage of hash chains is negated.
 			 */
-			num_matches =
+			matches = cache_ptr;
+			cache_ptr =
 				bt_matchfinder_get_matches(&c->bt_mf,
 							   in_cur_base,
 							   in_next,
+							   DEFLATE_MIN_MATCH_LEN,
 							   max_len,
 							   nice_len,
 							   c->max_search_depth,
-							   &prev_hash,
+							   &next_hash,
+							   &best_len,
 							   cache_ptr);
-			cache_ptr += num_matches;
-			cache_ptr->length = num_matches;
+			cache_ptr->length = cache_ptr - matches;
 			cache_ptr->offset = *in_next;
 			in_next++;
 			cache_ptr++;
 
-			if (num_matches) {
-				best_len = cache_ptr[-2].length;
+			/*
+			 * If there was a very long match found, don't cache any
+			 * matches for the bytes covered by that match.  This
+			 * avoids degenerate behavior when compressing highly
+			 * redundant data, where the number of matches can be
+			 * very large.
+			 *
+			 * This heuristic doesn't actually hurt the compression
+			 * ratio very much.  If there's a long match, then the
+			 * data must be highly compressible, so it doesn't
+			 * matter much what we do.
+			 *
+			 * We also trigger this same case when approaching the
+			 * desired end of the block.  This forces the block to
+			 * reach a "stopping point" where there are no matches
+			 * extending to later positions.  (XXX: this behavior is
+			 * non-optimal and should be improved.)
+			 */
+			if (best_len >= DEFLATE_MIN_MATCH_LEN &&
+			    best_len >= min(nice_len, in_block_end - in_next)) {
+				--best_len;
+				do {
+					if (unlikely(max_len > in_end - in_next)) {
+						max_len = in_end - in_next;
+						nice_len = min(max_len, nice_len);
+					}
+					if (in_next == in_next_slide) {
+						bt_matchfinder_slide_window(&c->bt_mf);
+						in_cur_base = in_next;
+						in_next_slide = in_next + min(in_end - in_next,
+									      MATCHFINDER_WINDOW_SIZE);
+					}
+					bt_matchfinder_skip_position(&c->bt_mf,
+								     in_cur_base,
+								     in_next,
+								     in_end,
+								     nice_len,
+								     c->max_search_depth,
+								     &next_hash);
 
-				/*
-				 * If there was a very long match found, don't
-				 * cache any matches for the bytes covered by
-				 * that match.  This avoids degenerate behavior
-				 * when compressing highly redundant data, where
-				 * the number of matches can be very large.
-				 *
-				 * This heuristic doesn't actually hurt the
-				 * compression ratio very much.  If there's a
-				 * long match, then the data must be highly
-				 * compressible, so it doesn't matter much what
-				 * we do.
-				 *
-				 * We also trigger this same case when
-				 * approaching the desired end of the block.
-				 * This forces the block to reach a "stopping
-				 * point" where there are no matches extending
-				 * to later positions.  (XXX: this behavior is
-				 * non-optimal and should be improved.)
-				 */
-				if (best_len >= min(nice_len, in_block_end - in_next)) {
-					--best_len;
-					do {
-						if (unlikely(max_len > in_end - in_next)) {
-							max_len = in_end - in_next;
-							nice_len = min(max_len, nice_len);
-						}
-						if (in_next == in_next_slide) {
-							bt_matchfinder_slide_window(&c->bt_mf);
-							in_cur_base = in_next;
-							in_next_slide = in_next + min(in_end - in_next,
-										      MATCHFINDER_WINDOW_SIZE);
-						}
-						bt_matchfinder_skip_position(&c->bt_mf,
-									     in_cur_base,
-									     in_next,
-									     in_end,
-									     nice_len,
-									     c->max_search_depth,
-									     &prev_hash);
-
-						cache_ptr->length = 0;
-						cache_ptr->offset = *in_next;
-						in_next++;
-						cache_ptr++;
-					} while (--best_len);
-				}
+					cache_ptr->length = 0;
+					cache_ptr->offset = *in_next;
+					in_next++;
+					cache_ptr++;
+				} while (--best_len);
 			}
 		} while (in_next < in_block_end);
 

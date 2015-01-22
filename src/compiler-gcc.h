@@ -35,7 +35,7 @@
 #define max(a, b)  ({ __typeof__(a) _a = (a); __typeof__(b) _b = (b); \
 			(_a > _b) ? _a : _b; })
 
-#define swap(a, b) ({ __typeof__(a) _a = a; (a) = (b); (b) = _a; })
+#define swap(a, b) ({ __typeof__(a) _a = (a); (a) = (b); (b) = _a; })
 
 #if (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3)
 #  define compiler_bswap32 __builtin_bswap32
@@ -46,7 +46,7 @@
 #  define compiler_bswap16 __builtin_bswap16
 #endif
 
-#define compiler_fls32(n) (31 - __builtin_clz(n))
-#define compiler_fls64(n) (63 - __builtin_clzll(n))
-#define compiler_ffs32(n) __builtin_ctz(n)
-#define compiler_ffs64(n) __builtin_ctzll(n)
+#define compiler_fls32(n)	(31 - __builtin_clz(n))
+#define compiler_fls64(n)	(63 - __builtin_clzll(n))
+#define compiler_ffs32(n)	__builtin_ctz(n)
+#define compiler_ffs64(n)	__builtin_ctzll(n)

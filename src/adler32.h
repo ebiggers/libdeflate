@@ -9,4 +9,4 @@
 #include "types.h"
 
 extern u32
-adler32(const u8 *buffer, size_t size);
+adler32(const void *buffer, size_t size);

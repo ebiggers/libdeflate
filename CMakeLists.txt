@@ -78,7 +78,7 @@ install(FILES libdeflate.h DESTINATION "${CMAKE_INSTALL_PREFIX}/include")
 
 option(BUILD_BENCHMARK "Build benchmark program" OFF)
 add_executable(benchmark test/benchmark.c)
-target_link_libraries(benchmark deflate -lz)
+target_link_libraries(benchmark deflatestatic -lz)
 
 option(BUILD_GEN_CRC32_TABLE "Build CRC32 table generation program" OFF)
 add_executable(gen_crc32_table test/gen_crc32_table.c)

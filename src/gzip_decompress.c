@@ -54,20 +54,16 @@ gzip_decompress(struct deflate_decompressor *d,
 
 	/* Original file name (zero terminated) */
 	if (flg & GZIP_FNAME) {
-		while (*in_next != 0 && ++in_next != in_end)
+		while (*in_next++ != 0 && in_next != in_end)
 			;
-		if (in_next != in_end)
-			in_next++;
 		if (in_end - in_next < GZIP_FOOTER_SIZE)
 			return false;
 	}
 
 	/* File comment (zero terminated) */
 	if (flg & GZIP_FCOMMENT) {
-		while (*in_next != 0 && ++in_next != in_end)
+		while (*in_next++ != 0 && ++in_next != in_end)
 			;
-		if (in_next != in_end)
-			in_next++;
 		if (in_end - in_next < GZIP_FOOTER_SIZE)
 			return false;
 	}

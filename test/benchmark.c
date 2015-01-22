@@ -1,10 +1,8 @@
 /*
  * benchmark.c - A compression testing and benchmark program.
  *
- * The author dedicates this file to the public domain.
- * You can do whatever you want with this file.
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
-
 
 #define _FILE_OFFSET_BITS 64
 #define _GNU_SOURCE
@@ -419,9 +417,9 @@ main(int argc, char **argv)
 	       wrapper == NO_WRAPPER ? "None" :
 	       wrapper == ZLIB_WRAPPER ? "zlib" : "gzip");
 	printf("\tCompression engine: %s\n",
-	       compress_with_libz ? "zlib" : "libdeflate");
+	       compress_with_libz ? "libz" : "libdeflate");
 	printf("\tDecompression engine: %s\n",
-	       decompress_with_libz ? "zlib" : "libdeflate");
+	       decompress_with_libz ? "libz" : "libdeflate");
 
 	ubuf1 = malloc(chunk_size);
 	ubuf2 = malloc(chunk_size);

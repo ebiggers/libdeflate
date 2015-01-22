@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include "compiler.h"
-
 #define GZIP_MIN_HEADER_SIZE	10
 #define GZIP_FOOTER_SIZE	8
 #define GZIP_MIN_OVERHEAD	(GZIP_MIN_HEADER_SIZE + GZIP_FOOTER_SIZE)

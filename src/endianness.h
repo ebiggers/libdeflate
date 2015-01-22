@@ -1,7 +1,7 @@
 /*
  * endianness.h
  *
- * Inline functions for endianness conversion.
+ * Macros and inline functions for endianness conversion.
  */
 
 #pragma once
