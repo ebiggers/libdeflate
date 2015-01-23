@@ -58,6 +58,8 @@ if(SUPPORT_GZIP)
 	endif()
 endif()
 
+set(LIB_SOURCES ${LIB_SOURCES} src/aligned_malloc.c)
+
 option(SUPPORT_NEAR_OPTIMAL_PARSING "Support near optimal parsing (high compression mode)" ON)
 if(SUPPORT_NEAR_OPTIMAL_PARSING)
 	add_definitions(-DSUPPORT_NEAR_OPTIMAL_PARSING=1)

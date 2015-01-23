@@ -10,6 +10,7 @@
 
 #include "libdeflate.h"
 
+#include "aligned_malloc.h"
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 #include "unaligned.h"
@@ -2197,7 +2198,7 @@ deflate_alloc_compressor(unsigned int compression_level)
 #endif
 		size = offsetof(struct deflate_compressor, nonoptimal_end);
 
-	c = aligned_alloc(MATCHFINDER_ALIGNMENT, size);
+	c = aligned_malloc(MATCHFINDER_ALIGNMENT, size);
 	if (!c)
 		return NULL;
 
@@ -2313,7 +2314,7 @@ deflate_compress(struct deflate_compressor *c,
 LIBEXPORT void
 deflate_free_compressor(struct deflate_compressor *c)
 {
-	free(c);
+	aligned_free(c);
 }
 
 unsigned int
