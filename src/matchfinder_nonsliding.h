@@ -4,6 +4,8 @@
  * Definitions for nonsliding window matchfinders.
  *
  * "Nonsliding window" means that any prior sequence can be matched.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #if MATCHFINDER_WINDOW_ORDER <= 16

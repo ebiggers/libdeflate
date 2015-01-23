@@ -2,6 +2,8 @@
  * gzip_compress.c
  *
  * Generate DEFLATE-compressed data in the gzip wrapper format.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #include "libdeflate.h"

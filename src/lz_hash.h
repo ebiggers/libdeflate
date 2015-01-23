@@ -2,6 +2,8 @@
  * lz_hash.h
  *
  * Hashing for Lempel-Ziv matchfinding.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #ifndef _LZ_HASH_H

@@ -2,6 +2,8 @@
  * matchfinder_sse2.h
  *
  * Matchfinding routines optimized for Intel SSE2 (Streaming SIMD Extensions).
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #include <emmintrin.h>

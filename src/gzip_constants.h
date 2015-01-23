@@ -2,6 +2,8 @@
  * gzip_constants.h
  *
  * Constants for the gzip wrapper format.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #pragma once

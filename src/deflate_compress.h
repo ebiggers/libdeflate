@@ -1,3 +1,9 @@
+/*
+ * deflate_compress.h
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
+ */
+
 #pragma once
 
 /* 'struct deflate_compressor' is private to deflate_compress.c, but zlib header

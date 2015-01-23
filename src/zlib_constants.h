@@ -1,7 +1,7 @@
 /*
  * zlib_constants.h
  *
- * Constants for the zlib wrapper format.
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #pragma once

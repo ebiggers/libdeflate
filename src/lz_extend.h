@@ -2,6 +2,8 @@
  * lz_extend.h
  *
  * Fast match extension for Lempel-Ziv matchfinding.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #pragma once

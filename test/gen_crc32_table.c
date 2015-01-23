@@ -1,7 +1,9 @@
 /*
  * gen_crc32_table.c
  *
- * A program for CRC-32 table generation.
+ * This file has no copyright assigned and is placed in the Public Domain.
+ *
+ * This is a program for CRC-32 table generation.
  *
  * See crc32.c for more details about CRC computation.
  */

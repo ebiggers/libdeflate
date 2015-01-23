@@ -2,6 +2,8 @@
  * endianness.h
  *
  * Macros and inline functions for endianness conversion.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #pragma once

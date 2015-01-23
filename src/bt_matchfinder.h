@@ -1,7 +1,9 @@
 /*
  * bt_matchfinder.h
  *
- * ----------------------------------------------------------------------------
+ * This file has no copyright assigned and is placed in the Public Domain.
+ *
+ * ---------------------------------------------------------------------------
  *
  * This is a Binary Trees (bt) based matchfinder.
  *

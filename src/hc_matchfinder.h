@@ -1,6 +1,8 @@
 /*
  * hc_matchfinder.h
  *
+ * This file has no copyright assigned and is placed in the Public Domain.
+ *
  * ---------------------------------------------------------------------------
  *
  *				   Algorithm

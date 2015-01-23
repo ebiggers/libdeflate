@@ -2,6 +2,8 @@
  * compiler-gcc.h
  *
  * Compiler and platform-specific definitions for the GNU C compiler.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #pragma once

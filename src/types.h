@@ -2,6 +2,8 @@
  * types.h
  *
  * Definitions of fixed-width integers, 'bool', 'size_t', and 'machine_word_t'.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #pragma once

@@ -2,6 +2,8 @@
  * zlib_decompress.c
  *
  * Decompress DEFLATE-compressed data wrapped in the zlib format.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #include "libdeflate.h"

@@ -1,3 +1,11 @@
+#
+# CMakeLists.txt
+#
+# This is the build file for libdeflate.
+#
+# This file has no copyright assigned and is placed in the Public Domain.
+#
+
 cmake_minimum_required(VERSION 2.6)
 project(libdeflate C)
 

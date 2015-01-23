@@ -2,6 +2,8 @@
  * compiler.h
  *
  * Compiler and platform-specific definitions.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #pragma once

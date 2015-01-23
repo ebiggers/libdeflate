@@ -5,6 +5,8 @@
  *
  * "Sliding window" means that only sequences beginning in the most recent
  * MATCHFINDER_WINDOW_SIZE bytes can be matched.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #if MATCHFINDER_WINDOW_ORDER <= 15

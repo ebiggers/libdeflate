@@ -2,6 +2,8 @@
  * adler32.c
  *
  * Adler-32 checksum algorithm.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #include "adler32.h"

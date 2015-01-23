@@ -2,6 +2,8 @@
  * crc32.c
  *
  * CRC-32 checksum computation for the gzip format.
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 /*

@@ -1,5 +1,7 @@
 /*
  * deflate_compress.c
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #include <assert.h>

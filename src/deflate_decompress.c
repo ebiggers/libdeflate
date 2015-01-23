@@ -1,6 +1,10 @@
 /*
  * deflate_decompress.c
  *
+ * This file has no copyright assigned and is placed in the Public Domain.
+ *
+ * ---------------------------------------------------------------------------
+ *
  * This is a highly optimized DEFLATE decompressor.  On x86_64 it decompresses
  * data in about 59% of the time of zlib.  On other architectures it should
  * still be significantly faster than zlib, but the difference may be smaller.

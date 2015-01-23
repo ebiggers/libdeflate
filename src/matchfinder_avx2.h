@@ -2,6 +2,8 @@
  * matchfinder_avx2.h
  *
  * Matchfinding routines optimized for Intel AVX2 (Advanced Vector Extensions).
+ *
+ * This file has no copyright assigned and is placed in the Public Domain.
  */
 
 #include <immintrin.h>
