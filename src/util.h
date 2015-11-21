@@ -1,5 +1,5 @@
 /*
- * util.h - useful types, macros, and compiler/platform-specific definitions
+ * util.h - useful types, macros, and compiler or platform-specific definitions
  */
 
 #pragma once
@@ -10,7 +10,7 @@
 
 #include "compiler.h"
 
-/* Definitions of fixed-width integers, 'bool', 'size_t', and 'machine_word_t'  */
+/* Fixed-width integer types  */
 
 typedef uint8_t  u8;
 typedef uint16_t u16;
@@ -44,3 +44,7 @@ typedef size_t machine_word_t;
 /* MIN() - calculate the minimum of two variables.  Arguments may be evaluted
  * multiple times.  */
 #define MIN(a, b)	((a) <= (b) ? (a) : (b))
+
+/* MAX() - calculate the maximum of two variables.  Arguments may be evaluted
+ * multiple times.  */
+#define MAX(a, b)	((a) >= (b) ? (a) : (b))

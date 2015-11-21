@@ -51,10 +51,11 @@
 #include "lz_hash.h"
 
 #define BT_MATCHFINDER_HASH3_ORDER 15
+#define BT_MATCHFINDER_HASH3_WAYS  1
 #define BT_MATCHFINDER_HASH4_ORDER 16
 
 #define BT_MATCHFINDER_TOTAL_HASH_LENGTH		\
-	((1UL << BT_MATCHFINDER_HASH3_ORDER) +		\
+	((1UL << BT_MATCHFINDER_HASH3_ORDER) * BT_MATCHFINDER_HASH3_WAYS + \
 	 (1UL << BT_MATCHFINDER_HASH4_ORDER))
 
 /* Representation of a match found by the bt_matchfinder  */
@@ -70,7 +71,7 @@ struct lz_match {
 struct bt_matchfinder {
 
 	/* The hash table for finding length 3 matches  */
-	mf_pos_t hash3_tab[1UL << BT_MATCHFINDER_HASH3_ORDER];
+	mf_pos_t hash3_tab[1UL << BT_MATCHFINDER_HASH3_ORDER][BT_MATCHFINDER_HASH3_WAYS];
 
 	/* The hash table which contains the roots of the binary trees for
 	 * finding length 4+ matches  */
@@ -139,7 +140,12 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 	u32 next_seq3;
 	u32 hash3;
 	u32 hash4;
+	STATIC_ASSERT(BT_MATCHFINDER_HASH3_WAYS >= 1 &&
+		      BT_MATCHFINDER_HASH3_WAYS <= 2);
 	s32 cur_node;
+#if BT_MATCHFINDER_HASH3_WAYS >= 2
+	s32 cur_node_2;
+#endif
 	const u8 *matchptr;
 	mf_pos_t *pending_lt_ptr, *pending_gt_ptr;
 	u32 best_lt_len, best_gt_len;
@@ -157,14 +163,28 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 	prefetchw(&mf->hash3_tab[next_hashes[0]]);
 	prefetchw(&mf->hash4_tab[next_hashes[1]]);
 
-	cur_node = mf->hash3_tab[hash3];
-	mf->hash3_tab[hash3] = cur_pos;
-	if (record_matches && cur_node > cutoff &&
-	    load_u24_unaligned(in_next) == load_u24_unaligned(&in_base[cur_node]))
-	{
-		lz_matchptr->length = 3;
-		lz_matchptr->offset = in_next - &in_base[cur_node];
-		lz_matchptr++;
+	cur_node = mf->hash3_tab[hash3][0];
+	mf->hash3_tab[hash3][0] = cur_pos;
+#if BT_MATCHFINDER_HASH3_WAYS >= 2
+	cur_node_2 = mf->hash3_tab[hash3][1];
+	mf->hash3_tab[hash3][1] = cur_node;
+#endif
+	if (record_matches && cur_node > cutoff) {
+		u32 seq3 = load_u24_unaligned(in_next);
+		if (seq3 == load_u24_unaligned(&in_base[cur_node])) {
+			lz_matchptr->length = 3;
+			lz_matchptr->offset = in_next - &in_base[cur_node];
+			lz_matchptr++;
+		}
+	#if BT_MATCHFINDER_HASH3_WAYS >= 2
+		else if (cur_node_2 > cutoff &&
+			seq3 == load_u24_unaligned(&in_base[cur_node_2]))
+		{
+			lz_matchptr->length = 3;
+			lz_matchptr->offset = in_next - &in_base[cur_node_2];
+			lz_matchptr++;
+		}
+	#endif
 	}
 
 	cur_node = mf->hash4_tab[hash4];
@@ -250,22 +270,21 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
  *	Must be <= @max_len.
  * @max_search_depth
  *	Limit on the number of potential matches to consider.  Must be >= 1.
- * @next_hash
- *	Pointer to the hash code for the current sequence, which was computed
- *	one position in advance so that the binary tree root could be
- *	prefetched.  This is an input/output parameter.
+ * @next_hashes
+ *	The precomputed hash codes for the sequence beginning at @in_next.
+ *	These will be used and then updated with the precomputed hashcodes for
+ *	the sequence beginning at @in_next + 1.
  * @best_len_ret
  *	If a match of length >= 4 was found, then the length of the longest such
- *	match is written here; otherwise 2 is written here.  (Note: this is
+ *	match is written here; otherwise 3 is written here.  (Note: this is
  *	redundant with the 'struct lz_match' array, but this is easier for the
  *	compiler to optimize when inlined and the caller immediately does a
  *	check against 'best_len'.)
  * @lz_matchptr
  *	An array in which this function will record the matches.  The recorded
- *	matches will be sorted by strictly increasing length and increasing
- *	offset.  The maximum number of matches that may be found is
- *	'MIN(nice_len, max_len) - 2 + 1', or one less if length 2 matches are
- *	disabled.
+ *	matches will be sorted by strictly increasing length and (non-strictly)
+ *	increasing offset.  The maximum number of matches that may be found is
+ *	'nice_len - 2'.
  *
  * The return value is a pointer to the next available slot in the @lz_matchptr
  * array.  (If no matches were found, this will be the same as @lz_matchptr.)
@@ -296,28 +315,8 @@ bt_matchfinder_get_matches(struct bt_matchfinder *mf,
 /*
  * Advance the matchfinder, but don't record any matches.
  *
- * @mf
- *	The matchfinder structure.
- * @in_base
- *	Pointer to the next byte in the input buffer to process _at the last
- *	time bt_matchfinder_init() or bt_matchfinder_slide_window() was called_.
- * @cur_pos
- *	The current position in the input buffer relative to @in_base.
- * @max_len
- *	The maximum permissible match length at this position.  Must be >=
- *	BT_MATCHFINDER_REQUIRED_NBYTES.
- * @nice_len
- *	Stop searching if a match of at least this length is found.
- * @max_search_depth
- *	Limit on the number of potential matches to consider.
- * @next_hash
- *	Pointer to the hash code for the current sequence, which was computed
- *	one position in advance so that the binary tree root could be
- *	prefetched.  This is an input/output parameter.
- *
- * Note: this is very similar to bt_matchfinder_get_matches() because both
- * functions must do hashing and tree re-rooting.  This version just doesn't
- * actually record any matches.
+ * This is very similar to bt_matchfinder_get_matches() because both functions
+ * must do hashing and tree re-rooting.
  */
 static forceinline void
 bt_matchfinder_skip_position(struct bt_matchfinder *mf,

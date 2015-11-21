@@ -34,7 +34,7 @@ UNSAFE_DECOMPRESSION := no
 CC = gcc
 AR = ar
 
-override CFLAGS += -O2 -I. -std=c11
+override CFLAGS += -O2 -I. -std=c99 -fvisibility=hidden
 
 ifeq ($(SUPPORT_NEAR_OPTIMAL_PARSING),yes)
   override CFLAGS += -DSUPPORT_NEAR_OPTIMAL_PARSING=1
@@ -70,7 +70,7 @@ ifeq ($(SUPPORT_GZIP),yes)
     SRC += src/crc32.c
 endif
 
-override PIC_CFLAGS := $(CFLAGS) -fPIC -fvisibility=hidden
+override PIC_CFLAGS := $(CFLAGS) -fPIC
 
 OBJ := $(SRC:.c=.o)
 PIC_OBJ := $(SRC:.c=.pic.o)
@@ -88,7 +88,7 @@ libdeflate.a:$(OBJ)
 	$(AR) cr $@ $+
 
 benchmark:tools/benchmark.c libdeflate.a
-	$(CC) -o $@ $(CFLAGS) -L. -lz $+ libdeflate.a
+	$(CC) -o $@ $(CFLAGS) -L. $+ libdeflate.a -lz
 
 TARGETS :=
 ifeq ($(BUILD_STATIC_LIBRARY),yes)

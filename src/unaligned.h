@@ -59,7 +59,7 @@ get_unaligned_be32(const u8 *p)
 		return be32_to_cpu(load_u32_unaligned(p));
 	else
 		return ((u32)p[0] << 24) | ((u32)p[1] << 16) |
-			((u32)p[2] << 8)| ((u32)p[3] << 0);
+			((u32)p[2] << 8) | ((u32)p[3] << 0);
 }
 
 static forceinline u64
@@ -75,7 +75,7 @@ get_unaligned_le64(const u8 *p)
 }
 
 static forceinline machine_word_t
-load_leword_unaligned(const u8 *p)
+get_unaligned_leword(const u8 *p)
 {
 	STATIC_ASSERT(WORDSIZE == 4 || WORDSIZE == 8);
 	if (WORDSIZE == 4)

@@ -188,7 +188,7 @@ crc32_slice4(u32 remainder, const u8 *buffer, size_t nbytes)
 
 	end32 = p + ((end - p) & ~3);
 	for (; p != end32; p += 4) {
-		u32 v = cpu_to_le32(*(const u32 *)p);
+		u32 v = le32_to_cpu(*(const u32 *)p);
 		remainder =
 		    crc32_table[0x300 + (u8)((remainder ^ v) >>  0)] ^
 		    crc32_table[0x200 + (u8)((remainder ^ v) >>  8)] ^
@@ -218,8 +218,8 @@ crc32_slice8(u32 remainder, const u8 *buffer, size_t nbytes)
 
 	end64 = p + ((end - p) & ~7);
 	for (; p != end64; p += 8) {
-		u32 v1 = cpu_to_le32(*(const u32 *)(p + 0));
-		u32 v2 = cpu_to_le32(*(const u32 *)(p + 4));
+		u32 v1 = le32_to_cpu(*(const u32 *)(p + 0));
+		u32 v2 = le32_to_cpu(*(const u32 *)(p + 4));
 		remainder =
 		    crc32_table[0x700 + (u8)((remainder ^ v1) >>  0)] ^
 		    crc32_table[0x600 + (u8)((remainder ^ v1) >>  8)] ^

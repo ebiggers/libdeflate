@@ -22,22 +22,22 @@
 #  define LIBEXPORT
 #endif
 
-/* likely() - hint that the expression is usually true  */
+/* likely(expr) - hint that the expression is usually true  */
 #ifndef likely
 #  define likely(expr)		(expr)
 #endif
 
-/* unlikely() - hint that the expression is usually false  */
+/* unlikely(expr) - hint that the expression is usually false  */
 #ifndef unlikely
 #  define unlikely(expr)	(expr)
 #endif
 
-/* prefetchr() - prefetch into L1 cache for read  */
+/* prefetchr(addr) - prefetch into L1 cache for read  */
 #ifndef prefetchr
 #  define prefetchr(addr)
 #endif
 
-/* prefetchw() - prefetch into L1 cache for write  */
+/* prefetchw(addr) - prefetch into L1 cache for write  */
 #ifndef prefetchw
 #  define prefetchw(addr)
 #endif
@@ -47,35 +47,35 @@
 #ifndef _aligned_attribute
 #endif
 
-/* compiler_fls32() - efficiently find the index of the last (highest) set bit
+/* compiler_fls32(n) - efficiently find the index of the last (highest) set bit
  * in a nonzero 32-bit integer  */
 #ifndef compiler_fls32
 #endif
 
-/* compiler_fls64() - efficiently find the index of the last (highest) set bit
+/* compiler_fls64(n) - efficiently find the index of the last (highest) set bit
  * in a nonzero 64-bit integer  */
 #ifndef compiler_fls64
 #endif
 
-/* compiler_ffs32() - efficiently find the index of the first (lowest) set bit
+/* compiler_ffs32(n) - efficiently find the index of the first (lowest) set bit
  * in a nonzero 32-bit integer  */
 #ifndef compiler_ffs32
 #endif
 
-/* compiler_ffs64() - efficiently find the index of the first (lowest) set bit
+/* compiler_ffs64(n) - efficiently find the index of the first (lowest) set bit
  * in a nonzero 64-bit integer  */
 #ifndef compiler_ffs64
 #endif
 
-/* compiler_bswap16() - efficiently swap the bytes of a 16-bit integer.  */
+/* compiler_bswap16(n) - efficiently swap the bytes of a 16-bit integer.  */
 #ifndef compiler_bswap16
 #endif
 
-/* compiler_bswap32() - efficiently swap the bytes of a 32-bit integer  */
+/* compiler_bswap32(n) - efficiently swap the bytes of a 32-bit integer  */
 #ifndef compiler_bswap32
 #endif
 
-/* compiler_bswap64() - efficiently swap the bytes of a 64-bit integer  */
+/* compiler_bswap64(n) - efficiently swap the bytes of a 64-bit integer  */
 #ifndef compiler_bswap64
 #endif
 
@@ -99,16 +99,16 @@ static forceinline int CPU_IS_LITTLE_ENDIAN(void)
 #define CPU_IS_BIG_ENDIAN() (!CPU_IS_LITTLE_ENDIAN())
 
 /*
- * DEFINE_UNALIGNED_TYPE(type) - this should be a macro that, given an integer
- * type 'type', defines load_type_unaligned() and store_type_unaligned()
- * functions which load and store variables of type 'type' from/to unaligned
- * memory addresses.  If not defined, a fallback is used.
+ * DEFINE_UNALIGNED_TYPE(type) - a macro that, given an integer type 'type',
+ * defines load_type_unaligned(addr) and store_type_unaligned(v, addr) functions
+ * which load and store variables of type 'type' from/to unaligned memory
+ * addresses.  If not defined, a fallback is used.
  */
 #ifndef DEFINE_UNALIGNED_TYPE
 
 /* Although memcpy() may seem inefficient, it *usually* gets optimized
- * appropriately by modern compilers.  It's portable and is probably the best
- * fallback.  */
+ * appropriately by modern compilers.  It's portable and may be the best we can
+ * do for a fallback...  */
 #include <string.h>
 
 #define DEFINE_UNALIGNED_TYPE(type)				\

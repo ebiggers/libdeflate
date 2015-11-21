@@ -66,7 +66,7 @@ gzip_decompress(struct deflate_decompressor *d,
 
 	/* File comment (zero terminated) */
 	if (flg & GZIP_FCOMMENT) {
-		while (*in_next++ != 0 && ++in_next != in_end)
+		while (*in_next++ != 0 && in_next != in_end)
 			;
 		if (in_end - in_next < GZIP_FOOTER_SIZE)
 			return false;

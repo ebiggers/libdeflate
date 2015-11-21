@@ -193,7 +193,7 @@ typedef machine_word_t bitbuf_t;
  */
 #define FILL_BITS_WORDWISE()						\
 ({									\
-	bitbuf |= load_leword_unaligned(in_next) << bitsleft;		\
+	bitbuf |= get_unaligned_leword(in_next) << bitsleft;		\
 	in_next += (BITBUF_NBITS - bitsleft) >> 3;			\
 	bitsleft += (BITBUF_NBITS - bitsleft) & ~7;			\
 })
