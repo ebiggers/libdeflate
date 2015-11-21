@@ -1,9 +1,11 @@
 /*
- * adler32.c
+ * adler32.c - Adler-32 checksum algorithm
  *
- * Adler-32 checksum algorithm.
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
  *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  */
 
 #include "adler32.h"
@@ -48,7 +50,7 @@ adler32(const void *buffer, size_t size)
 	const u8 *p = buffer;
 	const u8 *end = p + size;
 	while (p != end) {
-		size_t chunk_size = min(end - p, MAX_BYTES_PER_CHUNK);
+		size_t chunk_size = MIN(end - p, MAX_BYTES_PER_CHUNK);
 		const u8 *chunk_end = p + chunk_size;
 
 	#if UNROLL_FACTOR > 1
@@ -84,7 +86,7 @@ adler32(const void *buffer, size_t size)
 			s1 += *p++;
 			s2 += s1;
 		#endif
-			BUILD_BUG_ON(UNROLL_FACTOR > 8);
+			STATIC_ASSERT(UNROLL_FACTOR <= 8);
 		}
 	#endif /* UNROLL_FACTOR > 1 */
 		while (p != chunk_end) {

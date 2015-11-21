@@ -1,9 +1,11 @@
 /*
- * zlib_compress.c
+ * zlib_compress.c - compress with a zlib wrapper
  *
- * Generate DEFLATE-compressed data in the zlib wrapper format.
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
  *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  */
 
 #include "libdeflate.h"
@@ -40,7 +42,7 @@ zlib_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 	hdr |= level_hint << 6;
 	hdr |= 31 - (hdr % 31);
 
-	put_unaligned_u16_be(hdr, out_next);
+	put_unaligned_be16(hdr, out_next);
 	out_next += 2;
 
 	/* Compressed data  */
@@ -51,7 +53,7 @@ zlib_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 	out_next += deflate_size;
 
 	/* ADLER32  */
-	put_unaligned_u32_be(adler32(in, in_size), out_next);
+	put_unaligned_be32(adler32(in, in_size), out_next);
 	out_next += 4;
 
 	return out_next - (u8 *)out;

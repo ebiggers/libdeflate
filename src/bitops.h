@@ -1,19 +1,14 @@
 /*
- * bitops.h
- *
- * Inline functions for bit manipulation.
- *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * bitops.h - inline functions for bit manipulation
  */
 
 #pragma once
 
-#include "compiler.h"
-#include "types.h"
+#include "util.h"
 
 /* Find Last Set bit   */
 
-static inline unsigned
+static forceinline unsigned
 fls32(u32 v)
 {
 #ifdef compiler_fls32
@@ -26,7 +21,7 @@ fls32(u32 v)
 #endif
 }
 
-static inline unsigned
+static forceinline unsigned
 fls64(u64 v)
 {
 #ifdef compiler_fls64
@@ -39,10 +34,10 @@ fls64(u64 v)
 #endif
 }
 
-static inline unsigned
+static forceinline unsigned
 flsw(machine_word_t v)
 {
-	BUILD_BUG_ON(WORDSIZE != 4 && WORDSIZE != 8);
+	STATIC_ASSERT(WORDSIZE == 4 || WORDSIZE == 8);
 	if (WORDSIZE == 4)
 		return fls32(v);
 	else
@@ -51,7 +46,7 @@ flsw(machine_word_t v)
 
 /* Find First Set bit   */
 
-static inline unsigned
+static forceinline unsigned
 ffs32(u32 v)
 {
 #ifdef compiler_ffs32
@@ -64,7 +59,7 @@ ffs32(u32 v)
 #endif
 }
 
-static inline unsigned
+static forceinline unsigned
 ffs64(u64 v)
 {
 #ifdef compiler_ffs64
@@ -77,10 +72,10 @@ ffs64(u64 v)
 #endif
 }
 
-static inline unsigned
+static forceinline unsigned
 ffsw(machine_word_t v)
 {
-	BUILD_BUG_ON(WORDSIZE != 4 && WORDSIZE != 8);
+	STATIC_ASSERT(WORDSIZE == 4 || WORDSIZE == 8);
 	if (WORDSIZE == 4)
 		return ffs32(v);
 	else

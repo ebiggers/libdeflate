@@ -1,9 +1,5 @@
 /*
- * aligned_malloc.c
- *
- * Aligned memory allocation.
- *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * aligned_malloc.c - aligned memory allocation
  */
 
 #pragma once

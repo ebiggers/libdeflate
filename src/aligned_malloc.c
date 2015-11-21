@@ -1,10 +1,15 @@
 /*
- * aligned_malloc.c
+ * aligned_malloc.c - aligned memory allocation
  *
- * Aligned memory allocation using only malloc() and free().
- * Avoids portability problems with posix_memalign(), aligned_alloc(), etc.
+ * This file provides portable aligned memory allocation functions that only
+ * use malloc() and free().  This avoids portability problems with
+ * posix_memalign(), aligned_alloc(), etc.
  *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
+ *
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  */
 
 #include "aligned_malloc.h"

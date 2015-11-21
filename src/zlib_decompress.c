@@ -1,9 +1,11 @@
 /*
- * zlib_decompress.c
+ * zlib_decompress.c - decompress with a zlib wrapper
  *
- * Decompress DEFLATE-compressed data wrapped in the zlib format.
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
  *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  */
 
 #include "libdeflate.h"
@@ -24,7 +26,7 @@ zlib_decompress(struct deflate_decompressor *d,
 		return false;
 
 	/* 2 byte header: CMF and FLG  */
-	hdr = get_unaligned_u16_be(in_next);
+	hdr = get_unaligned_be16(in_next);
 	in_next += 2;
 
 	/* FCHECK */
@@ -51,7 +53,7 @@ zlib_decompress(struct deflate_decompressor *d,
 	in_next = in_end - ZLIB_FOOTER_SIZE;
 
 	/* ADLER32  */
-	if (adler32(out, out_nbytes) != get_unaligned_u32_be(in_next))
+	if (adler32(out, out_nbytes) != get_unaligned_be32(in_next))
 		return false;
 
 	return true;

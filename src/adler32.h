@@ -1,14 +1,10 @@
 /*
- * adler32.h
- *
- * Adler-32 checksum algorithm.
- *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * adler32.h - Adler-32 checksum algorithm
  */
 
 #pragma once
 
-#include "types.h"
+#include "util.h"
 
 extern u32
 adler32(const void *buffer, size_t size);

@@ -1,17 +1,12 @@
 /*
- * endianness.h
- *
- * Macros and inline functions for endianness conversion.
- *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * endianness.h - macros and inline functions for endianness conversion
  */
 
 #pragma once
 
-#include "compiler.h"
-#include "types.h"
+#include "util.h"
 
-static inline u16 bswap16(u16 n)
+static forceinline u16 bswap16(u16 n)
 {
 #ifdef compiler_bswap16
 	return compiler_bswap16(n);
@@ -20,7 +15,7 @@ static inline u16 bswap16(u16 n)
 #endif
 }
 
-static inline u32 bswap32(u32 n)
+static forceinline u32 bswap32(u32 n)
 {
 #ifdef compiler_bswap32
 	return compiler_bswap32(n);
@@ -32,7 +27,7 @@ static inline u32 bswap32(u32 n)
 #endif
 }
 
-static inline u64 bswap64(u64 n)
+static forceinline u64 bswap64(u64 n)
 {
 #ifdef compiler_bswap64
 	return compiler_bswap64(n);
@@ -48,30 +43,15 @@ static inline u64 bswap64(u64 n)
 #endif
 }
 
-#if CPU_IS_BIG_ENDIAN
-#  define cpu_to_le16(n) bswap16(n)
-#  define cpu_to_le32(n) bswap32(n)
-#  define cpu_to_le64(n) bswap64(n)
-#  define le16_to_cpu(n) bswap16(n)
-#  define le32_to_cpu(n) bswap32(n)
-#  define le64_to_cpu(n) bswap64(n)
-#  define cpu_to_be16(n) (n)
-#  define cpu_to_be32(n) (n)
-#  define cpu_to_be64(n) (n)
-#  define be16_to_cpu(n) (n)
-#  define be32_to_cpu(n) (n)
-#  define be64_to_cpu(n) (n)
-#else
-#  define cpu_to_le16(n) (n)
-#  define cpu_to_le32(n) (n)
-#  define cpu_to_le64(n) (n)
-#  define le16_to_cpu(n) (n)
-#  define le32_to_cpu(n) (n)
-#  define le64_to_cpu(n) (n)
-#  define cpu_to_be16(n) bswap16(n)
-#  define cpu_to_be32(n) bswap32(n)
-#  define cpu_to_be64(n) bswap64(n)
-#  define be16_to_cpu(n) bswap16(n)
-#  define be32_to_cpu(n) bswap32(n)
-#  define be64_to_cpu(n) bswap64(n)
-#endif
+#define cpu_to_le16(n) (CPU_IS_BIG_ENDIAN() ? bswap16(n) : (n))
+#define cpu_to_le32(n) (CPU_IS_BIG_ENDIAN() ? bswap32(n) : (n))
+#define cpu_to_le64(n) (CPU_IS_BIG_ENDIAN() ? bswap64(n) : (n))
+#define le16_to_cpu(n) (CPU_IS_BIG_ENDIAN() ? bswap16(n) : (n))
+#define le32_to_cpu(n) (CPU_IS_BIG_ENDIAN() ? bswap32(n) : (n))
+#define le64_to_cpu(n) (CPU_IS_BIG_ENDIAN() ? bswap64(n) : (n))
+#define cpu_to_be16(n) (CPU_IS_LITTLE_ENDIAN() ? bswap16(n) : (n))
+#define cpu_to_be32(n) (CPU_IS_LITTLE_ENDIAN() ? bswap32(n) : (n))
+#define cpu_to_be64(n) (CPU_IS_LITTLE_ENDIAN() ? bswap64(n) : (n))
+#define be16_to_cpu(n) (CPU_IS_LITTLE_ENDIAN() ? bswap16(n) : (n))
+#define be32_to_cpu(n) (CPU_IS_LITTLE_ENDIAN() ? bswap32(n) : (n))
+#define be64_to_cpu(n) (CPU_IS_LITTLE_ENDIAN() ? bswap64(n) : (n))

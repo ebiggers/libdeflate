@@ -1,9 +1,11 @@
 /*
- * gzip_decompress.c
+ * gzip_decompress.c - decompress with a gzip wrapper
  *
- * Decompress DEFLATE-compressed data wrapped in the gzip format.
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
  *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  */
 
 #include "libdeflate.h"
@@ -45,7 +47,7 @@ gzip_decompress(struct deflate_decompressor *d,
 
 	/* Extra field */
 	if (flg & GZIP_FEXTRA) {
-		u16 xlen = get_unaligned_u16_le(in_next);
+		u16 xlen = get_unaligned_le16(in_next);
 		in_next += 2;
 
 		if (in_end - in_next < (u32)xlen + GZIP_FOOTER_SIZE)
@@ -85,12 +87,12 @@ gzip_decompress(struct deflate_decompressor *d,
 	in_next = in_end - GZIP_FOOTER_SIZE;
 
 	/* CRC32 */
-	if (crc32_gzip(out, out_nbytes) != get_unaligned_u32_le(in_next))
+	if (crc32_gzip(out, out_nbytes) != get_unaligned_le32(in_next))
 		return false;
 	in_next += 4;
 
 	/* ISIZE */
-	if ((u32)out_nbytes != get_unaligned_u32_le(in_next))
+	if ((u32)out_nbytes != get_unaligned_le32(in_next))
 		return false;
 
 	return true;

@@ -1,11 +1,13 @@
 /*
- * gen_crc32_table.c
- *
- * This file has no copyright assigned and is placed in the Public Domain.
- *
- * This is a program for CRC-32 table generation.
+ * gen_crc32_table.c - a program for CRC-32 table generation
  *
  * See crc32.c for more details about CRC computation.
+ *
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
+ *
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  */
 
 #include <stdint.h>
@@ -55,9 +57,7 @@ main(void)
 		crc32_table[i] = crc32_update_byte(crc32_table[i - 0x100], 0);
 
 	printf("/*\n");
-	printf(" * crc32_table.h\n");
-	printf(" *\n");
-	printf(" * Data table to accelerate CRC-32 computation.\n");
+	printf(" * crc32_table.h - data table to accelerate CRC-32 computation\n");
 	printf(" *\n");
 	printf(" * THIS FILE WAS AUTOMATICALLY GENERATED "
 	       "BY gen_crc32_table.c.  DO NOT EDIT.\n");

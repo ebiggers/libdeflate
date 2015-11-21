@@ -1,9 +1,11 @@
 /*
- * gzip_compress.c
+ * gzip_compress.c - compress with a gzip wrapper
  *
- * Generate DEFLATE-compressed data in the gzip wrapper format.
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
  *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  */
 
 #include "libdeflate.h"
@@ -34,7 +36,7 @@ gzip_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 	/* FLG */
 	*out_next++ = 0;
 	/* MTIME */
-	put_unaligned_u32_le(GZIP_MTIME_UNAVAILABLE, out_next);
+	put_unaligned_le32(GZIP_MTIME_UNAVAILABLE, out_next);
 	out_next += 4;
 	/* XFL */
 	xfl = 0;
@@ -55,11 +57,11 @@ gzip_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 	out_next += deflate_size;
 
 	/* CRC32 */
-	put_unaligned_u32_le(crc32_gzip(in, in_size), out_next);
+	put_unaligned_le32(crc32_gzip(in, in_size), out_next);
 	out_next += 4;
 
 	/* ISIZE */
-	put_unaligned_u32_le((u32)in_size, out_next);
+	put_unaligned_le32((u32)in_size, out_next);
 	out_next += 4;
 
 	return out_next - (u8 *)out;

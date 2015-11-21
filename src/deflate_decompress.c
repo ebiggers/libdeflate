@@ -1,7 +1,11 @@
 /*
- * deflate_decompress.c
+ * deflate_decompress.c - a decompressor for DEFLATE
  *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
+ *
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  *
  * ---------------------------------------------------------------------------
  *
@@ -23,7 +27,6 @@
  *   support stopping and resuming decompression.
  */
 
-#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -95,6 +98,9 @@ struct deflate_decompressor {
 
 	u32 offset_decode_table[(1 << DEFLATE_OFFSET_TABLEBITS) +
 				(2 * DEFLATE_NUM_OFFSET_SYMS)];
+
+	u16 working_space[2 * (DEFLATE_MAX_CODEWORD_LEN + 1) +
+			  DEFLATE_MAX_NUM_SYMS];
 };
 
 /*****************************************************************************
@@ -168,7 +174,6 @@ typedef machine_word_t bitbuf_t;
  */
 #define FILL_BITS_BYTEWISE()						\
 ({									\
-	assert(bitsleft <= BITBUF_NBITS - 8);				\
 	do {								\
 		if (likely(in_next != in_end))				\
 			bitbuf |= (bitbuf_t)*in_next++ << bitsleft;	\
@@ -188,8 +193,7 @@ typedef machine_word_t bitbuf_t;
  */
 #define FILL_BITS_WORDWISE()						\
 ({									\
-	assert(bitsleft < BITBUF_NBITS);				\
-	bitbuf |= get_unaligned_word_le(in_next) << bitsleft;		\
+	bitbuf |= load_leword_unaligned(in_next) << bitsleft;		\
 	in_next += (BITBUF_NBITS - bitsleft) >> 3;			\
 	bitsleft += (BITBUF_NBITS - bitsleft) & ~7;			\
 })
@@ -205,15 +209,12 @@ typedef machine_word_t bitbuf_t;
  */
 #define DO_ENSURE_BITS(n)					\
 ({								\
-	assert(CAN_ENSURE(n));					\
-	assert(!HAVE_BITS(n));					\
-	if (CPU_IS_LITTLE_ENDIAN &&				\
+	if (CPU_IS_LITTLE_ENDIAN() &&				\
 	    UNALIGNED_ACCESS_IS_FAST &&				\
 	    likely(in_end - in_next >= sizeof(bitbuf_t)))	\
 		FILL_BITS_WORDWISE();				\
 	else							\
 		FILL_BITS_BYTEWISE();				\
-	assert(HAVE_BITS(n));					\
 })
 
 /*
@@ -223,10 +224,8 @@ typedef machine_word_t bitbuf_t;
  */
 #define ENSURE_BITS(n)							\
 ({									\
-	assert(CAN_ENSURE(n));						\
 	if (!HAVE_BITS(n))						\
 		DO_ENSURE_BITS(n);					\
-	assert(HAVE_BITS(n));						\
 })
 
 /*
@@ -234,8 +233,7 @@ typedef machine_word_t bitbuf_t;
  */
 #define BITS(n)								\
 ({									\
-	assert(HAVE_BITS(n));						\
-	bitbuf & (((bitbuf_t)1 << (n)) - 1);				\
+	(u32)bitbuf & (((u32)1 << (n)) - 1);				\
 })
 
 /*
@@ -243,7 +241,6 @@ typedef machine_word_t bitbuf_t;
  */
 #define REMOVE_BITS(n)							\
 ({									\
-	assert(HAVE_BITS(n));						\
 	bitbuf >>= (n);							\
 	bitsleft -= (n);						\
 })
@@ -253,7 +250,7 @@ typedef machine_word_t bitbuf_t;
  */
 #define POP_BITS(n)							\
 ({									\
-	bitbuf_t bits = BITS(n);					\
+	u32 bits = BITS(n);						\
 	REMOVE_BITS(n);							\
 	bits;								\
 })
@@ -269,7 +266,7 @@ typedef machine_word_t bitbuf_t;
  */
 #define ALIGN_INPUT()							\
 ({									\
-	in_next -= (bitsleft >> 3) - min(overrun_count, bitsleft >> 3);	\
+	in_next -= (bitsleft >> 3) - MIN(overrun_count, bitsleft >> 3);	\
 	bitbuf = 0;							\
 	bitsleft = 0;							\
 })
@@ -282,10 +279,7 @@ typedef machine_word_t bitbuf_t;
 ({									\
 	u16 v;								\
 									\
-	assert(bitsleft == 0);						\
-	assert(in_end - in_next >= 2);					\
-									\
-	v = get_unaligned_u16_le(in_next);				\
+	v = get_unaligned_le16(in_next);				\
 	in_next += 2;							\
 	v;								\
 })
@@ -501,7 +495,7 @@ static const u32 deflate_offset_symbol_data[DEFLATE_NUM_OFFSET_SYMS] = {
 };
 
 /* Construct a direct decode table entry (not a tree node)  */
-static inline u32
+static forceinline u32
 make_direct_entry(u32 value, u32 length)
 {
 	return (length << HUFFDEC_LEN_SHIFT) | value;
@@ -515,7 +509,7 @@ make_direct_entry(u32 value, u32 length)
  * loop of build_decode_table().
  */
 
-static inline u32
+static forceinline u32
 make_litlen_direct_entry(unsigned symbol, unsigned codeword_length,
 			 unsigned *extra_mask_ret)
 {
@@ -524,8 +518,8 @@ make_litlen_direct_entry(unsigned symbol, unsigned codeword_length,
 	unsigned length_bits;
 	u32 length_base;
 
-	BUILD_BUG_ON(DEFLATE_MAX_EXTRA_LENGTH_BITS >
-		     HUFFDEC_MAX_EXTRA_LENGTH_BITS);
+	STATIC_ASSERT(DEFLATE_MAX_EXTRA_LENGTH_BITS <=
+		      HUFFDEC_MAX_EXTRA_LENGTH_BITS);
 
 	if (symbol >= 256) {
 		/* Match, not a literal.  (This can also be the special
@@ -558,31 +552,31 @@ make_litlen_direct_entry(unsigned symbol, unsigned codeword_length,
 	return make_direct_entry(entry_value, entry_length);
 }
 
-static inline u32
+static forceinline u32
 make_litlen_leaf_entry(unsigned sym)
 {
 	return deflate_litlen_symbol_data[sym];
 }
 
-static inline u32
+static forceinline u32
 make_offset_direct_entry(unsigned sym, unsigned codeword_len, unsigned *extra_mask_ret)
 {
 	return make_direct_entry(deflate_offset_symbol_data[sym], codeword_len);
 }
 
-static inline u32
+static forceinline u32
 make_offset_leaf_entry(unsigned sym)
 {
 	return deflate_offset_symbol_data[sym];
 }
 
-static inline u32
+static forceinline u32
 make_pre_direct_entry(unsigned sym, unsigned codeword_len, unsigned *extra_mask_ret)
 {
 	return make_direct_entry(sym, codeword_len);
 }
 
-static inline u32
+static forceinline u32
 make_pre_leaf_entry(unsigned sym)
 {
 	return sym;
@@ -615,22 +609,25 @@ make_pre_leaf_entry(unsigned sym)
  *	log base 2 of the size of the direct lookup portion of the decode table.
  * @max_codeword_len
  *	Maximum allowed codeword length for this Huffman code.
+ * @working_space
+ *	A temporary array of length '2 * (@max_codeword_len + 1) + @num_syms'.
  *
  * Returns %true if successful; %false if the codeword lengths do not form a
  * valid Huffman code.
  */
-static inline bool
+static forceinline bool
 build_decode_table(u32 decode_table[],
 		   const len_t lens[],
 		   const unsigned num_syms,
 		   u32 (*make_direct_entry)(unsigned, unsigned, unsigned *),
 		   u32 (*make_leaf_entry)(unsigned),
 		   const unsigned table_bits,
-		   const unsigned max_codeword_len)
+		   const unsigned max_codeword_len,
+		   u16 working_space[])
 {
-	unsigned len_counts[max_codeword_len + 1];
-	unsigned offsets[max_codeword_len + 1];
-	unsigned sorted_syms[num_syms];
+	u16 * const len_counts = &working_space[0];
+	u16 * const offsets = &working_space[1 * (max_codeword_len + 1)];
+	u16 * const sorted_syms = &working_space[2 * (max_codeword_len + 1)];
 	unsigned sym;
 	unsigned len;
 	s32 remainder;
@@ -638,13 +635,6 @@ build_decode_table(u32 decode_table[],
 	unsigned codeword_reversed;
 	unsigned codeword_len;
 	unsigned loop_count;
-
-	/* Preconditions  */
-	assert(table_bits > 0);
-	assert(table_bits <= max_codeword_len);
-	assert(max_codeword_len <= HUFFDEC_MAX_LEN);
-	for (sym = 0; sym < num_syms; sym++)
-		assert(lens[sym] <= max_codeword_len);
 
 	/* Count how many symbols have each codeword length.  */
 	for (len = 0; len <= max_codeword_len; len++)
@@ -861,7 +851,8 @@ build_precode_decode_table(struct deflate_decompressor *d)
 				  make_pre_direct_entry,
 				  make_pre_leaf_entry,
 				  DEFLATE_PRECODE_TABLEBITS,
-				  DEFLATE_MAX_PRE_CODEWORD_LEN);
+				  DEFLATE_MAX_PRE_CODEWORD_LEN,
+				  d->working_space);
 }
 
 /* Build the decode table for the literal/length code.  */
@@ -875,7 +866,8 @@ build_litlen_decode_table(struct deflate_decompressor *d,
 				  make_litlen_direct_entry,
 				  make_litlen_leaf_entry,
 				  DEFLATE_LITLEN_TABLEBITS,
-				  DEFLATE_MAX_LITLEN_CODEWORD_LEN);
+				  DEFLATE_MAX_LITLEN_CODEWORD_LEN,
+				  d->working_space);
 }
 
 /* Build the decode table for the offset code.  */
@@ -889,15 +881,16 @@ build_offset_decode_table(struct deflate_decompressor *d,
 				  make_offset_direct_entry,
 				  make_offset_leaf_entry,
 				  DEFLATE_OFFSET_TABLEBITS,
-				  DEFLATE_MAX_OFFSET_CODEWORD_LEN);
+				  DEFLATE_MAX_OFFSET_CODEWORD_LEN,
+				  d->working_space);
 }
 
-static inline machine_word_t
+static forceinline machine_word_t
 repeat_byte(u8 b)
 {
 	machine_word_t v;
 
-	BUILD_BUG_ON(WORDSIZE != 4 && WORDSIZE != 8);
+	STATIC_ASSERT(WORDSIZE == 4 || WORDSIZE == 8);
 
 	v = b;
 	v |= v << 8;
@@ -906,7 +899,7 @@ repeat_byte(u8 b)
 	return v;
 }
 
-static inline void
+static forceinline void
 copy_word_unaligned(const void *src, void *dst)
 {
 	store_word_unaligned(load_word_unaligned(src), dst);
@@ -922,8 +915,8 @@ copy_word_unaligned(const void *src, void *dst)
  * @winend points to the byte past the end of the output buffer.
  * This function won't write any data beyond this position.
  */
-static inline void
-lz_copy(u8 *dst, u32 length, u32 offset, const u8 *winend, u32 min_length)
+static forceinline void
+lz_copy(u8 *dst, u32 length, u32 offset, const u8 *winend)
 {
 	const u8 *src = dst - offset;
 	const u8 * const end = dst + length;
@@ -941,9 +934,7 @@ lz_copy(u8 *dst, u32 length, u32 offset, const u8 *winend, u32 min_length)
 	 * beyond the end of the output buffer, hence the check for (winend -
 	 * end >= WORDSIZE - 1).
 	 */
-	if (UNALIGNED_ACCESS_IS_VERY_FAST &&
-	    likely(winend - end >= WORDSIZE - 1))
-	{
+	if (UNALIGNED_ACCESS_IS_FAST && likely(winend - end >= WORDSIZE - 1)) {
 
 		if (offset >= WORDSIZE) {
 			/* The source and destination words don't overlap.  */
@@ -992,19 +983,10 @@ lz_copy(u8 *dst, u32 length, u32 offset, const u8 *winend, u32 min_length)
 	}
 
 	/* Fall back to a bytewise copy.  */
-
-	if (min_length >= 2) {
-		*dst++ = *src++;
-		length--;
-	}
-	if (min_length >= 3) {
-		*dst++ = *src++;
-		length--;
-	}
-	if (min_length >= 4) {
-		*dst++ = *src++;
-		length--;
-	}
+	STATIC_ASSERT(DEFLATE_MIN_MATCH_LEN == 3);
+	*dst++ = *src++;
+	*dst++ = *src++;
+	length -= 2;
 	do {
 		*dst++ = *src++;
 	} while (--length);
@@ -1045,8 +1027,9 @@ deflate_decompress(struct deflate_decompressor * restrict d,
 
 next_block:
 	/* Starting to read the next block.  */
+	;
 
-	BUILD_BUG_ON(!CAN_ENSURE(1 + 2 + 5 + 5 + 4));
+	STATIC_ASSERT(CAN_ENSURE(1 + 2 + 5 + 5 + 4));
 	ENSURE_BITS(1 + 2 + 5 + 5 + 4);
 
 	/* BFINAL: 1 bit  */
@@ -1068,17 +1051,17 @@ next_block:
 
 		/* Read the codeword length counts.  */
 
-		BUILD_BUG_ON(DEFLATE_NUM_LITLEN_SYMS != ((1 << 5) - 1) + 257);
+		STATIC_ASSERT(DEFLATE_NUM_LITLEN_SYMS == ((1 << 5) - 1) + 257);
 		num_litlen_syms = POP_BITS(5) + 257;
 
-		BUILD_BUG_ON(DEFLATE_NUM_OFFSET_SYMS != ((1 << 5) - 1) + 1);
+		STATIC_ASSERT(DEFLATE_NUM_OFFSET_SYMS == ((1 << 5) - 1) + 1);
 		num_offset_syms = POP_BITS(5) + 1;
 
-		BUILD_BUG_ON(DEFLATE_NUM_PRECODE_SYMS != ((1 << 4) - 1) + 4);
+		STATIC_ASSERT(DEFLATE_NUM_PRECODE_SYMS == ((1 << 4) - 1) + 4);
 		num_explicit_precode_lens = POP_BITS(4) + 4;
 
 		/* Read the precode codeword lengths.  */
-		BUILD_BUG_ON(DEFLATE_MAX_PRE_CODEWORD_LEN != (1 << 3) - 1);
+		STATIC_ASSERT(DEFLATE_MAX_PRE_CODEWORD_LEN == (1 << 3) - 1);
 		if (CAN_ENSURE(DEFLATE_NUM_PRECODE_SYMS * 3)) {
 
 			ENSURE_BITS(DEFLATE_NUM_PRECODE_SYMS * 3);
@@ -1110,7 +1093,7 @@ next_block:
 
 			/* (The code below assumes there are no binary trees in
 			 * the decode table.)  */
-			BUILD_BUG_ON(DEFLATE_PRECODE_TABLEBITS != DEFLATE_MAX_PRE_CODEWORD_LEN);
+			STATIC_ASSERT(DEFLATE_PRECODE_TABLEBITS == DEFLATE_MAX_PRE_CODEWORD_LEN);
 
 			/* Read the next precode symbol.  */
 			entry = d->precode_decode_table[BITS(DEFLATE_MAX_PRE_CODEWORD_LEN)];
@@ -1141,14 +1124,14 @@ next_block:
 			 * 16', and 'presym == 17'.  For typical data this is
 			 * ordered from most frequent to least frequent case.
 			 */
-			BUILD_BUG_ON(DEFLATE_MAX_LENS_OVERRUN != 138 - 1);
+			STATIC_ASSERT(DEFLATE_MAX_LENS_OVERRUN == 138 - 1);
 
 			if (presym == 16) {
 				/* Repeat the previous length 3 - 6 times  */
 				if (SAFETY_CHECK(i == 0))
 					return false;
 				rep_val = d->lens[i - 1];
-				BUILD_BUG_ON(3 + ((1 << 2) - 1) != 6);
+				STATIC_ASSERT(3 + ((1 << 2) - 1) == 6);
 				rep_count = 3 + POP_BITS(2);
 				d->lens[i + 0] = rep_val;
 				d->lens[i + 1] = rep_val;
@@ -1159,7 +1142,7 @@ next_block:
 				i += rep_count;
 			} else if (presym == 17) {
 				/* Repeat zero 3 - 10 times  */
-				BUILD_BUG_ON(3 + ((1 << 3) - 1) != 10);
+				STATIC_ASSERT(3 + ((1 << 3) - 1) == 10);
 				rep_count = 3 + POP_BITS(3);
 				d->lens[i + 0] = 0;
 				d->lens[i + 1] = 0;
@@ -1174,7 +1157,7 @@ next_block:
 				i += rep_count;
 			} else {
 				/* Repeat zero 11 - 138 times  */
-				BUILD_BUG_ON(11 + ((1 << 7) - 1) != 138);
+				STATIC_ASSERT(11 + ((1 << 7) - 1) == 138);
 				rep_count = 11 + POP_BITS(7);
 				memset(&d->lens[i], 0, rep_count * sizeof(d->lens[i]));
 				i += rep_count;
@@ -1214,8 +1197,8 @@ next_block:
 		 * lengths.  Then the remainder is the same as decompressing a
 		 * dynamic Huffman block.  */
 
-		BUILD_BUG_ON(DEFLATE_NUM_LITLEN_SYMS != 288);
-		BUILD_BUG_ON(DEFLATE_NUM_OFFSET_SYMS != 32);
+		STATIC_ASSERT(DEFLATE_NUM_LITLEN_SYMS == 288);
+		STATIC_ASSERT(DEFLATE_NUM_OFFSET_SYMS == 32);
 
 		for (i = 0; i < 144; i++)
 			d->lens[i] = 8;
@@ -1256,7 +1239,7 @@ next_block:
 		 * fastest.  Otherwise, we may need to load new bits multiple
 		 * times when decoding a match.  */
 
-		BUILD_BUG_ON(!CAN_ENSURE(DEFLATE_MAX_LITLEN_CODEWORD_LEN));
+		STATIC_ASSERT(CAN_ENSURE(DEFLATE_MAX_LITLEN_CODEWORD_LEN));
 		ENSURE_BITS(MAX_ENSURE);
 
 		/* Read a literal or length.  */
@@ -1430,7 +1413,7 @@ next_block:
 		/* Copy the match:
 		 * 'length' bytes at 'out_next - offset' to 'out_next'.  */
 
-		lz_copy(out_next, length, offset, out_end, DEFLATE_MIN_MATCH_LEN);
+		lz_copy(out_next, length, offset, out_end);
 
 		out_next += length;
 	}

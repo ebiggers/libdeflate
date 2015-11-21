@@ -1,7 +1,11 @@
 /*
- * benchmark.c - A compression testing and benchmark program.
+ * benchmark.c - a compression testing and benchmark program
  *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
+ *
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  */
 
 #define _FILE_OFFSET_BITS 64
@@ -32,9 +36,9 @@ usage(FILE *fp)
 "\n"
 "Options:\n"
 "  -s, --chunk-size=SIZE        chunk size\n"
-"  -l, --level=LEVEL            compression level [0-9]\n"
+"  -l, --level=LEVEL            compression level [1-12]\n"
 "  -1                           fastest\n"
-"  -9                           slowest\n"
+"  -9                           slow\n"
 "  -z, --zlib                   use zlib wrapper\n"
 "  -g, --gzip                   use gzip wrapper\n"
 "  -Y, --compress-with-libz     compress with libz, not libdeflate\n"

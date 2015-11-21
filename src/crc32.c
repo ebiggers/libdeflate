@@ -1,9 +1,11 @@
 /*
- * crc32.c
+ * crc32.c - CRC-32 checksum algorithm for the gzip format
  *
- * CRC-32 checksum computation for the gzip format.
+ * Author:	Eric Biggers
+ * Year:	2014, 2015
  *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * The author dedicates this file to the public domain.
+ * You can do whatever you want with this file.
  */
 
 /*
@@ -153,7 +155,7 @@
 #include "crc32_table.h"
 #include "endianness.h"
 
-static inline u32
+static forceinline u32
 crc32_update_byte(u32 remainder, u8 next_byte)
 {
 	return (remainder >> 8) ^ crc32_table[(u8)remainder ^ next_byte];
@@ -163,7 +165,7 @@ crc32_update_byte(u32 remainder, u8 next_byte)
 static u32
 crc32_slice1(u32 remainder, const u8 *buffer, size_t nbytes)
 {
-	BUILD_BUG_ON(sizeof(crc32_table) / sizeof(crc32_table[0]) < 0x100);
+	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x100);
 
 	for (size_t i = 0; i < nbytes; i++)
 		remainder = crc32_update_byte(remainder, buffer[i]);
@@ -175,7 +177,7 @@ crc32_slice1(u32 remainder, const u8 *buffer, size_t nbytes)
 static u32
 crc32_slice4(u32 remainder, const u8 *buffer, size_t nbytes)
 {
-	BUILD_BUG_ON(sizeof(crc32_table) / sizeof(crc32_table[0]) < 0x400);
+	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x400);
 
 	const u8 *p = buffer;
 	const u8 *end = buffer + nbytes;
@@ -205,7 +207,7 @@ crc32_slice4(u32 remainder, const u8 *buffer, size_t nbytes)
 static u32
 crc32_slice8(u32 remainder, const u8 *buffer, size_t nbytes)
 {
-	BUILD_BUG_ON(sizeof(crc32_table) / sizeof(crc32_table[0]) < 0x800);
+	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x800);
 
 	const u8 *p = buffer;
 	const u8 *end = buffer + nbytes;

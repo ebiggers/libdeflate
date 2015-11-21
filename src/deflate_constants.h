@@ -1,9 +1,5 @@
 /*
- * deflate_constants.h
- *
- * Constants for the DEFLATE compression format.
- *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * deflate_constants.h - constants for the DEFLATE compression format
  */
 
 #pragma once
@@ -19,7 +15,7 @@
 
 /* Minimum and maximum supported match offsets (in bytes)  */
 #define DEFLATE_MIN_MATCH_OFFSET		1
-#define DEFLATE_MAX_MATCH_OFFSET		32767
+#define DEFLATE_MAX_MATCH_OFFSET		32768
 
 #define DEFLATE_MAX_WINDOW_SIZE			32768
 
@@ -30,6 +26,9 @@
 #define DEFLATE_NUM_LITLEN_SYMS			288
 #define DEFLATE_NUM_OFFSET_SYMS			32
 
+/* The maximum number of symbols across all codes  */
+#define DEFLATE_MAX_NUM_SYMS			288
+
 /* Division of symbols in the literal/length code  */
 #define DEFLATE_NUM_LITERALS			256
 #define DEFLATE_END_OF_BLOCK			256
@@ -39,6 +38,9 @@
 #define DEFLATE_MAX_PRE_CODEWORD_LEN		7
 #define DEFLATE_MAX_LITLEN_CODEWORD_LEN		15
 #define DEFLATE_MAX_OFFSET_CODEWORD_LEN		15
+
+/* The maximum codeword length across all codes  */
+#define DEFLATE_MAX_CODEWORD_LEN		15
 
 /* Maximum possible overrun when decoding codeword lengths  */
 #define DEFLATE_MAX_LENS_OVERRUN		137

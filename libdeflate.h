@@ -1,9 +1,5 @@
 /*
- * libdeflate.h
- *
- * Public header for libdeflate.
- *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * libdeflate.h - public header for libdeflate
  */
 
 #ifndef LIBDEFLATE_H

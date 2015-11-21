@@ -1,32 +1,20 @@
 /*
- * matchfinder_common.h
- *
- * Common code for Lempel-Ziv matchfinding.
- *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * matchfinder_common.h - common code for Lempel-Ziv matchfinding
  */
 
 #pragma once
 
-#include "types.h"
-
-#include <string.h>
+#include "util.h"
 
 #ifndef MATCHFINDER_WINDOW_ORDER
 #  error "MATCHFINDER_WINDOW_ORDER must be defined!"
 #endif
 
-#ifndef MATCHFINDER_IS_SLIDING
-#  error "MATCHFINDER_IS_SLIDING must be defined!"
-#endif
+#define MATCHFINDER_WINDOW_SIZE (1UL << MATCHFINDER_WINDOW_ORDER)
 
-#define MATCHFINDER_WINDOW_SIZE ((size_t)1 << MATCHFINDER_WINDOW_ORDER)
+typedef s16 mf_pos_t;
 
-#if MATCHFINDER_IS_SLIDING
-#  include "matchfinder_sliding.h"
-#else
-#  include "matchfinder_nonsliding.h"
-#endif
+#define MATCHFINDER_INITVAL ((mf_pos_t)-MATCHFINDER_WINDOW_SIZE)
 
 #define MATCHFINDER_ALIGNMENT 8
 
@@ -47,63 +35,31 @@
 #endif
 
 /*
- * Representation of a match.
- */
-struct lz_match {
-
-	/* The number of bytes matched.  */
-	pos_t length;
-
-	/* The offset back from the current position that was matched.  */
-	pos_t offset;
-};
-
-static inline bool
-matchfinder_memset_init_okay(void)
-{
-	/* All bytes must match in order to use memset.  */
-	const pos_t v = MATCHFINDER_NULL;
-	if (sizeof(pos_t) == 2)
-		return (u8)v == (u8)(v >> 8);
-	if (sizeof(pos_t) == 4)
-		return (u8)v == (u8)(v >> 8) &&
-		       (u8)v == (u8)(v >> 16) &&
-		       (u8)v == (u8)(v >> 24);
-	return false;
-}
-
-/*
  * Initialize the hash table portion of the matchfinder.
  *
  * Essentially, this is an optimized memset().
  *
  * 'data' must be aligned to a MATCHFINDER_ALIGNMENT boundary.
  */
-static inline void
-matchfinder_init(pos_t *data, size_t num_entries)
+static forceinline void
+matchfinder_init(mf_pos_t *data, size_t num_entries)
 {
 	const size_t size = num_entries * sizeof(data[0]);
 
-#ifdef __AVX2__
+#if defined(__AVX2__) && defined(_aligned_attribute)
 	if (matchfinder_init_avx2(data, size))
 		return;
 #endif
 
-#ifdef __SSE2__
+#if defined(__SSE2__) && defined(_aligned_attribute)
 	if (matchfinder_init_sse2(data, size))
 		return;
 #endif
 
-	if (matchfinder_memset_init_okay()) {
-		memset(data, (u8)MATCHFINDER_NULL, size);
-		return;
-	}
-
 	for (size_t i = 0; i < num_entries; i++)
-		data[i] = MATCHFINDER_NULL;
+		data[i] = MATCHFINDER_INITVAL;
 }
 
-#if MATCHFINDER_IS_SLIDING
 /*
  * Slide the matchfinder by WINDOW_SIZE bytes.
  *
@@ -125,17 +81,17 @@ matchfinder_init(pos_t *data, size_t num_entries)
  * of "hash chains", and 2-ary in the case of "binary trees".  In either case,
  * the links need to be rebased in the same way.
  */
-static inline void
-matchfinder_rebase(pos_t *data, size_t num_entries)
+static forceinline void
+matchfinder_rebase(mf_pos_t *data, size_t num_entries)
 {
 	const size_t size = num_entries * sizeof(data[0]);
 
-#ifdef __AVX2__
+#if defined(__AVX2__) && defined(_aligned_attribute)
 	if (matchfinder_rebase_avx2(data, size))
 		return;
 #endif
 
-#ifdef __SSE2__
+#if defined(__SSE2__) && defined(_aligned_attribute)
 	if (matchfinder_rebase_sse2(data, size))
 		return;
 #endif
@@ -157,9 +113,8 @@ matchfinder_rebase(pos_t *data, size_t num_entries)
 
 	for (size_t i = 0; i < num_entries; i++) {
 		if (data[i] >= 0)
-			data[i] -= (pos_t)-MATCHFINDER_WINDOW_SIZE;
+			data[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
 		else
-			data[i] = (pos_t)-MATCHFINDER_WINDOW_SIZE;
+			data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
 	}
 }
-#endif /* MATCHFINDER_IS_SLIDING */

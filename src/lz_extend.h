@@ -1,9 +1,5 @@
 /*
- * lz_extend.h
- *
- * Fast match extension for Lempel-Ziv matchfinding.
- *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * lz_extend.h - fast match extension for Lempel-Ziv matchfinding
  */
 
 #pragma once
@@ -15,7 +11,7 @@
  * Return the number of bytes at @matchptr that match the bytes at @strptr, up
  * to a maximum of @max_len.  Initially, @start_len bytes are matched.
  */
-static inline unsigned
+static forceinline unsigned
 lz_extend(const u8 * const strptr, const u8 * const matchptr,
 	  const unsigned start_len, const unsigned max_len)
 {
@@ -54,7 +50,7 @@ lz_extend(const u8 * const strptr, const u8 * const matchptr,
 	return len;
 
 word_differs:
-	if (CPU_IS_LITTLE_ENDIAN)
+	if (CPU_IS_LITTLE_ENDIAN())
 		len += (ffsw(v_word) >> 3);
 	else
 		len += (flsw(v_word) >> 3);

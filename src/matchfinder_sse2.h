@@ -1,15 +1,12 @@
 /*
- * matchfinder_sse2.h
- *
- * Matchfinding routines optimized for Intel SSE2 (Streaming SIMD Extensions).
- *
- * This file has no copyright assigned and is placed in the Public Domain.
+ * matchfinder_sse2.h - matchfinding routines optimized for Intel SSE2
+ * (Streaming SIMD Extensions).
  */
 
 #include <emmintrin.h>
 
-static inline bool
-matchfinder_init_sse2(pos_t *data, size_t size)
+static forceinline bool
+matchfinder_init_sse2(mf_pos_t *data, size_t size)
 {
 	__m128i v, *p;
 	size_t n;
@@ -17,13 +14,8 @@ matchfinder_init_sse2(pos_t *data, size_t size)
 	if (size % sizeof(__m128i) * 4)
 		return false;
 
-	if (sizeof(pos_t) == 2)
-		v = _mm_set1_epi16((u16)MATCHFINDER_NULL);
-	else if (sizeof(pos_t) == 4)
-		v = _mm_set1_epi32((u32)MATCHFINDER_NULL);
-	else
-		return false;
-
+	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
+	v = _mm_set1_epi16(MATCHFINDER_INITVAL);
 	p = (__m128i *)data;
 	n = size / (sizeof(__m128i) * 4);
 	do {
@@ -36,8 +28,8 @@ matchfinder_init_sse2(pos_t *data, size_t size)
 	return true;
 }
 
-static inline bool
-matchfinder_rebase_sse2(pos_t *data, size_t size)
+static forceinline bool
+matchfinder_rebase_sse2(mf_pos_t *data, size_t size)
 {
 	__m128i v, *p;
 	size_t n;
@@ -45,13 +37,8 @@ matchfinder_rebase_sse2(pos_t *data, size_t size)
 	if ((size % sizeof(__m128i) * 4 != 0))
 		return false;
 
-	if (sizeof(pos_t) == 2)
-		v = _mm_set1_epi16((pos_t)-MATCHFINDER_WINDOW_SIZE);
-	else if (sizeof(pos_t) == 4)
-		v = _mm_set1_epi32((pos_t)-MATCHFINDER_WINDOW_SIZE);
-	else
-		return false;
-
+	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
+	v = _mm_set1_epi16((u16)-MATCHFINDER_WINDOW_SIZE);
 	p = (__m128i *)data;
 	n = size / (sizeof(__m128i) * 4);
 	do {
