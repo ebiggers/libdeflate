@@ -47,7 +47,6 @@
 
 
 #include "matchfinder_common.h"
-#include "lz_extend.h"
 
 #define BT_MATCHFINDER_HASH3_ORDER 15
 #define BT_MATCHFINDER_HASH3_WAYS  1

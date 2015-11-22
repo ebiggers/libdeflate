@@ -87,9 +87,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "lz_extend.h"
 #include "matchfinder_common.h"
-#include "unaligned.h"
 
 #define HC_MATCHFINDER_HASH3_ORDER	15
 #define HC_MATCHFINDER_HASH4_ORDER	16
