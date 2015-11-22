@@ -118,3 +118,16 @@ matchfinder_rebase(mf_pos_t *data, size_t num_entries)
 			data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
 	}
 }
+
+/*
+ * The hash function: given a sequence prefix held in the low-order bits of a
+ * 32-bit value, multiply by a carefully-chosen large constant.  Discard any
+ * bits of the product that don't fit in a 32-bit value, but take the
+ * next-highest @num_bits bits of the product as the hash value, as those have
+ * the most randomness.
+ */
+static forceinline u32
+lz_hash(u32 seq, unsigned num_bits)
+{
+	return (u32)(seq * 0x1E35A7BD) >> (32 - num_bits);
+}

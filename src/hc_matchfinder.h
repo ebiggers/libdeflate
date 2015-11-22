@@ -88,7 +88,6 @@
  */
 
 #include "lz_extend.h"
-#include "lz_hash.h"
 #include "matchfinder_common.h"
 #include "unaligned.h"
 
