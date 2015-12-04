@@ -6,9 +6,9 @@ decompression.
 
 The supported formats are:
 
-    - DEFLATE (raw)
-    - zlib (a.k.a. DEFLATE with a zlib wrapper)
-    - gzip (a.k.a. DEFLATE with a gzip wrapper)
+- DEFLATE (raw)
+- zlib (a.k.a. DEFLATE with a zlib wrapper)
+- gzip (a.k.a. DEFLATE with a gzip wrapper)
 
 libdeflate is heavily optimized.  It is significantly faster than the zlib
 software library, both for compression and decompression, and especially on x86
@@ -32,7 +32,7 @@ There is no `make install` yet; just copy the file(s) you want.
 
 It's possible to build a Windows binary using MinGW, using a command like this:
 
-  $ make CC=x86_64-w64-mingw32-gcc CFLAGS=-static AR=x86_64-w64-mingw32-ar BUILD_BENCHMARK_PROGRAM=yes
+    $ make CC=x86_64-w64-mingw32-gcc CFLAGS=-static AR=x86_64-w64-mingw32-ar BUILD_BENCHMARK_PROGRAM=yes
 
 API
 ===
@@ -48,7 +48,7 @@ compresses data in "chunks", say, less than 1 MB in size, then libdeflate is a
 great choice for you; that's what it's designed to do.  This is perfect for
 certain use cases such as transparent filesystem compression.  But if your
 application compresses large files as a single compressed stream, similarly to
-the 'gzip' program, then libdeflate isn't for you.
+the `gzip` program, then libdeflate isn't for you.
 
 DEFLATE vs. zlib vs. gzip
 =========================
@@ -65,7 +65,7 @@ wrappers for this stream.  Both zlib and gzip include checksums, but gzip can
 include extra information such as the original filename.  Generally, you should
 choose a format as follows:
 
-- If you are compressing whole files with no subdivisions, similar to the gzip
+- If you are compressing whole files with no subdivisions, similar to the `gzip`
   program, you probably should use the gzip format.
 - Otherwise, if you don't need the features of the gzip header and footer but do
   still want a checksum for corruption detection, you probably should use the
