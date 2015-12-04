@@ -21,10 +21,18 @@ on it, and anyone is free to use it for any reason.
 Building
 ========
 
-The build system is currently very simple.  Simply run 'make'.  There are
-various options; see the Makefile for details.  The options can be set on the
-command line with 'make'.  For example, you could run 'make
-SUPPORT_COMPRESSION=no' to build a decompression-only library.
+Currently, the build system is very bare-bones.  On a UNIX-like system, just run
+`make`.  You need GNU Make and either GCC or Clang.
+
+There are various options which can be set on the `make` command line; see the
+Makefile for details.  As an example, you can run `make SUPPORT_COMPRESSION=no`
+to build a decompression-only library.
+
+There is no `make install` yet; just copy the file(s) you want.
+
+It's possible to build a Windows binary using MinGW, using a command like this:
+
+  $ make CC=x86_64-w64-mingw32-gcc CFLAGS=-static AR=x86_64-w64-mingw32-ar BUILD_BENCHMARK_PROGRAM=yes
 
 API
 ===
@@ -57,15 +65,15 @@ wrappers for this stream.  Both zlib and gzip include checksums, but gzip can
 include extra information such as the original filename.  Generally, you should
 choose a format as follows:
 
-    - If you are compressing whole files with no subdivisions, similar to the
-      gzip program, you probably should use the gzip format.
-    - Otherwise, if you don't need the features of the gzip header and footer
-      but do still want a checksum for corruption detection, you probably should
-      use the zlib format.
-    - Otherwise, you probably should use raw DEFLATE.  This is ideal if you
-      don't need checksums, e.g. because they're simply not needed for your use
-      case or because you already compute your own checksums that are stored
-      separately from the compressed stream.
+- If you are compressing whole files with no subdivisions, similar to the gzip
+  program, you probably should use the gzip format.
+- Otherwise, if you don't need the features of the gzip header and footer but do
+  still want a checksum for corruption detection, you probably should use the
+  zlib format.
+- Otherwise, you probably should use raw DEFLATE.  This is ideal if you don't
+  need checksums, e.g. because they're simply not needed for your use case or
+  because you already compute your own checksums that are stored separately from
+  the compressed stream.
 
 Note that gzip and zlib streams can be distinguished from each other based on
 their starting bytes, but this is not necessarily true of raw DEFLATE streams.

@@ -9,7 +9,8 @@
  */
 
 #define _FILE_OFFSET_BITS 64
-#define _GNU_SOURCE
+#undef _ANSI_SOURCE
+#define _POSIX_C_SOURCE 199309L
 
 #include <errno.h>
 #include <fcntl.h>
@@ -19,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -277,6 +279,10 @@ do_benchmark(int fd, char *ubuf1, char *ubuf2,
 	uint64_t csize_total = 0;
 	uint64_t compress_time_total = 0;
 	uint64_t decompress_time_total = 0;
+
+#ifdef __WIN32__
+	_setmode(fd, O_BINARY);
+#endif
 
 	for (;;) {
 		char *p = ubuf1;

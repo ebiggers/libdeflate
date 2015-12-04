@@ -6,8 +6,8 @@ BUILD_STATIC_LIBRARY := yes
 # Build the shared library libdeflate.so?
 BUILD_SHARED_LIBRARY := no
 
-# Build the benchmark program. Currently Linux only; requires linking to zlib
-# for comparison purposes.
+# Build the benchmark program?  Note that to allow comparisons, the benchmark
+# program will be linked with both zlib and libdeflate.
 BUILD_BENCHMARK_PROGRAM := no
 
 # Will compression be supported?
@@ -29,12 +29,30 @@ SUPPORT_NEAR_OPTIMAL_PARSING := yes
 # This is faster but ***insecure***!  Default to secure.
 UNSAFE_DECOMPRESSION := no
 
+# The compiler and archiver
+CC := gcc
+AR := ar
+
 ##############################################################################
 
-CC = gcc
-AR = ar
+# Always compile with optimizations enabled!
+# But don't change it to -O3 and expect it to be better.
+override CFLAGS += -O2
 
-override CFLAGS += -O2 -I. -std=c99 -fvisibility=hidden
+# Use a sane default symbol visibility.
+override CFLAGS += -fvisibility=hidden
+
+# Set the C version.  We currently require at least C99.  Also, we actually need
+# -std=gnu99 instead of -std=c99 for unnamed structs and unions, which are in
+# C11 but not C99.  But we can't yet use -std=c11 because we want to support
+# older versions of gcc.
+override CFLAGS += -std=gnu99
+
+# Allow including libdeflate.h.
+override CFLAGS += -I.
+
+# Hide non-standard functions from standard headers (e.g. heapsort() on *BSD).
+override CFLAGS += -D_ANSI_SOURCE
 
 ifeq ($(SUPPORT_NEAR_OPTIMAL_PARSING),yes)
   override CFLAGS += -DSUPPORT_NEAR_OPTIMAL_PARSING=1
