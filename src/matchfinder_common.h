@@ -198,6 +198,6 @@ word_differs:
 	if (CPU_IS_LITTLE_ENDIAN())
 		len += (ffsw(v_word) >> 3);
 	else
-		len += (flsw(v_word) >> 3);
+		len += (8 * WORDSIZE - 1 - flsw(v_word)) >> 3;
 	return len;
 }
