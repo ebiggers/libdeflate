@@ -29,6 +29,10 @@ SUPPORT_NEAR_OPTIMAL_PARSING := yes
 # This is faster but ***insecure***!  Default to secure.
 UNSAFE_DECOMPRESSION := no
 
+# Will the decompressor detect CPU features at runtime in order to run more
+# optimized code?  This only affects some platforms and architectures.
+RUNTIME_CPU_DETECTION := yes
+
 # The compiler and archiver
 CC := gcc
 AR := ar
@@ -62,12 +66,19 @@ ifeq ($(UNSAFE_DECOMPRESSION),yes)
   override CFLAGS += -DUNSAFE_DECOMPRESSION=1
 endif
 
+ifeq ($(RUNTIME_CPU_DETECTION),yes)
+  override CFLAGS += -DRUNTIME_CPU_DETECTION=1
+endif
+
 SRC := src/aligned_malloc.c
 ifeq ($(SUPPORT_COMPRESSION),yes)
     SRC += src/deflate_compress.c
 endif
 ifeq ($(SUPPORT_DECOMPRESSION),yes)
     SRC += src/deflate_decompress.c
+    ifeq ($(RUNTIME_CPU_DETECTION),yes)
+        SRC += src/x86_cpu_features.c
+    endif
 endif
 ifeq ($(SUPPORT_ZLIB),yes)
     ifeq ($(SUPPORT_COMPRESSION),yes)
