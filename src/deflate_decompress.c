@@ -817,18 +817,21 @@ copy_word_unaligned(const void *src, void *dst)
 static bool
 dispatch(struct deflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
-	 void * restrict out, size_t out_nbytes);
+	 void * restrict out, size_t out_nbytes_avail,
+	 size_t *actual_out_nbytes_ret);
 
 typedef bool (*decompress_func_t)(struct deflate_decompressor * restrict d,
 				  const void * restrict in, size_t in_nbytes,
-				  void * restrict out, size_t out_nbytes);
+				  void * restrict out, size_t out_nbytes_avail,
+				  size_t *actual_out_nbytes_ret);
 
 static decompress_func_t decompress_impl = dispatch;
 
 static bool
 dispatch(struct deflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
-	 void * restrict out, size_t out_nbytes)
+	 void * restrict out, size_t out_nbytes_avail,
+	 size_t *actual_out_nbytes_ret)
 {
 	decompress_func_t f = deflate_decompress_default;
 #if X86_CPU_FEATURES_ENABLED
@@ -836,32 +839,33 @@ dispatch(struct deflate_decompressor * restrict d,
 		f = deflate_decompress_bmi2;
 #endif
 	decompress_impl = f;
-	return (*f)(d, in, in_nbytes, out, out_nbytes);
+	return (*f)(d, in, in_nbytes, out, out_nbytes_avail,
+		    actual_out_nbytes_ret);
 }
 #endif /* DISPATCH_ENABLED */
 
 
 /*
- * This is the main DEFLATE decompression routine.  It decompresses 'in_nbytes'
- * bytes of compressed data from the buffer 'in' and writes the uncompressed
- * data to the buffer 'out'.  The caller must know the exact length of the
- * uncompressed data and pass it as 'out_nbytes'.  The return value is %true if
- * and only if decompression was successful.  A return value of %false indicates
- * that either the compressed data is invalid or it does not decompress to
- * exactly 'out_nbytes' bytes of uncompressed data.
+ * This is the main DEFLATE decompression routine.  See libdeflate.h for the
+ * documentation.
  *
- * The real code is in decompress_impl.h.  The part here just handles calling
- * the appropriate implementation depending on the CPU features at runtime.
+ * Note that the real code is in decompress_impl.h.  The part here just handles
+ * calling the appropriate implementation depending on the CPU features at
+ * runtime.
  */
 LIBEXPORT bool
 deflate_decompress(struct deflate_decompressor * restrict d,
 		   const void * restrict in, size_t in_nbytes,
-		   void * restrict out, size_t out_nbytes)
+		   void * restrict out, size_t out_nbytes_avail,
+		   size_t *actual_out_nbytes_ret)
 {
 #if DISPATCH_ENABLED
-	return (*decompress_impl)(d, in, in_nbytes, out, out_nbytes);
+	return (*decompress_impl)(d, in, in_nbytes, out, out_nbytes_avail,
+				  actual_out_nbytes_ret);
 #else
-	return deflate_decompress_default(d, in, in_nbytes, out, out_nbytes);
+	return deflate_decompress_default(d, in, in_nbytes, out,
+					  out_nbytes_avail,
+					  actual_out_nbytes_ret);
 #endif
 }
 

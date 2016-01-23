@@ -181,13 +181,14 @@ compressor_destroy(struct compressor *c)
 
 struct decompressor {
 	void *private;
-	bool (*decompress)(void *, const void *, size_t, void *, size_t);
+	bool (*decompress)(void *, const void *, size_t, void *, size_t, size_t *);
 	void (*free_private)(void *);
 };
 
 static bool
 libz_decompress(void *private, const void *in, size_t in_nbytes,
-		void *out, size_t out_nbytes)
+		void *out, size_t out_nbytes_avail,
+		size_t *actual_out_nbytes_ret)
 {
 	z_stream *z = private;
 
@@ -196,7 +197,7 @@ libz_decompress(void *private, const void *in, size_t in_nbytes,
 	z->next_in = (void *)in;
 	z->avail_in = in_nbytes;
 	z->next_out = out;
-	z->avail_out = out_nbytes;
+	z->avail_out = out_nbytes_avail;
 
 	return (inflate(z, Z_FINISH) == Z_STREAM_END && z->avail_out == 0);
 }
@@ -250,9 +251,10 @@ decompressor_init(struct decompressor *d, enum wrapper wrapper, bool use_libz)
 
 static bool
 do_decompress(struct decompressor *d, const void *in, size_t in_nbytes,
-	      void *out, size_t out_nbytes)
+	      void *out, size_t out_nbytes_avail)
 {
-	return (*d->decompress)(d->private, in, in_nbytes, out, out_nbytes);
+	return (*d->decompress)(d->private, in, in_nbytes,
+				out, out_nbytes_avail, NULL);
 }
 
 static void

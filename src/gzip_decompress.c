@@ -16,11 +16,14 @@
 
 LIBEXPORT bool
 gzip_decompress(struct deflate_decompressor *d,
-		const void *in, size_t in_nbytes, void *out, size_t out_nbytes)
+		const void *in, size_t in_nbytes,
+		void *out, size_t out_nbytes_avail,
+		size_t *actual_out_nbytes_ret)
 {
 	const u8 *in_next = in;
 	const u8 * const in_end = in_next + in_nbytes;
 	u8 flg;
+	size_t actual_out_nbytes;
 
 	if (in_nbytes < GZIP_MIN_OVERHEAD)
 		return false;
@@ -81,18 +84,23 @@ gzip_decompress(struct deflate_decompressor *d,
 
 	/* Compressed data  */
 	if (!deflate_decompress(d, in_next, in_end - GZIP_FOOTER_SIZE - in_next,
-				out, out_nbytes))
+				out, out_nbytes_avail, actual_out_nbytes_ret))
 		return false;
+
+	if (actual_out_nbytes_ret)
+		actual_out_nbytes = *actual_out_nbytes_ret;
+	else
+		actual_out_nbytes = out_nbytes_avail;
 
 	in_next = in_end - GZIP_FOOTER_SIZE;
 
 	/* CRC32 */
-	if (crc32_gzip(out, out_nbytes) != get_unaligned_le32(in_next))
+	if (crc32_gzip(out, actual_out_nbytes) != get_unaligned_le32(in_next))
 		return false;
 	in_next += 4;
 
 	/* ISIZE */
-	if ((u32)out_nbytes != get_unaligned_le32(in_next))
+	if (actual_out_nbytes != get_unaligned_le32(in_next))
 		return false;
 
 	return true;

@@ -9,10 +9,11 @@
 static bool ATTRIBUTES
 FUNCNAME(struct deflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
-	 void * restrict out, size_t out_nbytes)
+	 void * restrict out, size_t out_nbytes_avail,
+	 size_t *actual_out_nbytes_ret)
 {
 	u8 *out_next = out;
-	u8 * const out_end = out_next + out_nbytes;
+	u8 * const out_end = out_next + out_nbytes_avail;
 	const u8 *in_next = in;
 	const u8 * const in_end = in_next + in_nbytes;
 	bitbuf_t bitbuf = 0;
@@ -358,7 +359,11 @@ block_done:
 	if (!is_final_block)
 		goto next_block;
 
-	/* That was the last block.  Return %true if we got all the output we
-	 * expected, otherwise %false.  */
-	return (out_next == out_end);
+	/* That was the last block.  */
+
+	if (!actual_out_nbytes_ret)
+		return out_next == out_end;
+
+	*actual_out_nbytes_ret = out_next - (u8 *)out;
+	return true;
 }

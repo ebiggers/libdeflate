@@ -90,19 +90,20 @@ deflate_alloc_decompressor(void);
 
 /*
  * deflate_decompress() decompresses 'in_nbytes' bytes of DEFLATE-compressed
- * data at 'in' and writes the uncompressed data, which had original size
- * 'out_nbytes', to 'out'.  The return value is true if decompression was
- * successful, or false if the compressed data was invalid.
- *
- * Note that the uncompressed size must be known *exactly* and passed as
- * 'out_nbytes'.  This is because this API is designed for block-based
- * compression where the uncompressed size should have already been stored
- * elsewhere.
+ * data at 'in' and writes the uncompressed data to 'out', which is a buffer of
+ * at least 'out_nbytes_avail' bytes.  If decompression was successful, then
+ * %true is returned; otherwise, the compressed data must have been invalid and
+ * %false is returned.  In addition, on success, if 'actual_out_nbytes_ret' is
+ * not NULL, then the actual uncompressed size is written to
+ * *actual_out_nbytes_ret.  Or, if 'actual_out_nbytes_ret' is NULL, then the
+ * uncompressed size must be exactly equal to 'out_nbytes_avail'; otherwise
+ * decompression fails and %false is returned.
  */
 extern bool
 deflate_decompress(struct deflate_decompressor *decompressor,
 		   const void *in, size_t in_nbytes,
-		   void *out, size_t out_nbytes);
+		   void *out, size_t out_nbytes_avail,
+		   size_t *actual_out_nbytes_ret);
 
 /*
  * Like deflate_decompress(), but assumes the zlib wrapper format instead of raw
@@ -111,7 +112,8 @@ deflate_decompress(struct deflate_decompressor *decompressor,
 extern bool
 zlib_decompress(struct deflate_decompressor *decompressor,
 		const void *in, size_t in_nbytes,
-		void *out, size_t out_nbytes);
+		void *out, size_t out_nbytes_avail,
+		size_t *actual_out_nbytes_ret);
 
 /*
  * Like deflate_decompress(), but assumes the gzip wrapper format instead of raw
@@ -120,7 +122,8 @@ zlib_decompress(struct deflate_decompressor *decompressor,
 extern bool
 gzip_decompress(struct deflate_decompressor *decompressor,
 		const void *in, size_t in_nbytes,
-		void *out, size_t out_nbytes);
+		void *out, size_t out_nbytes_avail,
+		size_t *actual_out_nbytes_ret);
 
 /*
  * deflate_free_decompressor() frees a DEFLATE decompressor that was allocated
