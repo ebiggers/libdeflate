@@ -2512,8 +2512,17 @@ deflate_compress(struct deflate_compressor *c,
 		 const void *in, size_t in_nbytes,
 		 void *out, size_t out_nbytes_avail)
 {
-	if (in_nbytes < 16 || out_nbytes_avail < MIN_OUTPUT_SIZE)
+	if (unlikely(out_nbytes_avail < MIN_OUTPUT_SIZE))
 		return 0;
+	if (unlikely(in_nbytes == 0)) {
+		/* Empty input; output a single empty block.  */
+		struct deflate_output_bitstream os;
+		deflate_init_output(&os, out, out_nbytes_avail);
+		deflate_reset_symbol_frequencies(c);
+		deflate_finish_sequence(c->sequences, 0);
+		deflate_write_block(c, &os, in, 0, true);
+		return deflate_flush_output(&os);
+	}
 	return (*c->impl)(c, in, in_nbytes, out, out_nbytes_avail);
 }
 
@@ -2527,4 +2536,17 @@ unsigned int
 deflate_get_compression_level(struct deflate_compressor *c)
 {
 	return c->compression_level;
+}
+
+/* Return an upper bound on the compressed size for compressing @in_nbytes bytes
+ * of data.  This function needs some work to be more accurate.  */
+LIBEXPORT size_t
+deflate_compress_bound(struct deflate_compressor *c, size_t in_nbytes)
+{
+	size_t max_num_blocks =
+		(in_nbytes + MAX_ITEMS_PER_BLOCK - 1) / MAX_ITEMS_PER_BLOCK;
+	if (max_num_blocks == 0)
+		max_num_blocks++;
+	return MIN_OUTPUT_SIZE + (in_nbytes * 9 + 7) / 8 +
+		max_num_blocks * 200;
 }

@@ -58,3 +58,9 @@ zlib_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 
 	return out_next - (u8 *)out;
 }
+
+LIBEXPORT size_t
+zlib_compress_bound(struct deflate_compressor *c, size_t in_nbytes)
+{
+	return ZLIB_MIN_OVERHEAD + deflate_compress_bound(c, in_nbytes);
+}

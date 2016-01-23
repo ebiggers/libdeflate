@@ -45,6 +45,28 @@ deflate_compress(struct deflate_compressor *compressor,
 		 void *out, size_t out_nbytes_avail);
 
 /*
+ * deflate_compress_bound() returns a worst-case upper bound on the number of
+ * bytes of compressed data that may be produced by compressing any buffer of
+ * length less than or equal to 'in_nbytes' using deflate_compress() with the
+ * specified compressor.  Mathematically, this bound will necessarily be a
+ * number greater than or equal to 'in_nbytes'.  It may be an overestimate of
+ * the true upper bound.  The return value is guaranteed to be the same for all
+ * invocations with the same compressor and same 'in_nbytes'.
+ *
+ * Note that this function is not necessary in many applications.  With
+ * block-based compression, it is usually preferable to separately store the
+ * uncompressed size of each block and to store any blocks that did not compress
+ * to less than their original size uncompressed.  In that scenario, there is no
+ * need to know the worst-case compressed size, since the maximum number of
+ * bytes of compressed data that may be used would always be one less than the
+ * input length.  You can just pass a buffer of that size to deflate_compress()
+ * and store the data uncompressed if deflate_compress() returns 0, indicating
+ * that the compressed data did not fit into the provided output buffer.
+ */
+extern size_t
+deflate_compress_bound(struct deflate_compressor *compressor, size_t in_nbytes);
+
+/*
  * Like deflate_compress(), but stores the data in the zlib wrapper format.
  */
 extern size_t
@@ -53,12 +75,26 @@ zlib_compress(struct deflate_compressor *compressor,
 	      void *out, size_t out_nbytes_avail);
 
 /*
+ * Like deflate_compress_bound(), but assumes the data will be compressed with
+ * zlib_compress() rather than with deflate_compress().
+ */
+extern size_t
+zlib_compress_bound(struct deflate_compressor *compressor, size_t in_nbytes);
+
+/*
  * Like deflate_compress(), but stores the data in the gzip wrapper format.
  */
 extern size_t
 gzip_compress(struct deflate_compressor *compressor,
 	      const void *in, size_t in_nbytes,
 	      void *out, size_t out_nbytes_avail);
+
+/*
+ * Like deflate_compress_bound(), but assumes the data will be compressed with
+ * gzip_compress() rather than with deflate_compress().
+ */
+extern size_t
+gzip_compress_bound(struct deflate_compressor *compressor, size_t in_nbytes);
 
 /*
  * deflate_free_compressor() frees a DEFLATE compressor that was allocated with
