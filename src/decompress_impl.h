@@ -259,7 +259,7 @@ next_block:
 		 * end-of-block length, so subtract 1 and it turn it into
 		 * SIZE_MAX.  */
 		STATIC_ASSERT(HUFFDEC_END_OF_BLOCK_LENGTH == 0);
-		if (unlikely((size_t)length - 1 > out_end - out_next)) {
+		if (unlikely((size_t)length - 1 >= out_end - out_next)) {
 			if (unlikely(length != HUFFDEC_END_OF_BLOCK_LENGTH))
 				return DECOMPRESS_INSUFFICIENT_SPACE;
 			goto block_done;
