@@ -128,12 +128,20 @@ deflate_alloc_decompressor(void);
  * deflate_decompress() decompresses 'in_nbytes' bytes of DEFLATE-compressed
  * data at 'in' and writes the uncompressed data to 'out', which is a buffer of
  * at least 'out_nbytes_avail' bytes.  If decompression was successful, then
- * %true is returned; otherwise, the compressed data must have been invalid and
- * %false is returned.  In addition, on success, if 'actual_out_nbytes_ret' is
- * not NULL, then the actual uncompressed size is written to
- * *actual_out_nbytes_ret.  Or, if 'actual_out_nbytes_ret' is NULL, then the
- * uncompressed size must be exactly equal to 'out_nbytes_avail'; otherwise
- * decompression fails and %false is returned.
+ * true is returned; otherwise, false is returned.
+ *
+ * deflate_decompress() can be used in cases where the actual uncompressed size
+ * is known (recommended) or unknown (not recommended).  If the actual
+ * uncompressed size is known, then pass the actual uncompressed size as
+ * 'out_nbytes_avail' and pass NULL for 'actual_out_nbytes_ret'.  This makes
+ * deflate_decompress() return false if the data did not decompress to exactly
+ * the specified number of bytes.  Alternatively, if the actual uncompressed
+ * size is unknown, then provide a non-NULL 'actual_out_nbytes_ret' and provide
+ * a buffer with some size 'out_nbytes_avail' that you think is large enough to
+ * hold all the uncompressed data.  In this case, if the data decompresses to
+ * less than or equal to 'out_nbytes_avail' bytes, then deflate_decompress()
+ * will write the actual uncompressed size to *actual_out_nbytes_ret and return
+ * true.  Otherwise, it will return false.
  */
 extern bool
 deflate_decompress(struct deflate_decompressor *decompressor,
