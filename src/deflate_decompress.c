@@ -2,7 +2,7 @@
  * deflate_decompress.c - a decompressor for DEFLATE
  *
  * Author:	Eric Biggers
- * Year:	2014, 2015
+ * Year:	2014, 2015, 2016
  *
  * The author dedicates this file to the public domain.
  * You can do whatever you want with this file.
@@ -10,11 +10,8 @@
  * ---------------------------------------------------------------------------
  *
  * This is a highly optimized DEFLATE decompressor.  On x86_64 it decompresses
- * data in about 59% of the time of zlib.  On other architectures it should
+ * data in about 52% of the time of zlib.  On other architectures it should
  * still be significantly faster than zlib, but the difference may be smaller.
- *
- * This decompressor currently only supports raw DEFLATE (not zlib or gzip), and
- * it only supports whole-buffer decompression (not streaming).
  *
  * Why this is faster than zlib's implementation:
  *
@@ -35,28 +32,48 @@
 #include "deflate_constants.h"
 #include "unaligned.h"
 
-#ifndef UNSAFE_DECOMPRESSION
-#  define UNSAFE_DECOMPRESSION 0
-#endif
-
+/* By default, if the expression passed to SAFETY_CHECK() evaluates to false,
+ * then deflate_decompress() immediately returns false as the compressed data is
+ * invalid.  But if unsafe decompression is enabled, then the value of the
+ * expression is ignored, allowing the compiler to optimize out some code.  */
 #if UNSAFE_DECOMPRESSION
-#  warning "unsafe decompression is enabled"
-#  define SAFETY_CHECK(expr) 0
+#  warning "UNSAFE DECOMPRESSION IS ENABLED. THIS MUST ONLY BE USED IF THE DECOMPRESSOR INPUT WILL ALWAYS BE TRUSTED!"
+#  define SAFETY_CHECK(expr)	(void)(expr)
 #else
-#  define SAFETY_CHECK(expr) unlikely(expr)
+#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return false
 #endif
 
 /*
- * Each of these values is the base 2 logarithm of the number of entries of the
- * corresponding decode table.  Each value should be large enough to ensure that
- * for typical data, the vast majority of symbols can be decoded by a direct
- * lookup of the next TABLEBITS bits of compressed data.  However, this must be
- * balanced against the fact that a larger table requires more memory and
- * requires more time to fill.
+ * Each TABLEBITS number is the base-2 logarithm of the number of entries in the
+ * main portion of the corresponding decode table.  Each number should be large
+ * enough to ensure that for typical data, the vast majority of symbols can be
+ * decoded by a direct lookup of the next TABLEBITS bits of compressed data.
+ * However, this must be balanced against the fact that a larger table requires
+ * more memory and requires more time to fill.
+ *
+ * Note: you cannot change a TABLEBITS number without also changing the
+ * corresponding ENOUGH number!
  */
-#define DEFLATE_PRECODE_TABLEBITS	7
-#define DEFLATE_LITLEN_TABLEBITS	10
-#define DEFLATE_OFFSET_TABLEBITS	9
+#define PRECODE_TABLEBITS	7
+#define LITLEN_TABLEBITS	10
+#define OFFSET_TABLEBITS	8
+
+/*
+ * Each ENOUGH number is the maximum number of decode table entries that may be
+ * required for the corresponding Huffman code, including the main table and all
+ * subtables.  Each number depends on three parameters:
+ *
+ *	(1) the maximum number of symbols in the code (DEFLATE_NUM_*_SYMBOLS)
+ *	(2) the number of main table bits (the TABLEBITS numbers defined above)
+ *	(3) the maximum allowed codeword length (DEFLATE_MAX_*_CODEWORD_LEN)
+ *
+ * The ENOUGH numbers were computed using the utility program 'enough' from
+ * zlib.  This program enumerates all possible relevant Huffman codes to find
+ * the worst-case usage of decode table entries.
+ */
+#define PRECODE_ENOUGH		128	/* enough 19 7 7	*/
+#define LITLEN_ENOUGH		1334	/* enough 288 10 15	*/
+#define OFFSET_ENOUGH		402	/* enough 32 8 15	*/
 
 /*
  * Type for codeword lengths.
@@ -88,16 +105,13 @@ struct deflate_decompressor {
 				   DEFLATE_NUM_OFFSET_SYMS +
 				   DEFLATE_MAX_LENS_OVERRUN];
 
-			u32 precode_decode_table[(1 << DEFLATE_PRECODE_TABLEBITS) +
-						 (2 * DEFLATE_NUM_PRECODE_SYMS)];
+			u32 precode_decode_table[PRECODE_ENOUGH];
 		};
 
-		u32 litlen_decode_table[(1 << DEFLATE_LITLEN_TABLEBITS) +
-					(2 * DEFLATE_NUM_LITLEN_SYMS)];
+		u32 litlen_decode_table[LITLEN_ENOUGH];
 	};
 
-	u32 offset_decode_table[(1 << DEFLATE_OFFSET_TABLEBITS) +
-				(2 * DEFLATE_NUM_OFFSET_SYMS)];
+	u32 offset_decode_table[OFFSET_ENOUGH];
 
 	u16 working_space[2 * (DEFLATE_MAX_CODEWORD_LEN + 1) +
 			  DEFLATE_MAX_NUM_SYMS];
@@ -128,6 +142,9 @@ struct deflate_decompressor {
 /*
  * The type for the bitbuffer variable ('bitbuf' described above).  For best
  * performance, this should have size equal to a machine word.
+ *
+ * 64-bit platforms have a significant advantage: they get a bigger bitbuffer
+ * which they have to fill less often.
  */
 typedef machine_word_t bitbuf_t;
 
@@ -289,24 +306,22 @@ typedef machine_word_t bitbuf_t;
  *****************************************************************************/
 
 /*
- * A decode table for order TABLEBITS contains (1 << TABLEBITS) entries, plus
- * additional entries for non-root binary tree nodes.  The number of non-root
- * binary tree nodes is variable, but cannot possibly be more than twice the
- * number of symbols in the alphabet for which the decode table is built.
+ * A decode table for order TABLEBITS consists of a main table of (1 <<
+ * TABLEBITS) entries followed by a variable number of subtables.
  *
  * The decoding algorithm takes the next TABLEBITS bits of compressed data and
  * uses them as an index into the decode table.  The resulting entry is either a
- * "direct entry", meaning that it contains the value desired, or a "tree root
- * entry", meaning that it is the root of a binary tree that must be traversed
- * using more bits of the compressed data (0 bit means go to the left child, 1
- * bit means go to the right child) until a leaf is reached.
+ * "direct entry", meaning that it contains the value desired, or a "subtable
+ * pointer", meaning that the entry references a subtable that must be indexed
+ * using more bits of the compressed data to decode the symbol.
  *
- * Each decode table is associated with a Huffman code.  Logically, the result
- * of a decode table lookup is a symbol from the alphabet from which the
- * corresponding Huffman code was constructed.  A symbol with codeword length n
- * <= TABLEBITS is associated with 2**(TABLEBITS - n) direct entries in the
- * table, whereas a symbol with codeword length n > TABLEBITS shares a binary
- * tree with a number of other codewords.
+ * Each decode table (a main table along with with its subtables, if any) is
+ * associated with a Huffman code.  Logically, the result of a decode table
+ * lookup is a symbol from the alphabet from which the corresponding Huffman
+ * code was constructed.  A symbol with codeword length n <= TABLEBITS is
+ * associated with 2**(TABLEBITS - n) direct entries in the table, whereas a
+ * symbol with codeword length n > TABLEBITS is associated with one or more
+ * subtable entries.
  *
  * On top of this basic design, we implement several optimizations:
  *
@@ -320,148 +335,125 @@ typedef machine_word_t bitbuf_t;
  *   offset bits directly rather than decoding the offset symbol and then
  *   looking up both of those values in an additional table or tables.
  *
- * - It can be possible to decode more than just a single Huffman symbol from
- *   the next TABLEBITS bits of the input.  We take advantage of this when
- *   decoding match lengths.  When possible, the decode table entry will provide
- *   the full match length.  In this case, the stored "codeword length" will
- *   actually be the codeword length plus the number of extra length bits that
- *   are being consumed.
- *
  * The size of each decode table entry is 32 bits, which provides slightly
  * better performance than 16-bit entries on 32 and 64 bit processers, provided
  * that the table doesn't get so large that it takes up too much memory and
  * starts generating cache misses.  The bits of each decode table entry are
  * defined as follows:
  *
- * - Bits 29 -- 31: flags (see below)
- * - Bits 25 -- 28: codeword length
- * - Bits 0 -- 24: decode result: a Huffman symbol or related data
+ * - Bits 30 -- 31: flags (see below)
+ * - Bits 8 -- 29: decode result: a Huffman symbol or related data
+ * - Bits 0 -- 7: codeword length
  */
 
 /*
- * Flags usage:
- *
- * The precode and offset tables only use these flags to distinguish nonleaf
- * tree nodes from other entries.  In nonleaf tree node entries, all flags are
- * set and the recommended one to test is HUFFDEC_TREE_NONLEAF_FAST_FLAG.
- *
- * The literal/length decode table uses all the flags.  During decoding, the
- * flags are designed to be tested from high to low.  If a flag is set, then all
- * higher flags are also set.
+ * This flag is set in all main decode table entries that represent subtable
+ * pointers.
  */
+#define HUFFDEC_SUBTABLE_POINTER	0x80000000
 
 /*
- * This flag is set in all entries that do not represent a literal symbol,
- * excluding tree leaves.  This enables a very fast path for non-rare literals:
- * just check if this bit is clear, and if so extract the literal from the low
- * bits.
+ * This flag is set in all entries in the litlen decode table that represent
+ * literals.
  */
-#define HUFFDEC_NOT_LITERAL		0x80000000
+#define HUFFDEC_LITERAL			0x40000000
 
-/*
- * This flag is set in all entries that represent neither a literal symbol nor a
- * full match length, excluding tree leaves.
- */
-#define HUFFDEC_NOT_FULL_LENGTH		0x40000000
+/* Mask for extracting the codeword length from a decode table entry.  */
+#define HUFFDEC_LENGTH_MASK		0xFF
 
-/*
- * This flag is set in all nonleaf tree entries (roots and internal nodes).
- */
-#define HUFFDEC_TREE_NONLEAF		0x20000000
+/* Shift to extract the decode result from a decode table entry.  */
+#define HUFFDEC_RESULT_SHIFT		8
 
-/*
- * HUFFDEC_TREE_NONLEAF implies that the following flags are also set.
- */
-#define HUFFDEC_TREE_NONLEAF_FLAGS	0xE0000000
+/* The decode result for each precode symbol.  There is no special optimization
+ * for the precode; the decode result is simply the symbol value.  */
+static const u32 precode_decode_results[DEFLATE_NUM_PRECODE_SYMS] = {
+	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+};
 
-/*
- * For distinguishing between any direct entry and a tree root, or between an
- * internal tree node and a leaf node, this bit should be checked in preference
- * to any other in HUFFDEC_TREE_NONLEAF_FLAGS --- the reason being this is the
- * sign bit, and some architectures have special instructions to handle it.
- */
-#define HUFFDEC_TREE_NONLEAF_FAST_FLAG	0x80000000
+/* The decode result for each litlen symbol.  For literals, this is the literal
+ * value itself and the HUFFDEC_LITERAL flag.  For lengths, this is the length
+ * base and the number of extra length bits.  */
+static const u32 litlen_decode_results[DEFLATE_NUM_LITLEN_SYMS] = {
+#define ENTRY(literal)	((HUFFDEC_LITERAL >> HUFFDEC_RESULT_SHIFT) | (literal))
 
-/*
- * Number of flag bits defined above.
- */
-#define HUFFDEC_NUM_FLAG_BITS	3
-
-/*
- * Number of bits reserved for the codeword length in decode table entries, and
- * the corresponding mask and limit.  4 bits provides a max length of 15, which
- * is enough for any DEFLATE codeword.  (And actually, we don't even need the
- * full 15 because only lengths less than or equal to the appropriate TABLEBITS
- * will ever be stored in this field.)
- */
-#define HUFFDEC_LEN_BITS	4
-#define HUFFDEC_LEN_MASK	(((u32)1 << HUFFDEC_LEN_BITS) - 1)
-#define HUFFDEC_MAX_LEN		HUFFDEC_LEN_MASK
-
-/*
- * Value by which a decode table entry can be right-shifted to get the length
- * field.  Note: the result must be AND-ed with HUFFDEC_LEN_MASK unless it is
- * guaranteed that no flag bits are set.
- */
-#define HUFFDEC_LEN_SHIFT	(32 - HUFFDEC_NUM_FLAG_BITS - HUFFDEC_LEN_BITS)
-
-/*
- * Mask to get the "value" of a decode table entry.  This is the decode result
- * and contains data dependent on the table.
- */
-#define HUFFDEC_VALUE_MASK	(((u32)1 << HUFFDEC_LEN_SHIFT) - 1)
-
-/*
- * Data needed to initialize the entries in the length/literal decode table.
- */
-static const u32 deflate_litlen_symbol_data[DEFLATE_NUM_LITLEN_SYMS] = {
 	/* Literals  */
-	0   , 1   , 2   , 3   , 4   , 5   , 6   , 7   ,
-	8   , 9   , 10  , 11  , 12  , 13  , 14  , 15  ,
-	16  , 17  , 18  , 19  , 20  , 21  , 22  , 23  ,
-	24  , 25  , 26  , 27  , 28  , 29  , 30  , 31  ,
-	32  , 33  , 34  , 35  , 36  , 37  , 38  , 39  ,
-	40  , 41  , 42  , 43  , 44  , 45  , 46  , 47  ,
-	48  , 49  , 50  , 51  , 52  , 53  , 54  , 55  ,
-	56  , 57  , 58  , 59  , 60  , 61  , 62  , 63  ,
-	64  , 65  , 66  , 67  , 68  , 69  , 70  , 71  ,
-	72  , 73  , 74  , 75  , 76  , 77  , 78  , 79  ,
-	80  , 81  , 82  , 83  , 84  , 85  , 86  , 87  ,
-	88  , 89  , 90  , 91  , 92  , 93  , 94  , 95  ,
-	96  , 97  , 98  , 99  , 100 , 101 , 102 , 103 ,
-	104 , 105 , 106 , 107 , 108 , 109 , 110 , 111 ,
-	112 , 113 , 114 , 115 , 116 , 117 , 118 , 119 ,
-	120 , 121 , 122 , 123 , 124 , 125 , 126 , 127 ,
-	128 , 129 , 130 , 131 , 132 , 133 , 134 , 135 ,
-	136 , 137 , 138 , 139 , 140 , 141 , 142 , 143 ,
-	144 , 145 , 146 , 147 , 148 , 149 , 150 , 151 ,
-	152 , 153 , 154 , 155 , 156 , 157 , 158 , 159 ,
-	160 , 161 , 162 , 163 , 164 , 165 , 166 , 167 ,
-	168 , 169 , 170 , 171 , 172 , 173 , 174 , 175 ,
-	176 , 177 , 178 , 179 , 180 , 181 , 182 , 183 ,
-	184 , 185 , 186 , 187 , 188 , 189 , 190 , 191 ,
-	192 , 193 , 194 , 195 , 196 , 197 , 198 , 199 ,
-	200 , 201 , 202 , 203 , 204 , 205 , 206 , 207 ,
-	208 , 209 , 210 , 211 , 212 , 213 , 214 , 215 ,
-	216 , 217 , 218 , 219 , 220 , 221 , 222 , 223 ,
-	224 , 225 , 226 , 227 , 228 , 229 , 230 , 231 ,
-	232 , 233 , 234 , 235 , 236 , 237 , 238 , 239 ,
-	240 , 241 , 242 , 243 , 244 , 245 , 246 , 247 ,
-	248 , 249 , 250 , 251 , 252 , 253 , 254 , 255 ,
+	ENTRY(0)   , ENTRY(1)   , ENTRY(2)   , ENTRY(3)   ,
+	ENTRY(4)   , ENTRY(5)   , ENTRY(6)   , ENTRY(7)   ,
+	ENTRY(8)   , ENTRY(9)   , ENTRY(10)  , ENTRY(11)  ,
+	ENTRY(12)  , ENTRY(13)  , ENTRY(14)  , ENTRY(15)  ,
+	ENTRY(16)  , ENTRY(17)  , ENTRY(18)  , ENTRY(19)  ,
+	ENTRY(20)  , ENTRY(21)  , ENTRY(22)  , ENTRY(23)  ,
+	ENTRY(24)  , ENTRY(25)  , ENTRY(26)  , ENTRY(27)  ,
+	ENTRY(28)  , ENTRY(29)  , ENTRY(30)  , ENTRY(31)  ,
+	ENTRY(32)  , ENTRY(33)  , ENTRY(34)  , ENTRY(35)  ,
+	ENTRY(36)  , ENTRY(37)  , ENTRY(38)  , ENTRY(39)  ,
+	ENTRY(40)  , ENTRY(41)  , ENTRY(42)  , ENTRY(43)  ,
+	ENTRY(44)  , ENTRY(45)  , ENTRY(46)  , ENTRY(47)  ,
+	ENTRY(48)  , ENTRY(49)  , ENTRY(50)  , ENTRY(51)  ,
+	ENTRY(52)  , ENTRY(53)  , ENTRY(54)  , ENTRY(55)  ,
+	ENTRY(56)  , ENTRY(57)  , ENTRY(58)  , ENTRY(59)  ,
+	ENTRY(60)  , ENTRY(61)  , ENTRY(62)  , ENTRY(63)  ,
+	ENTRY(64)  , ENTRY(65)  , ENTRY(66)  , ENTRY(67)  ,
+	ENTRY(68)  , ENTRY(69)  , ENTRY(70)  , ENTRY(71)  ,
+	ENTRY(72)  , ENTRY(73)  , ENTRY(74)  , ENTRY(75)  ,
+	ENTRY(76)  , ENTRY(77)  , ENTRY(78)  , ENTRY(79)  ,
+	ENTRY(80)  , ENTRY(81)  , ENTRY(82)  , ENTRY(83)  ,
+	ENTRY(84)  , ENTRY(85)  , ENTRY(86)  , ENTRY(87)  ,
+	ENTRY(88)  , ENTRY(89)  , ENTRY(90)  , ENTRY(91)  ,
+	ENTRY(92)  , ENTRY(93)  , ENTRY(94)  , ENTRY(95)  ,
+	ENTRY(96)  , ENTRY(97)  , ENTRY(98)  , ENTRY(99)  ,
+	ENTRY(100) , ENTRY(101) , ENTRY(102) , ENTRY(103) ,
+	ENTRY(104) , ENTRY(105) , ENTRY(106) , ENTRY(107) ,
+	ENTRY(108) , ENTRY(109) , ENTRY(110) , ENTRY(111) ,
+	ENTRY(112) , ENTRY(113) , ENTRY(114) , ENTRY(115) ,
+	ENTRY(116) , ENTRY(117) , ENTRY(118) , ENTRY(119) ,
+	ENTRY(120) , ENTRY(121) , ENTRY(122) , ENTRY(123) ,
+	ENTRY(124) , ENTRY(125) , ENTRY(126) , ENTRY(127) ,
+	ENTRY(128) , ENTRY(129) , ENTRY(130) , ENTRY(131) ,
+	ENTRY(132) , ENTRY(133) , ENTRY(134) , ENTRY(135) ,
+	ENTRY(136) , ENTRY(137) , ENTRY(138) , ENTRY(139) ,
+	ENTRY(140) , ENTRY(141) , ENTRY(142) , ENTRY(143) ,
+	ENTRY(144) , ENTRY(145) , ENTRY(146) , ENTRY(147) ,
+	ENTRY(148) , ENTRY(149) , ENTRY(150) , ENTRY(151) ,
+	ENTRY(152) , ENTRY(153) , ENTRY(154) , ENTRY(155) ,
+	ENTRY(156) , ENTRY(157) , ENTRY(158) , ENTRY(159) ,
+	ENTRY(160) , ENTRY(161) , ENTRY(162) , ENTRY(163) ,
+	ENTRY(164) , ENTRY(165) , ENTRY(166) , ENTRY(167) ,
+	ENTRY(168) , ENTRY(169) , ENTRY(170) , ENTRY(171) ,
+	ENTRY(172) , ENTRY(173) , ENTRY(174) , ENTRY(175) ,
+	ENTRY(176) , ENTRY(177) , ENTRY(178) , ENTRY(179) ,
+	ENTRY(180) , ENTRY(181) , ENTRY(182) , ENTRY(183) ,
+	ENTRY(184) , ENTRY(185) , ENTRY(186) , ENTRY(187) ,
+	ENTRY(188) , ENTRY(189) , ENTRY(190) , ENTRY(191) ,
+	ENTRY(192) , ENTRY(193) , ENTRY(194) , ENTRY(195) ,
+	ENTRY(196) , ENTRY(197) , ENTRY(198) , ENTRY(199) ,
+	ENTRY(200) , ENTRY(201) , ENTRY(202) , ENTRY(203) ,
+	ENTRY(204) , ENTRY(205) , ENTRY(206) , ENTRY(207) ,
+	ENTRY(208) , ENTRY(209) , ENTRY(210) , ENTRY(211) ,
+	ENTRY(212) , ENTRY(213) , ENTRY(214) , ENTRY(215) ,
+	ENTRY(216) , ENTRY(217) , ENTRY(218) , ENTRY(219) ,
+	ENTRY(220) , ENTRY(221) , ENTRY(222) , ENTRY(223) ,
+	ENTRY(224) , ENTRY(225) , ENTRY(226) , ENTRY(227) ,
+	ENTRY(228) , ENTRY(229) , ENTRY(230) , ENTRY(231) ,
+	ENTRY(232) , ENTRY(233) , ENTRY(234) , ENTRY(235) ,
+	ENTRY(236) , ENTRY(237) , ENTRY(238) , ENTRY(239) ,
+	ENTRY(240) , ENTRY(241) , ENTRY(242) , ENTRY(243) ,
+	ENTRY(244) , ENTRY(245) , ENTRY(246) , ENTRY(247) ,
+	ENTRY(248) , ENTRY(249) , ENTRY(250) , ENTRY(251) ,
+	ENTRY(252) , ENTRY(253) , ENTRY(254) , ENTRY(255) ,
+#undef ENTRY
 
-#define HUFFDEC_NUM_BITS_FOR_EXTRA_LENGTH_BITS	3
-#define HUFFDEC_MAX_EXTRA_LENGTH_BITS	(((u32)1 << HUFFDEC_NUM_BITS_FOR_EXTRA_LENGTH_BITS) - 1)
-#define HUFFDEC_EXTRA_LENGTH_BITS_SHIFT (HUFFDEC_LEN_SHIFT - HUFFDEC_NUM_BITS_FOR_EXTRA_LENGTH_BITS)
-#define HUFFDEC_LENGTH_BASE_MASK	(((u32)1 << HUFFDEC_EXTRA_LENGTH_BITS_SHIFT) - 1)
+#define HUFFDEC_EXTRA_LENGTH_BITS_MASK	0xFF
+#define HUFFDEC_LENGTH_BASE_SHIFT	8
 #define HUFFDEC_END_OF_BLOCK_LENGTH	0
 
 #define ENTRY(length_base, num_extra_bits) \
-	(256 + (length_base) + ((num_extra_bits) << HUFFDEC_EXTRA_LENGTH_BITS_SHIFT))
+	(((u32)(length_base) << HUFFDEC_LENGTH_BASE_SHIFT) | (num_extra_bits))
 
 	/* End of block  */
 	ENTRY(HUFFDEC_END_OF_BLOCK_LENGTH, 0),
 
-	/* Match length data  */
+	/* Lengths  */
 	ENTRY(3  , 0) , ENTRY(4  , 0) , ENTRY(5  , 0) , ENTRY(6  , 0),
 	ENTRY(7  , 0) , ENTRY(8  , 0) , ENTRY(9  , 0) , ENTRY(10 , 0),
 	ENTRY(11 , 1) , ENTRY(13 , 1) , ENTRY(15 , 1) , ENTRY(17 , 1),
@@ -473,10 +465,9 @@ static const u32 deflate_litlen_symbol_data[DEFLATE_NUM_LITLEN_SYMS] = {
 #undef ENTRY
 };
 
-/*
- * Data needed to initialize the entries in the offset decode table.
- */
-static const u32 deflate_offset_symbol_data[DEFLATE_NUM_OFFSET_SYMS] = {
+/* The decode result for each offset symbol.  This is the offset base and the
+ * number of extra offset bits.  */
+static const u32 offset_decode_results[DEFLATE_NUM_OFFSET_SYMS] = {
 
 #define HUFFDEC_EXTRA_OFFSET_BITS_SHIFT 16
 #define HUFFDEC_OFFSET_BASE_MASK (((u32)1 << HUFFDEC_EXTRA_OFFSET_BITS_SHIFT) - 1)
@@ -494,133 +485,55 @@ static const u32 deflate_offset_symbol_data[DEFLATE_NUM_OFFSET_SYMS] = {
 #undef ENTRY
 };
 
-/* Construct a direct decode table entry (not a tree node)  */
+/* Construct a decode table entry from a decode result and codeword length.  */
 static forceinline u32
-make_direct_entry(u32 value, u32 length)
+make_decode_table_entry(u32 result, u32 length)
 {
-	return (length << HUFFDEC_LEN_SHIFT) | value;
+	return (result << HUFFDEC_RESULT_SHIFT) | length;
 }
 
 /*
- * The following functions define the way entries are created for each decode
- * table.  Note that these will all be inlined into build_decode_table(), which
- * will itself be inlined for each decode table.  This is important for
- * performance because the make_*_entry() functions get called from the inner
- * loop of build_decode_table().
- */
-
-static forceinline u32
-make_litlen_direct_entry(unsigned symbol, unsigned codeword_length,
-			 unsigned *extra_mask_ret)
-{
-	u32 entry_value = deflate_litlen_symbol_data[symbol];
-	u32 entry_length = codeword_length;
-	unsigned length_bits;
-	u32 length_base;
-
-	STATIC_ASSERT(DEFLATE_MAX_EXTRA_LENGTH_BITS <=
-		      HUFFDEC_MAX_EXTRA_LENGTH_BITS);
-
-	if (symbol >= 256) {
-		/* Match, not a literal.  (This can also be the special
-		 * end-of-block symbol, which we handle identically.)  */
-		entry_value -= 256;
-		length_bits = entry_value >> HUFFDEC_EXTRA_LENGTH_BITS_SHIFT;
-		length_base = entry_value & HUFFDEC_LENGTH_BASE_MASK;
-		if (codeword_length + length_bits <= DEFLATE_LITLEN_TABLEBITS) {
-			/* TABLEBITS is enough to decode the length slot as well
-			 * as all the extra length bits.  So store the full
-			 * length in the decode table entry.
-			 *
-			 * Note that a length slot may be used for multiple
-			 * lengths, and multiple decode table entries may map to
-			 * the same length; hence the need for the 'extra_mask',
-			 * which allows build_decode_table() to cycle through
-			 * the lengths that use this length slot.  */
-			entry_value = length_base;
-			entry_length += length_bits;
-			*extra_mask_ret = (1U << length_bits) - 1;
-		} else {
-			/* TABLEBITS isn't enough to decode all the extra length
-			 * bits.  The decoder will have to decode the extra bits
-			 * separately.  This is the less common case.  */
-			entry_value |= HUFFDEC_NOT_FULL_LENGTH;
-		}
-		entry_value |= HUFFDEC_NOT_LITERAL;
-	}
-
-	return make_direct_entry(entry_value, entry_length);
-}
-
-static forceinline u32
-make_litlen_leaf_entry(unsigned sym)
-{
-	return deflate_litlen_symbol_data[sym];
-}
-
-static forceinline u32
-make_offset_direct_entry(unsigned sym, unsigned codeword_len, unsigned *extra_mask_ret)
-{
-	return make_direct_entry(deflate_offset_symbol_data[sym], codeword_len);
-}
-
-static forceinline u32
-make_offset_leaf_entry(unsigned sym)
-{
-	return deflate_offset_symbol_data[sym];
-}
-
-static forceinline u32
-make_pre_direct_entry(unsigned sym, unsigned codeword_len, unsigned *extra_mask_ret)
-{
-	return make_direct_entry(sym, codeword_len);
-}
-
-static forceinline u32
-make_pre_leaf_entry(unsigned sym)
-{
-	return sym;
-}
-
-/*
- * Build a table for fast Huffman decoding, using bit-reversed codewords.
- *
- * The Huffman code is assumed to be in canonical form and is specified by its
- * codeword lengths only.
+ * Build a table for fast decoding of symbols from a Huffman code.  As input,
+ * this function takes the codeword length of each symbol which may be used in
+ * the code.  As output, it produces a decode table for the canonical Huffman
+ * code described by the codeword lengths.  The decode table is built with the
+ * assumption that it will be indexed with "bit-reversed" codewords, where the
+ * low-order bit is the first bit of the codeword.  This format is used for all
+ * Huffman codes in DEFLATE.
  *
  * @decode_table
- *	A table with ((1 << table_bits) + (2 * num_syms)) entries.  The format
- *	of the table has been described in previous comments.
+ *	The array in which the decode table will be generated.  This array must
+ *	have sufficient length; see the definition of the ENOUGH numbers.
  * @lens
- *	Lengths of the Huffman codewords.  'lens[sym]' specifies the length, in
- *	bits, of the codeword for symbol 'sym'.  If a symbol is not used in the
- *	code, its length must be specified as 0.  It is valid for this parameter
- *	to alias @decode_table because nothing gets written to @decode_table
- *	until all information in @lens has been consumed.
+ *	An array which provides, for each symbol, the length of the
+ *	corresponding codeword in bits, or 0 if the symbol is unused.  This may
+ *	alias @decode_table, since nothing is written to @decode_table until all
+ *	@lens have been consumed.  All codeword lengths are assumed to be <=
+ *	@max_codeword_len but are otherwise considered untrusted.  If they do
+ *	not form a valid Huffman code, then the decode table is not built and
+ *	%false is returned.
  * @num_syms
- *	Number of symbols in the code.
- * @make_direct_entry
- *	Function to create a direct decode table entry, given the symbol and
- *	codeword length.
- * @make_leaf_entry
- *	Function to create a tree decode table entry, at a tree leaf, given the
- *	symbol.
+ *	The number of symbols in the code, including all unused symbols.
+ * @decode_results
+ *	An array which provides, for each symbol, the actual value to store into
+ *	the decode table.  This value will be directly produced as the result of
+ *	decoding that symbol, thereby moving the indirection out of the decode
+ *	loop and into the table initialization.
  * @table_bits
- *	log base 2 of the size of the direct lookup portion of the decode table.
+ *	The log base-2 of the number of main table entries to use.
  * @max_codeword_len
- *	Maximum allowed codeword length for this Huffman code.
+ *	The maximum allowed codeword length for this Huffman code.
  * @working_space
  *	A temporary array of length '2 * (@max_codeword_len + 1) + @num_syms'.
  *
  * Returns %true if successful; %false if the codeword lengths do not form a
  * valid Huffman code.
  */
-static forceinline bool
+static bool
 build_decode_table(u32 decode_table[],
 		   const len_t lens[],
 		   const unsigned num_syms,
-		   u32 (*make_direct_entry)(unsigned, unsigned, unsigned *),
-		   u32 (*make_leaf_entry)(unsigned),
+		   const u32 decode_results[],
 		   const unsigned table_bits,
 		   const unsigned max_codeword_len,
 		   u16 working_space[])
@@ -628,25 +541,29 @@ build_decode_table(u32 decode_table[],
 	u16 * const len_counts = &working_space[0];
 	u16 * const offsets = &working_space[1 * (max_codeword_len + 1)];
 	u16 * const sorted_syms = &working_space[2 * (max_codeword_len + 1)];
-	unsigned sym;
 	unsigned len;
+	unsigned sym;
 	s32 remainder;
 	unsigned sym_idx;
-	unsigned codeword_reversed;
 	unsigned codeword_len;
-	unsigned loop_count;
+	unsigned codeword_reversed = 0;
+	unsigned cur_codeword_prefix = -1;
+	unsigned cur_table_start = 0;
+	unsigned cur_table_bits = table_bits;
+	unsigned num_dropped_bits = 0;
+	const unsigned table_mask = (1U << table_bits) - 1;
 
-	/* Count how many symbols have each codeword length.  */
+	/* Count how many symbols have each codeword length, including 0.  */
 	for (len = 0; len <= max_codeword_len; len++)
 		len_counts[len] = 0;
 	for (sym = 0; sym < num_syms; sym++)
 		len_counts[lens[sym]]++;
 
-	/* We guarantee that all lengths are <= max_codeword_len, but we cannot
-	 * assume they form a valid prefix code.  A codeword of length n should
-	 * require a proportion of the codespace equaling (1/2)^n.  The code is
-	 * valid if and only if the codespace is exactly filled by the lengths
-	 * by this measure.  */
+	/* It is already guaranteed that all lengths are <= max_codeword_len,
+	 * but it cannot be assumed they form a valid prefix code.  A codeword
+	 * of length n should require a proportion of the codespace equaling
+	 * (1/2)^n.  The code is valid if and only if, by this measure, the
+	 * codespace is exactly filled by the lengths.  */
 	remainder = 1;
 	for (len = 1; len <= max_codeword_len; len++) {
 		remainder <<= 1;
@@ -669,9 +586,11 @@ build_decode_table(u32 decode_table[],
 			 * uninitialized memory if the algorithm nevertheless
 			 * attempts to decode symbols using such a code, we fill
 			 * the decode table with default values.  */
-			unsigned dummy;
-			for (unsigned i = 0; i < (1U << table_bits); i++)
-				decode_table[i] = (*make_direct_entry)(0, 1, &dummy);
+			for (unsigned i = 0; i < (1U << table_bits); i++) {
+				decode_table[i] =
+					make_decode_table_entry(
+							decode_results[0], 1);
+			}
 			return true;
 		}
 		return false;
@@ -681,7 +600,7 @@ build_decode_table(u32 decode_table[],
 	 */
 
 	/* Initialize 'offsets' so that offsets[len] is the number of codewords
-	 * shorter than 'len' bits.  */
+	 * shorter than 'len' bits, including length 0.  */
 	offsets[0] = 0;
 	for (len = 0; len < max_codeword_len; len++)
 		offsets[len + 1] = offsets[len] + len_counts[len];
@@ -690,167 +609,128 @@ build_decode_table(u32 decode_table[],
 	for (sym = 0; sym < num_syms; sym++)
 		sorted_syms[offsets[lens[sym]]++] = sym;
 
-	/* Generate entries for codewords with length <= 'table_bits'.
-	 * Start with codeword length 1 and proceed to longer codewords.  */
+	/* Generate the decode table entries.  Since we process codewords from
+	 * shortest to longest, the main portion of the decode table is filled
+	 * first; then the subtables are filled.  Note that it's already been
+	 * verified that the codewords form a valid (complete) prefix code.  */
+
+	/* Start with the index of the first used symbol.  */
 	sym_idx = offsets[0];
-	codeword_reversed = 0;
+
+	/* Start with the smallest used codeword length.  */
 	codeword_len = 1;
-	loop_count = (1U << (table_bits - codeword_len));
-	for (; loop_count != 0; codeword_len++, loop_count >>= 1) {
+	while (len_counts[codeword_len] == 0)
+		codeword_len++;
 
-		const unsigned end_sym_idx = sym_idx + len_counts[codeword_len];
-		const unsigned increment = 1U << codeword_len;
-
-		/* Iterate through the symbols that have codewords with length
-		 * 'codeword_len'.  Since the code is assumed to be canonical,
-		 * we can generate the codewords by iterating in symbol order
-		 * and incrementing the current codeword by 1 each time.  */
-
-		for (; sym_idx < end_sym_idx; sym_idx++) {
-			unsigned sym;
-			u32 entry;
-			unsigned extra_mask;
-			unsigned extra;
-			unsigned i;
-			unsigned n;
-			unsigned bit;
-
-			sym = sorted_syms[sym_idx];
-			extra_mask = 0;
-			entry = (*make_direct_entry)(sym, codeword_len, &extra_mask);
-			extra = 0;
-			i = codeword_reversed;
-			n = loop_count;
-			do {
-				decode_table[i] = entry + extra;
-				extra = (extra + 1) & extra_mask;
-				i += increment;
-			} while (--n);
-
-			/* Increment the codeword by 1.  Since DEFLATE requires
-			 * bit-reversed codewords, we must manipulate bits
-			 * ourselves.  */
-			bit = 1U << (codeword_len - 1);
-			while (codeword_reversed & bit)
-				bit >>= 1;
-			codeword_reversed &= bit - 1;
-			codeword_reversed |= bit;
-		}
-	}
-
-	/* If we've filled in the entire table, we are done.  Otherwise, there
-	 * are codewords longer than 'table_bits' for which we must generate
-	 * binary trees.  */
-	if (max_codeword_len > table_bits &&
-	    offsets[table_bits] != offsets[max_codeword_len])
-	{
+	for (;;) {  /* For used each symbol and its codeword...  */
+		unsigned sym;
+		u32 entry;
 		unsigned i;
+		unsigned end;
+		unsigned increment;
 		unsigned bit;
-		unsigned next_free_slot;
 
-		/* First, zero out the remaining entries.  This is necessary so
-		 * that those entries appear as "unallocated" in the next part.
-		 * Each of these entries will eventually be filled with the
-		 * representation of the root node of a binary tree.  */
+		/* Get the next symbol.  */
+		sym = sorted_syms[sym_idx];
 
-		i = (1U << table_bits) - 1; /* All 1 bits */
-		for (;;) {
-			decode_table[i] = 0;
+		/* Start a new subtable if the codeword is long enough to
+		 * require a subtable, *and* the first 'table_bits' bits of the
+		 * codeword don't match the prefix for the previous subtable if
+		 * any.  */
+		if (codeword_len > table_bits &&
+		    (codeword_reversed & table_mask) != cur_codeword_prefix) {
 
-			if (i == codeword_reversed)
-				break;
+			cur_codeword_prefix = (codeword_reversed & table_mask);
 
-			/* Subtract 1 from the bit-reversed index.  */
-			bit = 1U << table_bits;
-			do {
-				bit >>= 1;
-				i ^= bit;
-			} while (i & bit);
-		}
+			cur_table_start += 1U << cur_table_bits;
 
-		/* We allocate child nodes starting at the end of the direct
-		 * lookup table.  Note that there should be 2*num_syms extra
-		 * entries for this purpose, although fewer than this may
-		 * actually be needed.  */
-		next_free_slot = 1U << table_bits;
-
-		for (; codeword_len <= max_codeword_len; codeword_len++) {
-
-			const unsigned end_sym_idx = sym_idx + len_counts[codeword_len];
-
-			for (; sym_idx < end_sym_idx; sym_idx++) {
-
-				unsigned shift = table_bits;
-				unsigned node_idx = codeword_reversed & ((1U << table_bits) - 1);
-
-				/* Go through each bit of the current codeword
-				 * beyond the prefix of length @table_bits and
-				 * walk the appropriate binary tree, allocating
-				 * any slots that have not yet been allocated.
-				 *
-				 * Note that the 'pointer' entry to the binary
-				 * tree, which is stored in the direct lookup
-				 * portion of the table, is represented
-				 * identically to other internal (non-leaf)
-				 * nodes of the binary tree; it can be thought
-				 * of as simply the root of the tree.  The
-				 * representation of these internal nodes is
-				 * simply the index of the left child combined
-				 * with special flags to distingush the entry
-				 * from direct mapping and leaf node entries.
-				 */
-				do {
-
-					/* At least one bit remains in the
-					 * codeword, but the current node is
-					 * unallocated.  Allocate it as an
-					 * internal tree node.  */
-					if (decode_table[node_idx] == 0) {
-						decode_table[node_idx] =
-							next_free_slot |
-							HUFFDEC_TREE_NONLEAF_FLAGS;
-						decode_table[next_free_slot++] = 0;
-						decode_table[next_free_slot++] = 0;
-					}
-
-					/* Go to the left child if the next bit
-					 * in the codeword is 0; otherwise go to
-					 * the right child.  */
-					node_idx = decode_table[node_idx] &
-						   ~HUFFDEC_TREE_NONLEAF_FLAGS;
-					node_idx += (codeword_reversed >> shift) & 1;
-					shift += 1;
-				} while (shift != codeword_len);
-
-				/* Generate the leaf node, which contains the
-				 * real decode table entry.  */
-				decode_table[node_idx] =
-					(*make_leaf_entry)(sorted_syms[sym_idx]);
-
-				/* Increment the codeword by 1.  Since DEFLATE
-				 * requires bit-reversed codewords, we must
-				 * manipulate bits ourselves.  */
-				bit = 1U << (codeword_len - 1);
-				while (codeword_reversed & bit)
-					bit >>= 1;
-				codeword_reversed &= bit - 1;
-				codeword_reversed |= bit;
+			/* Calculate the subtable length.  If the codeword
+			 * length exceeds 'table_bits' by n, the subtable needs
+			 * at least 2**n entries.  But it may need more; if
+			 * there are fewer than 2**n codewords of length
+			 * 'table_bits + n' remaining, then n will need to be
+			 * incremented to bring in longer codewords until the
+			 * subtable can be filled completely.  */
+			cur_table_bits = codeword_len - table_bits;
+			remainder = (s32)1 << cur_table_bits;
+			while (table_bits + cur_table_bits < max_codeword_len) {
+				remainder -= len_counts[table_bits +
+							cur_table_bits];
+				if (remainder <= 0)
+					break;
+				cur_table_bits++;
+				remainder <<= 1;
 			}
+
+			/* Create the entry that points from the main table to
+			 * the subtable.  This entry contains the index of the
+			 * start of the subtable and the number of bits with
+			 * which the subtable is indexed (the log base 2 of the
+			 * number of entries it contains).  */
+			decode_table[cur_codeword_prefix] =
+				HUFFDEC_SUBTABLE_POINTER |
+				make_decode_table_entry(cur_table_start,
+							cur_table_bits);
+
+			/* Now that we're filling a subtable, we need to drop
+			 * the first 'table_bits' bits of the codewords.  */
+			num_dropped_bits = table_bits;
 		}
+
+		/* Create the decode table entry, which packs the decode result
+		 * and the codeword length (minus 'table_bits' for subtables)
+		 * together.  */
+		entry = make_decode_table_entry(decode_results[sym],
+						codeword_len - num_dropped_bits);
+
+		/* Fill in as many copies of the decode table entry as are
+		 * needed.  The number of entries to fill is a power of 2 and
+		 * depends on the codeword length; it could be as few as 1 or as
+		 * large as half the size of the table.  Since the codewords are
+		 * bit-reversed, the indices to fill are those with the codeword
+		 * in its low bits; it's the high bits that vary.  */
+		i = cur_table_start + (codeword_reversed >> num_dropped_bits);
+		end = cur_table_start + (1U << cur_table_bits);
+		increment = 1U << (codeword_len - num_dropped_bits);
+		do {
+			decode_table[i] = entry;
+			i += increment;
+		} while (i < end);
+
+		/* Advance to the next codeword by incrementing it.  But since
+		 * our codewords are bit-reversed, we must manipulate the bits
+		 * ourselves rather than simply adding 1.  */
+		bit = 1U << (codeword_len - 1);
+		while (codeword_reversed & bit)
+			bit >>= 1;
+		codeword_reversed &= bit - 1;
+		codeword_reversed |= bit;
+
+		/* Advance to the next symbol.  This will either increase the
+		 * codeword length, or keep the same codeword length but
+		 * increase the symbol value.  Note: since we are using
+		 * bit-reversed codewords, we don't need to explicitly append
+		 * zeroes to the codeword when the codeword length increases. */
+		if (++sym_idx == num_syms)
+			return true;
+		len_counts[codeword_len]--;
+		while (len_counts[codeword_len] == 0)
+			codeword_len++;
 	}
-	return true;
 }
 
 /* Build the decode table for the precode.  */
 static bool
 build_precode_decode_table(struct deflate_decompressor *d)
 {
+	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
+	STATIC_ASSERT(PRECODE_TABLEBITS == 7 && PRECODE_ENOUGH == 128);
+
 	return build_decode_table(d->precode_decode_table,
 				  d->precode_lens,
 				  DEFLATE_NUM_PRECODE_SYMS,
-				  make_pre_direct_entry,
-				  make_pre_leaf_entry,
-				  DEFLATE_PRECODE_TABLEBITS,
+				  precode_decode_results,
+				  PRECODE_TABLEBITS,
 				  DEFLATE_MAX_PRE_CODEWORD_LEN,
 				  d->working_space);
 }
@@ -860,12 +740,14 @@ static bool
 build_litlen_decode_table(struct deflate_decompressor *d,
 			  unsigned num_litlen_syms, unsigned num_offset_syms)
 {
+	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
+	STATIC_ASSERT(LITLEN_TABLEBITS == 10 && LITLEN_ENOUGH == 1334);
+
 	return build_decode_table(d->litlen_decode_table,
 				  d->lens,
 				  num_litlen_syms,
-				  make_litlen_direct_entry,
-				  make_litlen_leaf_entry,
-				  DEFLATE_LITLEN_TABLEBITS,
+				  litlen_decode_results,
+				  LITLEN_TABLEBITS,
 				  DEFLATE_MAX_LITLEN_CODEWORD_LEN,
 				  d->working_space);
 }
@@ -875,12 +757,14 @@ static bool
 build_offset_decode_table(struct deflate_decompressor *d,
 			  unsigned num_litlen_syms, unsigned num_offset_syms)
 {
+	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
+	STATIC_ASSERT(OFFSET_TABLEBITS == 8 && OFFSET_ENOUGH == 402);
+
 	return build_decode_table(d->offset_decode_table,
 				  d->lens + num_litlen_syms,
 				  num_offset_syms,
-				  make_offset_direct_entry,
-				  make_offset_leaf_entry,
-				  DEFLATE_OFFSET_TABLEBITS,
+				  offset_decode_results,
+				  OFFSET_TABLEBITS,
 				  DEFLATE_MAX_OFFSET_CODEWORD_LEN,
 				  d->working_space);
 }
@@ -903,93 +787,6 @@ static forceinline void
 copy_word_unaligned(const void *src, void *dst)
 {
 	store_word_unaligned(load_word_unaligned(src), dst);
-}
-
-/*
- * Copy an LZ77 match at (dst - offset) to dst.
- *
- * The length and offset must be already validated --- that is, (dst - offset)
- * can't underrun the output buffer, and (dst + length) can't overrun the output
- * buffer.  Also, the length cannot be 0.
- *
- * @winend points to the byte past the end of the output buffer.
- * This function won't write any data beyond this position.
- */
-static forceinline void
-lz_copy(u8 *dst, u32 length, u32 offset, const u8 *winend)
-{
-	const u8 *src = dst - offset;
-	const u8 * const end = dst + length;
-
-	/*
-	 * Try to copy one machine word at a time.  On i386 and x86_64 this is
-	 * faster than copying one byte at a time, unless the data is
-	 * near-random and all the matches have very short lengths.  Note that
-	 * since this requires unaligned memory accesses, it won't necessarily
-	 * be faster on every architecture.
-	 *
-	 * Also note that we might copy more than the length of the match.  For
-	 * example, if a word is 8 bytes and the match is of length 5, then
-	 * we'll simply copy 8 bytes.  This is okay as long as we don't write
-	 * beyond the end of the output buffer, hence the check for (winend -
-	 * end >= WORDSIZE - 1).
-	 */
-	if (UNALIGNED_ACCESS_IS_FAST && likely(winend - end >= WORDSIZE - 1)) {
-
-		if (offset >= WORDSIZE) {
-			/* The source and destination words don't overlap.  */
-
-			/* To improve branch prediction, one iteration of this
-			 * loop is unrolled.  Most matches are short and will
-			 * fail the first check.  But if that check passes, then
-			 * it becomes increasing likely that the match is long
-			 * and we'll need to continue copying.  */
-
-			copy_word_unaligned(src, dst);
-			src += WORDSIZE;
-			dst += WORDSIZE;
-
-			if (dst < end) {
-				do {
-					copy_word_unaligned(src, dst);
-					src += WORDSIZE;
-					dst += WORDSIZE;
-				} while (dst < end);
-			}
-			return;
-		} else if (offset == 1) {
-
-			/* Offset 1 matches are equivalent to run-length
-			 * encoding of the previous byte.  This case is common
-			 * if the data contains many repeated bytes.  */
-
-			machine_word_t v = repeat_byte(*(dst - 1));
-			do {
-				store_word_unaligned(v, dst);
-				src += WORDSIZE;
-				dst += WORDSIZE;
-			} while (dst < end);
-			return;
-		}
-		/*
-		 * We don't bother with special cases for other 'offset <
-		 * WORDSIZE', which are usually rarer than 'offset == 1'.  Extra
-		 * checks will just slow things down.  Actually, it's possible
-		 * to handle all the 'offset < WORDSIZE' cases using the same
-		 * code, but it still becomes more complicated doesn't seem any
-		 * faster overall; it definitely slows down the more common
-		 * 'offset == 1' case.
-		 */
-	}
-
-	/* Fall back to a bytewise copy.  */
-	STATIC_ASSERT(DEFLATE_MIN_MATCH_LEN == 3);
-	*dst++ = *src++;
-	*dst++ = *src++;
-	length -= 2;
-	do {
-		*dst++ = *src++;
-	} while (--length);
 }
 
 /*****************************************************************************
@@ -1079,8 +876,7 @@ next_block:
 			d->precode_lens[deflate_precode_lens_permutation[i]] = 0;
 
 		/* Build the decode table for the precode.  */
-		if (!build_precode_decode_table(d))
-			return false;
+		SAFETY_CHECK(build_precode_decode_table(d));
 
 		/* Expand the literal/length and offset codeword lengths.  */
 		for (i = 0; i < num_litlen_syms + num_offset_syms; ) {
@@ -1091,14 +887,14 @@ next_block:
 
 			ENSURE_BITS(DEFLATE_MAX_PRE_CODEWORD_LEN + 7);
 
-			/* (The code below assumes there are no binary trees in
-			 * the decode table.)  */
-			STATIC_ASSERT(DEFLATE_PRECODE_TABLEBITS == DEFLATE_MAX_PRE_CODEWORD_LEN);
+			/* (The code below assumes that the precode decode table
+			 * does not have any subtables.)  */
+			STATIC_ASSERT(PRECODE_TABLEBITS == DEFLATE_MAX_PRE_CODEWORD_LEN);
 
 			/* Read the next precode symbol.  */
 			entry = d->precode_decode_table[BITS(DEFLATE_MAX_PRE_CODEWORD_LEN)];
-			REMOVE_BITS(entry >> HUFFDEC_LEN_SHIFT);
-			presym = entry & HUFFDEC_VALUE_MASK;
+			REMOVE_BITS(entry & HUFFDEC_LENGTH_MASK);
+			presym = entry >> HUFFDEC_RESULT_SHIFT;
 
 			if (presym < 16) {
 				/* Explicit codeword length  */
@@ -1128,8 +924,7 @@ next_block:
 
 			if (presym == 16) {
 				/* Repeat the previous length 3 - 6 times  */
-				if (SAFETY_CHECK(i == 0))
-					return false;
+				SAFETY_CHECK(i != 0);
 				rep_val = d->lens[i - 1];
 				STATIC_ASSERT(3 + ((1 << 2) - 1) == 6);
 				rep_count = 3 + POP_BITS(2);
@@ -1170,20 +965,14 @@ next_block:
 
 		ALIGN_INPUT();
 
-		if (SAFETY_CHECK(in_end - in_next < 4))
-			return false;
+		SAFETY_CHECK(in_end - in_next >= 4);
 
 		len = READ_U16();
 		nlen = READ_U16();
 
-		if (SAFETY_CHECK(len != (u16)~nlen))
-			return false;
-
-		if (SAFETY_CHECK(len > out_end - out_next))
-			return false;
-
-		if (SAFETY_CHECK(len > in_end - in_next))
-			return false;
+		SAFETY_CHECK(len == (u16)~nlen);
+		SAFETY_CHECK(len <= out_end - out_next);
+		SAFETY_CHECK(len <= in_end - in_next);
 
 		memcpy(out_next, in_next, len);
 		in_next += len;
@@ -1191,7 +980,8 @@ next_block:
 
 		goto block_done;
 
-	} else if (block_type == DEFLATE_BLOCKTYPE_STATIC_HUFFMAN) {
+	} else {
+		SAFETY_CHECK(block_type == DEFLATE_BLOCKTYPE_STATIC_HUFFMAN);
 
 		/* Static Huffman block: set the static Huffman codeword
 		 * lengths.  Then the remainder is the same as decompressing a
@@ -1215,18 +1005,12 @@ next_block:
 		num_litlen_syms = 288;
 		num_offset_syms = 32;
 
-	} else {
-		/* Reserved block type.  */
-		return false;
 	}
 
 	/* Decompressing a Huffman block (either dynamic or static)  */
 
-	if (!build_offset_decode_table(d, num_litlen_syms, num_offset_syms))
-		return false;
-
-	if (!build_litlen_decode_table(d, num_litlen_syms, num_offset_syms))
-		return false;
+	SAFETY_CHECK(build_offset_decode_table(d, num_litlen_syms, num_offset_syms));
+	SAFETY_CHECK(build_litlen_decode_table(d, num_litlen_syms, num_offset_syms));
 
 	/* The main DEFLATE decode loop  */
 	for (;;) {
@@ -1234,186 +1018,132 @@ next_block:
 		u32 length;
 		u32 offset;
 
-		/* If our bitbuffer variable is large enough, we load new bits
-		 * only once for each match or literal decoded.  This is
-		 * fastest.  Otherwise, we may need to load new bits multiple
-		 * times when decoding a match.  */
+		/* Decode a litlen symbol.  */
+		ENSURE_BITS(DEFLATE_MAX_LITLEN_CODEWORD_LEN);
+		entry = d->litlen_decode_table[BITS(LITLEN_TABLEBITS)];
+		if (entry & HUFFDEC_SUBTABLE_POINTER) {
+			/* Litlen subtable required (uncommon case)  */
+			REMOVE_BITS(LITLEN_TABLEBITS);
+			entry = d->litlen_decode_table[
+				((entry >> HUFFDEC_RESULT_SHIFT) & 0xFFFF) +
+				BITS(entry & HUFFDEC_LENGTH_MASK)];
+		}
+		REMOVE_BITS(entry & HUFFDEC_LENGTH_MASK);
+		if (entry & HUFFDEC_LITERAL) {
+			/* Literal  */
+			SAFETY_CHECK(out_next < out_end);
+			*out_next++ = (u8)(entry >> HUFFDEC_RESULT_SHIFT);
+			continue;
+		}
 
-		STATIC_ASSERT(CAN_ENSURE(DEFLATE_MAX_LITLEN_CODEWORD_LEN));
+		/* Match or end-of-block  */
+
+		entry >>= HUFFDEC_RESULT_SHIFT;
 		ENSURE_BITS(MAX_ENSURE);
 
-		/* Read a literal or length.  */
-
-		entry = d->litlen_decode_table[BITS(DEFLATE_LITLEN_TABLEBITS)];
-
-		if (CAN_ENSURE(DEFLATE_LITLEN_TABLEBITS * 2) &&
-		    likely(out_end - out_next >= MAX_ENSURE / DEFLATE_LITLEN_TABLEBITS))
-		{
-			/* Fast path for decoding literals  */
-
-		#define NUM_BITS_TO_ENSURE_AFTER_INLINE_LITERALS		\
-			((MAX_ENSURE >= DEFLATE_MAX_MATCH_BITS) ?		\
-			 DEFLATE_MAX_MATCH_BITS :				\
-			  ((MAX_ENSURE >= DEFLATE_MAX_LITLEN_CODEWORD_LEN +	\
-					  DEFLATE_MAX_EXTRA_LENGTH_BITS) ?	\
-				DEFLATE_MAX_LITLEN_CODEWORD_LEN +		\
-				DEFLATE_MAX_EXTRA_LENGTH_BITS :			\
-					DEFLATE_MAX_LITLEN_CODEWORD_LEN))
-
-		#define INLINE_LITERAL(seq)					\
-			if (CAN_ENSURE(DEFLATE_LITLEN_TABLEBITS * (seq))) {	\
-				entry = d->litlen_decode_table[			\
-						BITS(DEFLATE_LITLEN_TABLEBITS)];\
-				if (entry & HUFFDEC_NOT_LITERAL) {		\
-					if ((seq) != 1)				\
-						ENSURE_BITS(NUM_BITS_TO_ENSURE_AFTER_INLINE_LITERALS);	\
-					goto not_literal;			\
-				}						\
-				REMOVE_BITS(entry >> HUFFDEC_LEN_SHIFT);	\
-				*out_next++ = entry;				\
-			}
-
-			INLINE_LITERAL(1);
-			INLINE_LITERAL(2);
-			INLINE_LITERAL(3);
-			INLINE_LITERAL(4);
-			INLINE_LITERAL(5);
-			INLINE_LITERAL(6);
-			INLINE_LITERAL(7);
-			INLINE_LITERAL(8);
-			continue;
-		}
-
-		if (!(entry & HUFFDEC_NOT_LITERAL)) {
-			REMOVE_BITS(entry >> HUFFDEC_LEN_SHIFT);
-			if (SAFETY_CHECK(out_next == out_end))
-				return false;
-			*out_next++ = entry;
-			continue;
-		}
-	not_literal:
-		if (likely(!(entry & HUFFDEC_NOT_FULL_LENGTH))) {
-
-			/* The next TABLEBITS bits were enough to directly look
-			 * up a litlen symbol, which was a length slot.  In
-			 * addition, the full match length, including the extra
-			 * bits, fit into TABLEBITS.  So the result of the
-			 * lookup was the full match length.
-			 *
-			 * On typical data, most match lengths are short enough
-			 * to fall into this category.  */
-
-			REMOVE_BITS((entry >> HUFFDEC_LEN_SHIFT) & HUFFDEC_LEN_MASK);
-			length = entry & HUFFDEC_VALUE_MASK;
-
-		} else if (!(entry & HUFFDEC_TREE_NONLEAF)) {
-
-			/* The next TABLEBITS bits were enough to directly look
-			 * up a litlen symbol, which was either a length slot or
-			 * end-of-block.  However, the full match length,
-			 * including the extra bits (0 in the case of
-			 * end-of-block), requires more than TABLEBITS bits to
-			 * decode.  So the result of the lookup was the length
-			 * base and number of extra length bits.  We will read
-			 * this number of extra length bits and add them to the
-			 * length base in order to construct the full length.
-			 *
-			 * On typical data, this case is rare.  */
-
-			REMOVE_BITS((entry >> HUFFDEC_LEN_SHIFT) & HUFFDEC_LEN_MASK);
-			entry &= HUFFDEC_VALUE_MASK;
-
-			if (!CAN_ENSURE(DEFLATE_MAX_LITLEN_CODEWORD_LEN +
-					DEFLATE_MAX_EXTRA_LENGTH_BITS))
-				ENSURE_BITS(DEFLATE_MAX_EXTRA_LENGTH_BITS);
-
-			length = (entry & HUFFDEC_LENGTH_BASE_MASK) +
-				  POP_BITS(entry >> HUFFDEC_EXTRA_LENGTH_BITS_SHIFT);
-		} else {
-
-			/* The next TABLEBITS bits were not enough to directly
-			 * look up a litlen symbol.  Therefore, we must walk the
-			 * appropriate binary tree to decode the symbol, which
-			 * may be a literal, length slot, or end-of-block.
-			 *
-			 * On typical data, this case is rare.  */
-
-			REMOVE_BITS(DEFLATE_LITLEN_TABLEBITS);
-			do {
-				entry &= ~HUFFDEC_TREE_NONLEAF_FLAGS;
-				entry += POP_BITS(1);
-				entry = d->litlen_decode_table[entry];
-			} while (entry & HUFFDEC_TREE_NONLEAF_FAST_FLAG);
-			if (entry < 256) {
-				if (SAFETY_CHECK(out_next == out_end))
-					return false;
-				*out_next++ = entry;
-				continue;
-			}
-			entry -= 256;
-
-			if (!CAN_ENSURE(DEFLATE_MAX_LITLEN_CODEWORD_LEN +
-					DEFLATE_MAX_EXTRA_LENGTH_BITS))
-				ENSURE_BITS(DEFLATE_MAX_EXTRA_LENGTH_BITS);
-
-			length = (entry & HUFFDEC_LENGTH_BASE_MASK) +
-				  POP_BITS(entry >> HUFFDEC_EXTRA_LENGTH_BITS_SHIFT);
-		}
+		/* Pop the extra length bits and add them to the length base to
+		 * produce the full length.  */
+		length = (entry >> HUFFDEC_LENGTH_BASE_SHIFT) +
+			 POP_BITS(entry & HUFFDEC_EXTRA_LENGTH_BITS_MASK);
 
 		/* The match destination must not end after the end of the
-		 * output buffer.  */
-		if (SAFETY_CHECK(length > out_end - out_next))
-			return false;
-
-		if (unlikely(length == HUFFDEC_END_OF_BLOCK_LENGTH))
+		 * output buffer.  For efficiency, combine this check with the
+		 * end-of-block check.  We're using 0 for the special
+		 * end-of-block length, so subtract 1 and it turn it into
+		 * SIZE_MAX.  */
+		STATIC_ASSERT(HUFFDEC_END_OF_BLOCK_LENGTH == 0);
+		if (unlikely((size_t)length - 1 > out_end - out_next)) {
+			SAFETY_CHECK(length == HUFFDEC_END_OF_BLOCK_LENGTH);
 			goto block_done;
-
-		/* Read the match offset.  */
-
-		if (!CAN_ENSURE(DEFLATE_MAX_MATCH_BITS)) {
-			if (CAN_ENSURE(DEFLATE_MAX_OFFSET_CODEWORD_LEN +
-				       DEFLATE_MAX_EXTRA_OFFSET_BITS))
-				ENSURE_BITS(DEFLATE_MAX_OFFSET_CODEWORD_LEN +
-					    DEFLATE_MAX_EXTRA_OFFSET_BITS);
-			else
-				ENSURE_BITS(DEFLATE_MAX_OFFSET_CODEWORD_LEN);
 		}
 
-		entry = d->offset_decode_table[BITS(DEFLATE_OFFSET_TABLEBITS)];
-		if (likely(!(entry & HUFFDEC_TREE_NONLEAF_FAST_FLAG))) {
-			REMOVE_BITS(entry >> HUFFDEC_LEN_SHIFT);
-			entry &= HUFFDEC_VALUE_MASK;
-		} else {
-			REMOVE_BITS(DEFLATE_OFFSET_TABLEBITS);
-			do {
-				entry &= ~HUFFDEC_TREE_NONLEAF_FLAGS;
-				entry += POP_BITS(1);
-				entry = d->offset_decode_table[entry];
-			} while (entry & HUFFDEC_TREE_NONLEAF_FAST_FLAG);
+		/* Decode the match offset.  */
+
+		entry = d->offset_decode_table[BITS(OFFSET_TABLEBITS)];
+		if (entry & HUFFDEC_SUBTABLE_POINTER) {
+			/* Offset subtable required (uncommon case)  */
+			REMOVE_BITS(OFFSET_TABLEBITS);
+			entry = d->offset_decode_table[
+				((entry >> HUFFDEC_RESULT_SHIFT) & 0xFFFF) +
+				BITS(entry & HUFFDEC_LENGTH_MASK)];
 		}
+		REMOVE_BITS(entry & HUFFDEC_LENGTH_MASK);
+		entry >>= HUFFDEC_RESULT_SHIFT;
 
-		/* The value we have here isn't the offset symbol itself, but
-		 * rather the offset symbol indexed into
-		 * deflate_offset_symbol_data[].  This gives us the offset base
-		 * and number of extra offset bits without having to index
-		 * additional tables in the main decode loop.  */
-
-		if (!CAN_ENSURE(DEFLATE_MAX_OFFSET_CODEWORD_LEN +
+		STATIC_ASSERT(CAN_ENSURE(DEFLATE_MAX_EXTRA_LENGTH_BITS +
+					 DEFLATE_MAX_OFFSET_CODEWORD_LEN) &&
+			      CAN_ENSURE(DEFLATE_MAX_EXTRA_OFFSET_BITS));
+		if (!CAN_ENSURE(DEFLATE_MAX_EXTRA_LENGTH_BITS +
+				DEFLATE_MAX_OFFSET_CODEWORD_LEN +
 				DEFLATE_MAX_EXTRA_OFFSET_BITS))
 			ENSURE_BITS(DEFLATE_MAX_EXTRA_OFFSET_BITS);
 
+		/* Pop the extra offset bits and add them to the offset base to
+		 * produce the full offset.  */
 		offset = (entry & HUFFDEC_OFFSET_BASE_MASK) +
 			 POP_BITS(entry >> HUFFDEC_EXTRA_OFFSET_BITS_SHIFT);
 
 		/* The match source must not begin before the beginning of the
 		 * output buffer.  */
-		if (SAFETY_CHECK(offset > out_next - (const u8 *)out))
-			return false;
+		SAFETY_CHECK(offset <= out_next - (const u8 *)out);
 
-		/* Copy the match:
-		 * 'length' bytes at 'out_next - offset' to 'out_next'.  */
+		/* Copy the match: 'length' bytes at 'out_next - offset' to
+		 * 'out_next'.  */
 
-		lz_copy(out_next, length, offset, out_end);
+		if (UNALIGNED_ACCESS_IS_FAST &&
+		    length <= (3 * WORDSIZE) &&
+		    offset >= WORDSIZE &&
+		    length + (3 * WORDSIZE) <= out_end - out_next)
+		{
+			/* Fast case: short length, no overlaps if we copy one
+			 * word at a time, and we aren't getting too close to
+			 * the end of the output array.  */
+			copy_word_unaligned(out_next - offset + (0 * WORDSIZE),
+					    out_next + (0 * WORDSIZE));
+			copy_word_unaligned(out_next - offset + (1 * WORDSIZE),
+					    out_next + (1 * WORDSIZE));
+			copy_word_unaligned(out_next - offset + (2 * WORDSIZE),
+					    out_next + (2 * WORDSIZE));
+		} else {
+			const u8 *src = out_next - offset;
+			u8 *dst = out_next;
+			u8 *end = out_next + length;
+
+			if (UNALIGNED_ACCESS_IS_FAST &&
+			    likely(out_end - end >= WORDSIZE - 1)) {
+				if (offset >= WORDSIZE) {
+					copy_word_unaligned(src, dst);
+					src += WORDSIZE;
+					dst += WORDSIZE;
+					if (dst < end) {
+						do {
+							copy_word_unaligned(src, dst);
+							src += WORDSIZE;
+							dst += WORDSIZE;
+						} while (dst < end);
+					}
+				} else if (offset == 1) {
+					machine_word_t v = repeat_byte(*(dst - 1));
+					do {
+						store_word_unaligned(v, dst);
+						src += WORDSIZE;
+						dst += WORDSIZE;
+					} while (dst < end);
+				} else {
+					*dst++ = *src++;
+					*dst++ = *src++;
+					do {
+						*dst++ = *src++;
+					} while (dst < end);
+				}
+			} else {
+				*dst++ = *src++;
+				*dst++ = *src++;
+				do {
+					*dst++ = *src++;
+				} while (dst < end);
+			}
+		}
 
 		out_next += length;
 	}

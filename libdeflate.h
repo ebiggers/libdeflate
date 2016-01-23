@@ -94,8 +94,10 @@ deflate_alloc_decompressor(void);
  * 'out_nbytes', to 'out'.  The return value is true if decompression was
  * successful, or false if the compressed data was invalid.
  *
- * To be clear: the uncompressed size must be known *exactly* and passed as
- * 'out_nbytes'.
+ * Note that the uncompressed size must be known *exactly* and passed as
+ * 'out_nbytes'.  This is because this API is designed for block-based
+ * compression where the uncompressed size should have already been stored
+ * elsewhere.
  */
 extern bool
 deflate_decompress(struct deflate_decompressor *decompressor,
