@@ -100,7 +100,7 @@ gzip_decompress(struct deflate_decompressor *d,
 	in_next += 4;
 
 	/* ISIZE */
-	if (actual_out_nbytes != get_unaligned_le32(in_next))
+	if ((u32)actual_out_nbytes != get_unaligned_le32(in_next))
 		return false;
 
 	return true;
