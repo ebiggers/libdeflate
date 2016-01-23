@@ -12,6 +12,7 @@
 #undef _ANSI_SOURCE
 #define _POSIX_C_SOURCE 199309L
 
+#include <stdbool.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -181,14 +182,13 @@ compressor_destroy(struct compressor *c)
 
 struct decompressor {
 	void *private;
-	bool (*decompress)(void *, const void *, size_t, void *, size_t, size_t *);
+	bool (*decompress)(void *, const void *, size_t, void *, size_t);
 	void (*free_private)(void *);
 };
 
 static bool
 libz_decompress(void *private, const void *in, size_t in_nbytes,
-		void *out, size_t out_nbytes_avail,
-		size_t *actual_out_nbytes_ret)
+		void *out, size_t out_nbytes_avail)
 {
 	z_stream *z = private;
 
@@ -207,6 +207,36 @@ libz_free_decompressor_private(void *private)
 {
 	inflateEnd((z_stream *)private);
 	free(private);
+}
+
+static bool
+libdeflate_deflate_decompress(void *private, const void *in, size_t in_nbytes,
+			      void *out, size_t out_nbytes_avail)
+{
+	return 0 == deflate_decompress(private, in, in_nbytes,
+				       out, out_nbytes_avail, NULL);
+}
+
+static bool
+libdeflate_zlib_decompress(void *private, const void *in, size_t in_nbytes,
+			   void *out, size_t out_nbytes_avail)
+{
+	return 0 == zlib_decompress(private, in, in_nbytes,
+				    out, out_nbytes_avail, NULL);
+}
+
+static bool
+libdeflate_gzip_decompress(void *private, const void *in, size_t in_nbytes,
+			   void *out, size_t out_nbytes_avail)
+{
+	return 0 == gzip_decompress(private, in, in_nbytes,
+				    out, out_nbytes_avail, NULL);
+}
+
+static void
+libdeflate_free_decompressor_private(void *private)
+{
+	deflate_free_decompressor(private);
 }
 
 static void
@@ -236,16 +266,16 @@ decompressor_init(struct decompressor *d, enum wrapper wrapper, bool use_libz)
 		ASSERT(d->private != NULL, "out of memory");
 		switch (wrapper) {
 		case NO_WRAPPER:
-			d->decompress = (void *)deflate_decompress;
+			d->decompress = libdeflate_deflate_decompress;
 			break;
 		case ZLIB_WRAPPER:
-			d->decompress = (void *)zlib_decompress;
+			d->decompress = libdeflate_zlib_decompress;
 			break;
 		case GZIP_WRAPPER:
-			d->decompress = (void *)gzip_decompress;
+			d->decompress = libdeflate_gzip_decompress;
 			break;
 		}
-		d->free_private = (void *)deflate_free_decompressor;
+		d->free_private = libdeflate_free_decompressor_private;
 	}
 }
 
@@ -254,7 +284,7 @@ do_decompress(struct decompressor *d, const void *in, size_t in_nbytes,
 	      void *out, size_t out_nbytes_avail)
 {
 	return (*d->decompress)(d->private, in, in_nbytes,
-				out, out_nbytes_avail, NULL);
+				out, out_nbytes_avail);
 }
 
 static void

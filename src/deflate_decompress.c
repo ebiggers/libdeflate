@@ -37,14 +37,15 @@
 #include "x86_cpu_features.h"
 
 /* By default, if the expression passed to SAFETY_CHECK() evaluates to false,
- * then deflate_decompress() immediately returns false as the compressed data is
- * invalid.  But if unsafe decompression is enabled, then the value of the
- * expression is ignored, allowing the compiler to optimize out some code.  */
+ * then deflate_decompress() immediately returns DECOMPRESS_BAD_DATA as the
+ * compressed data is invalid.  But if unsafe decompression is enabled, then the
+ * value of the expression is ignored, allowing the compiler to optimize out
+ * some code.  */
 #if UNSAFE_DECOMPRESSION
 #  warning "UNSAFE DECOMPRESSION IS ENABLED. THIS MUST ONLY BE USED IF THE DECOMPRESSOR INPUT WILL ALWAYS BE TRUSTED!"
 #  define SAFETY_CHECK(expr)	(void)(expr)
 #else
-#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return false
+#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return DECOMPRESS_BAD_DATA
 #endif
 
 /*
@@ -814,20 +815,21 @@ copy_word_unaligned(const void *src, void *dst)
 
 #if DISPATCH_ENABLED
 
-static bool
+static enum decompress_result
 dispatch(struct deflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_out_nbytes_ret);
 
-typedef bool (*decompress_func_t)(struct deflate_decompressor * restrict d,
-				  const void * restrict in, size_t in_nbytes,
-				  void * restrict out, size_t out_nbytes_avail,
-				  size_t *actual_out_nbytes_ret);
+typedef enum decompress_result (*decompress_func_t)
+	(struct deflate_decompressor * restrict d,
+	 const void * restrict in, size_t in_nbytes,
+	 void * restrict out, size_t out_nbytes_avail,
+	 size_t *actual_out_nbytes_ret);
 
 static decompress_func_t decompress_impl = dispatch;
 
-static bool
+static enum decompress_result
 dispatch(struct deflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
@@ -853,7 +855,7 @@ dispatch(struct deflate_decompressor * restrict d,
  * calling the appropriate implementation depending on the CPU features at
  * runtime.
  */
-LIBEXPORT bool
+LIBEXPORT enum decompress_result
 deflate_decompress(struct deflate_decompressor * restrict d,
 		   const void * restrict in, size_t in_nbytes,
 		   void * restrict out, size_t out_nbytes_avail,
