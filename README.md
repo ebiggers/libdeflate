@@ -30,9 +30,10 @@ to build a decompression-only library.
 
 There is no `make install` yet; just copy the file(s) to where you want.
 
-It's possible to build a Windows binary using MinGW, using a command like this:
+It's possible to build Windows binaries using MinGW with a command like this:
 
-    $ make CC=x86_64-w64-mingw32-gcc CFLAGS=-static AR=x86_64-w64-mingw32-ar BUILD_BENCHMARK_PROGRAM=yes
+    $ make CC=x86_64-w64-mingw32-gcc BUILD_PROGRAMS=yes
+
 
 API
 ===

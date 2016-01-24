@@ -10,6 +10,14 @@ BUILD_SHARED_LIBRARY := no
 # program will be linked with both zlib and libdeflate.
 BUILD_BENCHMARK_PROGRAM := no
 
+# Build the gzip program?  Note that this program is not intended to be a full
+# gzip replacement.  Like the benchmark program, it is primary intended for
+# benchmarking and testing.
+BUILD_GZIP_PROGRAM := no
+
+# Build all the programs?
+BUILD_PROGRAMS := no
+
 # Will compression be supported?
 SUPPORT_COMPRESSION := yes
 
@@ -36,6 +44,30 @@ RUNTIME_CPU_DETECTION := yes
 # The compiler and archiver
 CC := gcc
 AR := ar
+
+##############################################################################
+
+# Detect compiling for Windows with MinGW
+ifneq ($(findstring -mingw,$(CC)),)
+    ifeq ($(AR),ar)
+        AR := $(patsubst %-gcc,%-ar,$(CC))
+    endif
+    WINDOWS      := yes
+    LIB_SUFFIX   := .a
+    SHLIB_SUFFIX := .dll
+    PROG_SUFFIX  := .exe
+    PROG_CFLAGS  := -static
+    GZIP_CFLAGS  := -municode
+    SHLIB_IS_PIC := no
+else
+    WINDOWS      := no
+    LIB_SUFFIX   := .a
+    SHLIB_SUFFIX := .so
+    PROG_SUFFIX  :=
+    PROG_CFLAGS  :=
+    GZIP_CFLAGS  :=
+    SHLIB_IS_PIC := yes
+endif
 
 ##############################################################################
 
@@ -99,41 +131,66 @@ ifeq ($(SUPPORT_GZIP),yes)
     SRC += src/crc32.c
 endif
 
-override PIC_CFLAGS := $(CFLAGS) -fPIC
-
 OBJ := $(SRC:.c=.o)
 PIC_OBJ := $(SRC:.c=.pic.o)
+ifeq ($(SHLIB_IS_PIC),yes)
+    SHLIB_OBJ := $(PIC_OBJ)
+else
+    SHLIB_OBJ := $(OBJ)
+endif
 
 $(OBJ): %.o: %.c $(wildcard src/*.h)
 	$(CC) -o $@ -c $(CFLAGS) $<
 
 $(PIC_OBJ): %.pic.o: %.c $(wildcard src/*.h)
-	$(CC) -o $@ -c $(PIC_CFLAGS) $<
+	$(CC) -o $@ -c $(CFLAGS) -fPIC $<
 
-libdeflate.so:$(PIC_OBJ)
+libdeflate$(SHLIB_SUFFIX):$(SHLIB_OBJ)
 	$(CC) -o $@ -shared $(CFLAGS) $+
 
-libdeflate.a:$(OBJ)
+libdeflate$(LIB_SUFFIX):$(OBJ)
 	$(AR) cr $@ $+
 
-benchmark:tools/benchmark.c libdeflate.a
-	$(CC) -o $@ $(CFLAGS) -L. $+ libdeflate.a -lz
+benchmark$(PROG_SUFFIX):tools/benchmark.c libdeflate$(LIB_SUFFIX)
+	$(CC) -o $@ $(CFLAGS) -L. $+ libdeflate$(LIB_SUFFIX) -lz
+
+gzip$(PROG_SUFFIX):tools/gzip.c libdeflate$(LIB_SUFFIX)
+	$(CC) -o $@ $(CFLAGS) $(GZIP_CFLAGS) $(PROG_CFLAGS) -L. $+ libdeflate$(LIB_SUFFIX)
+
+ifeq ($(WINDOWS),yes)
+gunzip$(PROG_SUFFIX):tools/gzip.c libdeflate$(LIB_SUFFIX)
+	$(CC) -o $@ $(CFLAGS) $(GZIP_CFLAGS) $(PROG_CFLAGS) -L. $+ libdeflate$(LIB_SUFFIX)
+else
+gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
+	ln gzip$(PROG_SUFFIX) $@
+endif
+
+ifeq ($(BUILD_PROGRAMS),yes)
+    BUILD_BENCHMARK_PROGRAM := yes
+    BUILD_GZIP_PROGRAM := yes
+endif
 
 TARGETS :=
 ifeq ($(BUILD_STATIC_LIBRARY),yes)
-    TARGETS += libdeflate.a
+    TARGETS += libdeflate$(LIB_SUFFIX)
 endif
 ifeq ($(BUILD_SHARED_LIBRARY),yes)
-    TARGETS += libdeflate.so
+    TARGETS += libdeflate$(SHLIB_SUFFIX)
 endif
 ifeq ($(BUILD_BENCHMARK_PROGRAM),yes)
-    TARGETS += benchmark
+    TARGETS += benchmark$(PROG_SUFFIX)
+endif
+ifeq ($(BUILD_GZIP_PROGRAM),yes)
+    TARGETS += gzip$(PROG_SUFFIX) gunzip$(PROG_SUFFIX)
 endif
 
 all:$(TARGETS)
 
 clean:
-	rm -f benchmark libdeflate.a libdeflate.so src/*.o
+	rm -f libdeflate.a libdeflate.so libdeflate.dll	src/*.o		\
+		benchmark benchmark.exe					\
+		gzip gzip.exe						\
+		gunzip gunzip.exe
 
 .PHONY: all clean
 
