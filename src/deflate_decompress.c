@@ -565,10 +565,10 @@ build_decode_table(u32 decode_table[],
 		len_counts[lens[sym]]++;
 
 	/* It is already guaranteed that all lengths are <= max_codeword_len,
-	 * but it cannot be assumed they form a valid prefix code.  A codeword
-	 * of length n should require a proportion of the codespace equaling
-	 * (1/2)^n.  The code is valid if and only if, by this measure, the
-	 * codespace is exactly filled by the lengths.  */
+	 * but it cannot be assumed they form a complete prefix code.  A
+	 * codeword of length n should require a proportion of the codespace
+	 * equaling (1/2)^n.  The code is complete if and only if, by this
+	 * measure, the codespace is exactly filled by the lengths.  */
 	remainder = 1;
 	for (len = 1; len <= max_codeword_len; len++) {
 		remainder <<= 1;
@@ -582,27 +582,34 @@ build_decode_table(u32 decode_table[],
 
 	if (unlikely(remainder != 0)) {
 		/* The lengths do not fill the codespace; that is, they form an
-		 * incomplete set.  */
-		if (remainder == (1U << max_codeword_len)) {
-			/* The code is completely empty.  By definition, no
-			 * symbols can be decoded with an empty code.
-			 * Consequently, we technically don't even need to fill
-			 * in the decode table.  However, to avoid accessing
-			 * uninitialized memory if the algorithm nevertheless
-			 * attempts to decode symbols using such a code, we fill
-			 * the decode table with default values.  */
-			for (unsigned i = 0; i < (1U << table_bits); i++) {
-				decode_table[i] =
-					make_decode_table_entry(
-							decode_results[0], 1);
-			}
+		 * incomplete code.  */
+
+		/* Initialize the table entries to default values.  When
+		 * decompressing a well-formed stream, these default values will
+		 * never be used.  But since a malformed stream might contain
+		 * any bits at all, these entries need to be set anyway.  */
+		u32 entry = make_decode_table_entry(decode_results[0], 1);
+		for (unsigned i = 0; i < (1U << table_bits); i++)
+			decode_table[i] = entry;
+
+		/* A completely empty code is permitted.  */
+		if (remainder == (1U << max_codeword_len))
 			return true;
-		}
-		return false;
+
+		/* The code is nonempty and incomplete.  Proceed only if there
+		 * is a single used symbol and its codeword has length 1.  The
+		 * DEFLATE RFC is somewhat unclear regarding this case.  What
+		 * zlib's decompressor does is permit this case for
+		 * literal/length and offset codes and assume the codeword is 0
+		 * rather than 1.  We do the same except we allow this case for
+		 * precodes too.  */
+		if (remainder != (1U << (max_codeword_len - 1)) ||
+		    len_counts[1] != 1)
+			return false;
 	}
 
-	/* Sort the symbols primarily by length and secondarily by symbol value.
-	 */
+	/* Sort the symbols primarily by increasing codeword length and
+	 * secondarily by increasing symbol value.  */
 
 	/* Initialize 'offsets' so that offsets[len] is the number of codewords
 	 * shorter than 'len' bits, including length 0.  */
@@ -617,17 +624,16 @@ build_decode_table(u32 decode_table[],
 	/* Generate the decode table entries.  Since we process codewords from
 	 * shortest to longest, the main portion of the decode table is filled
 	 * first; then the subtables are filled.  Note that it's already been
-	 * verified that the codewords form a valid (complete) prefix code.  */
+	 * verified that the code is nonempty and not over-subscribed.  */
 
-	/* Start with the index of the first used symbol.  */
+	/* Start with the smallest codeword length and the smallest-valued
+	 * symbol which has that codeword length.  */
 	sym_idx = offsets[0];
-
-	/* Start with the smallest used codeword length.  */
 	codeword_len = 1;
 	while (len_counts[codeword_len] == 0)
 		codeword_len++;
 
-	for (;;) {  /* For used each symbol and its codeword...  */
+	for (;;) {  /* For each used symbol and its codeword...  */
 		unsigned sym;
 		u32 entry;
 		unsigned i;
