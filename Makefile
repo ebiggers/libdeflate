@@ -162,7 +162,7 @@ gunzip$(PROG_SUFFIX):tools/gzip.c libdeflate$(LIB_SUFFIX)
 	$(CC) -o $@ $(CFLAGS) $(GZIP_CFLAGS) $(PROG_CFLAGS) -L. $+ libdeflate$(LIB_SUFFIX)
 else
 gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
-	ln gzip$(PROG_SUFFIX) $@
+	ln -f gzip$(PROG_SUFFIX) $@
 endif
 
 ifeq ($(BUILD_PROGRAMS),yes)
