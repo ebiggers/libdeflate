@@ -661,10 +661,14 @@ build_decode_table(u32 decode_table[],
 			 * there are fewer than 2**n codewords of length
 			 * 'table_bits + n' remaining, then n will need to be
 			 * incremented to bring in longer codewords until the
-			 * subtable can be filled completely.  */
+			 * subtable can be filled completely.  Note that it
+			 * always will, eventually, be possible to fill the
+			 * subtable, since the only case where we may have an
+			 * incomplete code is a single codeword of length 1,
+			 * and that never requires any subtables.  */
 			cur_table_bits = codeword_len - table_bits;
 			remainder = (s32)1 << cur_table_bits;
-			while (table_bits + cur_table_bits < max_codeword_len) {
+			for (;;) {
 				remainder -= len_counts[table_bits +
 							cur_table_bits];
 				if (remainder <= 0)
