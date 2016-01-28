@@ -90,16 +90,16 @@ override CFLAGS += -I.
 # Hide non-standard functions from standard headers (e.g. heapsort() on *BSD).
 override CFLAGS += -D_ANSI_SOURCE
 
-ifeq ($(SUPPORT_NEAR_OPTIMAL_PARSING),yes)
-  override CFLAGS += -DSUPPORT_NEAR_OPTIMAL_PARSING=1
+ifneq ($(SUPPORT_NEAR_OPTIMAL_PARSING),yes)
+  override CFLAGS += -DSUPPORT_NEAR_OPTIMAL_PARSING=0
 endif
 
 ifeq ($(UNSAFE_DECOMPRESSION),yes)
   override CFLAGS += -DUNSAFE_DECOMPRESSION=1
 endif
 
-ifeq ($(RUNTIME_CPU_DETECTION),yes)
-  override CFLAGS += -DRUNTIME_CPU_DETECTION=1
+ifneq ($(RUNTIME_CPU_DETECTION),yes)
+  override CFLAGS += -DRUNTIME_CPU_DETECTION=0
 endif
 
 SRC := src/aligned_malloc.c

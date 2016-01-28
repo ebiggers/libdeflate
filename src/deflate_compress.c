@@ -27,7 +27,7 @@
  * zlib at level 9.  However, it is slow.
  */
 #ifndef SUPPORT_NEAR_OPTIMAL_PARSING
-#  define SUPPORT_NEAR_OPTIMAL_PARSING 0
+#  define SUPPORT_NEAR_OPTIMAL_PARSING 1
 #endif
 
 /*

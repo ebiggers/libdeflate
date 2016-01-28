@@ -6,6 +6,10 @@
 
 #include "util.h"
 
+#ifndef RUNTIME_CPU_DETECTION
+#  define RUNTIME_CPU_DETECTION 1
+#endif
+
 #if RUNTIME_CPU_DETECTION && defined(__GNUC__) && defined(__x86_64__)
 #  define X86_CPU_FEATURES_ENABLED 1
 #endif
