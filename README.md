@@ -21,19 +21,18 @@ on it, and anyone is free to use it for any reason.
 Building
 ========
 
-Currently, the build system is very bare-bones.  On a UNIX-like system, just run
-`make`.  You need GNU Make and either GCC or Clang.
-
+On a UNIX-like system, just run `make`.  You need GNU Make and either GCC or
+Clang.  There is no `make install` yet; just copy the file(s) to where you want.
 There are various options which can be set on the `make` command line; see the
 Makefile for details.  As an example, you can run `make SUPPORT_COMPRESSION=no`
 to build a decompression-only library.
 
-There is no `make install` yet; just copy the file(s) to where you want.
+On Windows, a separate Makefile, `Makefile.msc`, is provided for the tools that
+come with Visual Studio.  However, using MinGW (GCC) instead is recommended
+because it is a superior compiler that produces better-performing binaries.  You
+can build Windows binaries using MinGW with a command like this:
 
-It's possible to build Windows binaries using MinGW with a command like this:
-
-    $ make CC=x86_64-w64-mingw32-gcc BUILD_PROGRAMS=yes
-
+    $ make CC=x86_64-w64-mingw32-gcc
 
 API
 ===

@@ -1,0 +1,48 @@
+#
+# Makefile for the Microsoft toolchain.  It builds a static library and a shared
+# library (DLL) and its corresponding import library.
+#
+# Usage:
+#	nmake /f Makefile.msc
+#
+
+CC = cl
+LD = link
+AR = lib
+CFLAGS = /MD /O2 -I.
+
+STATICLIB = libdeflatestatic.lib
+SHAREDLIB = libdeflate.dll
+IMPLIB    = libdeflate.lib
+
+OBJS =	src/adler32.obj			\
+	src/aligned_malloc.obj		\
+	src/crc32.obj			\
+	src/deflate_compress.obj	\
+	src/deflate_decompress.obj	\
+	src/gzip_compress.obj		\
+	src/gzip_decompress.obj		\
+	src/x86_cpu_features.obj	\
+	src/zlib_compress.obj		\
+	src/zlib_decompress.obj
+
+all: $(STATICLIB) $(SHAREDLIB) $(IMPLIB)
+
+$(STATICLIB): $(OBJS)
+	$(AR) $(ARFLAGS) -out:$@ $(OBJS)
+
+$(IMPLIB): $(SHAREDLIB)
+
+$(SHAREDLIB): $(OBJS)
+	$(LD) $(LDFLAGS) -out:$@ -dll -implib:$(IMPLIB) $(OBJS)
+
+.c.obj:
+	$(CC) -c /Fo:$@ $(CFLAGS) $<
+
+clean:
+	-del *.lib
+	-del *.dll
+	-del *.exe
+	-del *.exp
+	-del *.obj
+	-del src\*.obj

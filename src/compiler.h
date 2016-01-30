@@ -8,8 +8,10 @@
  * define as many of them as possible.  */
 #ifdef __GNUC__
 #  include "compiler-gcc.h"
+#elif defined(_MSC_VER)
+#  include "compiler-msc.h"
 #else
-#  warning "Unrecognized compiler.  Please add a header file for your compiler.  Compilation will proceed, but performance may suffer!"
+#  pragma message("Unrecognized compiler.  Please add a header file for your compiler.  Compilation will proceed, but performance may suffer!")
 #endif
 
 /* forceinline - force a function to be inlined  */

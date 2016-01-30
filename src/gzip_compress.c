@@ -8,12 +8,12 @@
  * You can do whatever you want with this file.
  */
 
-#include "libdeflate.h"
-
 #include "crc32.h"
 #include "deflate_compress.h"
 #include "gzip_constants.h"
 #include "unaligned.h"
+
+#include "libdeflate.h"
 
 LIBEXPORT size_t
 gzip_compress(struct deflate_compressor *c, const void *in, size_t in_size,

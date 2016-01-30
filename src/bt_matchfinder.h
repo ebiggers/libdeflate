@@ -126,7 +126,7 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 				const u32 max_len,
 				const u32 nice_len,
 				const u32 max_search_depth,
-				u32 next_hashes[const restrict static 2],
+				u32 next_hashes[restrict 2],
 				u32 * const restrict best_len_ret,
 				struct lz_match * restrict lz_matchptr,
 				const bool record_matches)
@@ -294,7 +294,7 @@ bt_matchfinder_get_matches(struct bt_matchfinder *mf,
 			   u32 max_len,
 			   u32 nice_len,
 			   u32 max_search_depth,
-			   u32 next_hashes[static 2],
+			   u32 next_hashes[2],
 			   u32 *best_len_ret,
 			   struct lz_match *lz_matchptr)
 {
@@ -323,7 +323,7 @@ bt_matchfinder_skip_position(struct bt_matchfinder *mf,
 			     u32 max_len,
 			     u32 nice_len,
 			     u32 max_search_depth,
-			     u32 next_hashes[static 2])
+			     u32 next_hashes[2])
 {
 	u32 best_len;
 	bt_matchfinder_advance_one_byte(mf,

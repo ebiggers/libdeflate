@@ -4,10 +4,10 @@ set -e
 
 make clean
 make -j4 CC=i686-w64-mingw32-gcc BUILD_PROGRAMS=yes
-cp *.exe /j/exe
+cp -vf *.exe /j/exe/
 
 make clean
 make -j4 CC=x86_64-w64-mingw32-gcc BUILD_PROGRAMS=yes
-cp *.exe /j/exe64
+cp -vf *.exe /j/exe64/
 
 sudo systemctl restart smbd

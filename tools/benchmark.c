@@ -8,68 +8,35 @@
  * You can do whatever you want with this file.
  */
 
-#define _FILE_OFFSET_BITS 64
-#undef _ANSI_SOURCE
-#define _POSIX_C_SOURCE 199309L
 
-#include <stdbool.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <getopt.h>
-#include <inttypes.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-#include <time.h>
-#include <unistd.h>
+#include "util.h"
 
-#include <libdeflate.h>
 #include <zlib.h>
+
+static const tchar *const optstring = T("s:l:123456789zgYZh");
 
 static void
 usage(FILE *fp)
 {
 	static const char * const str =
-"Usage: benchmark [FILE...]\n"
+"Usage: benchmark [OPTION]... [FILE]...\n"
 "\n"
 "A compression and decompression benchmark and testing program.\n"
 "Benchmarks are run on each FILE specified, or stdin if no file is specified.\n"
 "\n"
 "Options:\n"
-"  -s, --chunk-size=SIZE        chunk size\n"
-"  -l, --level=LEVEL            compression level [1-12]\n"
-"  -1                           fastest\n"
-"  -9                           slow\n"
-"  -z, --zlib                   use zlib wrapper\n"
-"  -g, --gzip                   use gzip wrapper\n"
-"  -Y, --compress-with-libz     compress with libz, not libdeflate\n"
-"  -Z, --decompress-with-libz   decompress with libz, not libdeflate\n"
-"  -h, --help                   print this help\n"
+"  -s SIZE   chunk size\n"
+"  -l LEVEL  compression level [1-12]\n"
+"  -1        fastest\n"
+"  -9        slow\n"
+"  -z        use zlib wrapper\n"
+"  -g        use gzip wrapper\n"
+"  -Y        compress with libz, not libdeflate\n"
+"  -Z        decompress with libz, not libdeflate\n"
+"  -h        print this help\n"
 	;
 
 	fputs(str, fp);
-}
-
-static void
-fatal_error(const char *fmt, ...)
-{
-	va_list va;
-
-	va_start(va, fmt);
-	fprintf(stderr, "ERROR: ");
-	vfprintf(stderr, fmt, va);
-	fprintf(stderr, "\n");
-	va_end(va);
-
-	exit(1);
-}
-
-#define ASSERT(expr, fmt, ...)				\
-{							\
-	if (!(expr))					\
-		fatal_error((fmt), ## __VA_ARGS__);	\
 }
 
 enum wrapper {
@@ -293,15 +260,6 @@ decompressor_destroy(struct decompressor *d)
 	(*d->free_private)(d->private);
 }
 
-#define TIME_UNIT_PER_MS 1000000
-static uint64_t
-current_time(void)
-{
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ((uint64_t)1000000000 * ts.tv_sec) + ts.tv_nsec;
-}
-
 static void
 do_benchmark(int fd, char *ubuf1, char *ubuf2,
 	     char *cbuf, uint32_t max_chunk_size,
@@ -312,13 +270,9 @@ do_benchmark(int fd, char *ubuf1, char *ubuf2,
 	uint64_t compress_time_total = 0;
 	uint64_t decompress_time_total = 0;
 
-#ifdef __WIN32__
-	_setmode(fd, O_BINARY);
-#endif
-
 	for (;;) {
 		char *p = ubuf1;
-		ssize_t bytes_read;
+		int32_t bytes_read;
 		size_t usize;
 		size_t csize;
 		uint64_t start_time;
@@ -381,27 +335,15 @@ do_benchmark(int fd, char *ubuf1, char *ubuf2,
 	       (unsigned int)(csize_total * 100 / usize_total),
 	       (unsigned int)(csize_total * 100000 / usize_total % 1000));
 	printf("\tCompression time: %"PRIu64" ms (%"PRIu64" MB/s)\n",
-	       compress_time_total / TIME_UNIT_PER_MS,
+	       compress_time_total / 1000000,
 	       1000 * usize_total / compress_time_total);
 	printf("\tDecompression time: %"PRIu64" ms (%"PRIu64" MB/s)\n",
-	       decompress_time_total / TIME_UNIT_PER_MS,
+	       decompress_time_total / 1000000,
 	       1000 * usize_total / decompress_time_total);
 }
 
-static const char *const optstring = "s:l:0123456789gzYZh";
-static const struct option longopts[] = {
-	{"chunk-size",           required_argument, NULL, 's'},
-	{"level",                required_argument, NULL, 'l'},
-	{"zlib",                 no_argument,       NULL, 'z'},
-	{"gzip",                 no_argument,       NULL, 'g'},
-	{"compress-with-libz",   no_argument,       NULL, 'Y'},
-	{"decompress-with-libz", no_argument,       NULL, 'Z'},
-	{"help",                 no_argument,       NULL, 'h'},
-	{NULL, 0, NULL, 0},
-};
-
 int
-main(int argc, char **argv)
+main(int argc, tchar *argv[])
 {
 	uint32_t chunk_size = 32768;
 	int level = 6;
@@ -415,17 +357,23 @@ main(int argc, char **argv)
 	struct decompressor d;
 	int opt_char;
 
-	while ((opt_char =
-		getopt_long(argc, argv, optstring, longopts, NULL)) != -1)
-	{
+	while ((opt_char = tgetopt(argc, argv, optstring)) != -1) {
 		switch (opt_char) {
 		case 's':
-			chunk_size = strtoul(optarg, NULL, 10);
+			chunk_size = tstrtoul(toptarg, NULL, 10);
 			break;
 		case 'l':
-			level = strtoul(optarg, NULL, 10);
+			level = tstrtoul(toptarg, NULL, 10);
 			break;
-		case '1' ... '9':
+		case '1':
+		case '2':
+		case '3':
+		case '4':
+		case '5':
+		case '6':
+		case '7':
+		case '8':
+		case '9':
 			level = opt_char - '0';
 			break;
 		case 'z':
@@ -449,8 +397,8 @@ main(int argc, char **argv)
 		}
 	}
 
-	argc -= optind;
-	argv += optind;
+	argc -= toptind;
+	argv += toptind;
 
 	printf("Benchmarking DEFLATE compression:\n");
 	printf("\tCompression level: %d\n", level);
@@ -475,14 +423,15 @@ main(int argc, char **argv)
 
 	if (argc == 0) {
 		printf("Reading from stdin...\n");
+		set_binary_mode(STDIN_FILENO);
 		do_benchmark(STDIN_FILENO, ubuf1, ubuf2,
 			     cbuf, chunk_size, &c, &d);
 	} else {
 		for (int i = 0; i < argc; i++) {
-			printf("Processing \"%s\"...\n", argv[i]);
-			int fd = open(argv[i], O_RDONLY);
+			printf("Processing \"%"TS"\"...\n", argv[i]);
+			int fd = topen(argv[i], O_RDONLY | O_BINARY);
 			ASSERT(fd >= 0,
-			       "Can't open \"%s\" for reading: %s\n",
+			       "Can't open \"%"TS"\" for reading: %s\n",
 			       argv[i], strerror(errno));
 			do_benchmark(fd, ubuf1, ubuf2, cbuf, chunk_size, &c, &d);
 			close(fd);

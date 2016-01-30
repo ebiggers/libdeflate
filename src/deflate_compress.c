@@ -11,12 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "libdeflate.h"
-
 #include "aligned_malloc.h"
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 #include "unaligned.h"
+
+#include "libdeflate.h"
 
 /*
  * Note: when compiling this file, SUPPORT_NEAR_OPTIMAL_PARSING should be
@@ -1565,7 +1565,7 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 	struct deflate_sequence *next_seq = c->sequences;
 	u32 litrunlen = 0;
 	u32 items_remaining = MAX_ITEMS_PER_BLOCK;
-	u32 next_hashes[2] = {};
+	u32 next_hashes[2] = {0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	deflate_reset_symbol_frequencies(c);
@@ -1662,7 +1662,7 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 	struct deflate_sequence *next_seq = c->sequences;
 	u32 litrunlen = 0;
 	u32 items_remaining = MAX_ITEMS_PER_BLOCK;
-	u32 next_hashes[2] = {};
+	u32 next_hashes[2] = {0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	deflate_reset_symbol_frequencies(c);
@@ -2171,7 +2171,7 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 	struct lz_match *cache_end;
 	const u8 *in_block_begin;
 	const u8 *in_block_end;
-	u32 next_hashes[2] = {};
+	u32 next_hashes[2] = {0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	deflate_reset_symbol_frequencies(c);

@@ -8,11 +8,11 @@
  * You can do whatever you want with this file.
  */
 
-#include "libdeflate.h"
-
 #include "crc32.h"
 #include "gzip_constants.h"
 #include "unaligned.h"
+
+#include "libdeflate.h"
 
 LIBEXPORT enum decompress_result
 gzip_decompress(struct deflate_decompressor *d,

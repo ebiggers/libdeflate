@@ -8,12 +8,12 @@
  * You can do whatever you want with this file.
  */
 
-#include "libdeflate.h"
-
 #include "adler32.h"
 #include "deflate_compress.h"
 #include "unaligned.h"
 #include "zlib_constants.h"
+
+#include "libdeflate.h"
 
 LIBEXPORT size_t
 zlib_compress(struct deflate_compressor *c, const void *in, size_t in_size,

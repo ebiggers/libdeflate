@@ -9,10 +9,10 @@
  *
  * ---------------------------------------------------------------------------
  *
- * This is a highly optimized DEFLATE decompressor.  On x86_64 it decompresses
- * data in about 52% of the time of zlib (48% if BMI2 instructions are
- * available).  On other architectures it should still be significantly faster
- * than zlib, but the difference may be smaller.
+ * This is a highly optimized DEFLATE decompressor.  When compiled with gcc on
+ * x86_64, it decompresses data in about 52% of the time of zlib (48% if BMI2
+ * instructions are available).  On other architectures it should still be
+ * significantly faster than zlib, but the difference may be smaller.
  *
  * Why this is faster than zlib's implementation:
  *
@@ -30,11 +30,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "libdeflate.h"
-
 #include "deflate_constants.h"
 #include "unaligned.h"
 #include "x86_cpu_features.h"
+
+#include "libdeflate.h"
 
 /* By default, if the expression passed to SAFETY_CHECK() evaluates to false,
  * then deflate_decompress() immediately returns DECOMPRESS_BAD_DATA as the
@@ -42,7 +42,7 @@
  * value of the expression is ignored, allowing the compiler to optimize out
  * some code.  */
 #if UNSAFE_DECOMPRESSION
-#  warning "UNSAFE DECOMPRESSION IS ENABLED. THIS MUST ONLY BE USED IF THE DECOMPRESSOR INPUT WILL ALWAYS BE TRUSTED!"
+#  pragma message("UNSAFE DECOMPRESSION IS ENABLED. THIS MUST ONLY BE USED IF THE DECOMPRESSOR INPUT WILL ALWAYS BE TRUSTED!")
 #  define SAFETY_CHECK(expr)	(void)(expr)
 #else
 #  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return DECOMPRESS_BAD_DATA
@@ -194,16 +194,14 @@ typedef machine_word_t bitbuf_t;
  * corrupted in such a way that fully retains its validity.  Users should run a
  * checksum against the uncompressed data if they wish to detect corruptions.
  */
-#define FILL_BITS_BYTEWISE()						\
-({									\
-	do {								\
-		if (likely(in_next != in_end))				\
-			bitbuf |= (bitbuf_t)*in_next++ << bitsleft;	\
-		else							\
-			overrun_count++;				\
-		bitsleft += 8;						\
-	} while (bitsleft <= BITBUF_NBITS - 8);				\
-})
+#define FILL_BITS_BYTEWISE()					\
+do {								\
+	if (likely(in_next != in_end))				\
+		bitbuf |= (bitbuf_t)*in_next++ << bitsleft;	\
+	else							\
+		overrun_count++;				\
+	bitsleft += 8;						\
+} while (bitsleft <= BITBUF_NBITS - 8)
 
 /*
  * Fill the bitbuffer variable by reading the next word from the input buffer.
@@ -213,12 +211,12 @@ typedef machine_word_t bitbuf_t;
  * most efficient on little-endian architectures that support fast unaligned
  * access, such as x86 and x86_64.
  */
-#define FILL_BITS_WORDWISE()						\
-({									\
-	bitbuf |= get_unaligned_leword(in_next) << bitsleft;		\
-	in_next += (BITBUF_NBITS - bitsleft) >> 3;			\
-	bitsleft += (BITBUF_NBITS - bitsleft) & ~7;			\
-})
+#define FILL_BITS_WORDWISE()					\
+do {								\
+	bitbuf |= get_unaligned_leword(in_next) << bitsleft;	\
+	in_next += (BITBUF_NBITS - bitsleft) >> 3;		\
+	bitsleft += (BITBUF_NBITS - bitsleft) & ~7;		\
+} while (0)
 
 /*
  * Does the bitbuffer variable currently contain at least 'n' bits?
@@ -226,56 +224,34 @@ typedef machine_word_t bitbuf_t;
 #define HAVE_BITS(n) (bitsleft >= (n))
 
 /*
- * Raw form of ENSURE_BITS(): the bitbuffer variable must not already contain
- * the requested number of bits.
+ * Load more bits from the input buffer until the specified number of bits is
+ * present in the bitbuffer variable.  'n' cannot be too large; see MAX_ENSURE
+ * and CAN_ENSURE().
  */
-#define DO_ENSURE_BITS(n)					\
-({								\
+#define ENSURE_BITS(n)						\
+if (!HAVE_BITS(n)) {						\
 	if (CPU_IS_LITTLE_ENDIAN() &&				\
 	    UNALIGNED_ACCESS_IS_FAST &&				\
 	    likely(in_end - in_next >= sizeof(bitbuf_t)))	\
 		FILL_BITS_WORDWISE();				\
 	else							\
 		FILL_BITS_BYTEWISE();				\
-})
-
-/*
- * Load more bits from the input buffer until the specified number of bits is
- * present in the bitbuffer variable.  'n' cannot be too large; see MAX_ENSURE
- * and CAN_ENSURE().
- */
-#define ENSURE_BITS(n)							\
-({									\
-	if (!HAVE_BITS(n))						\
-		DO_ENSURE_BITS(n);					\
-})
+}
 
 /*
  * Return the next 'n' bits from the bitbuffer variable without removing them.
  */
-#define BITS(n)								\
-({									\
-	(u32)bitbuf & (((u32)1 << (n)) - 1);				\
-})
+#define BITS(n) ((u32)bitbuf & (((u32)1 << (n)) - 1))
 
 /*
  * Remove the next 'n' bits from the bitbuffer variable.
  */
-#define REMOVE_BITS(n)							\
-({									\
-	bitbuf >>= (n);							\
-	bitsleft -= (n);						\
-})
+#define REMOVE_BITS(n) (bitbuf >>= (n), bitsleft -= (n))
 
 /*
  * Remove and return the next 'n' bits from the bitbuffer variable.
  */
-#define POP_BITS(n)							\
-({									\
-	u32 bits = BITS(n);						\
-	REMOVE_BITS(n);							\
-	bits;								\
-})
+#define POP_BITS(n) (tmp32 = BITS(n), REMOVE_BITS(n), tmp32)
 
 /*
  * Align the input to the next byte boundary, discarding any remaining bits in
@@ -287,24 +263,17 @@ typedef machine_word_t bitbuf_t;
  * be actually discarded.
  */
 #define ALIGN_INPUT()							\
-({									\
+do {									\
 	in_next -= (bitsleft >> 3) - MIN(overrun_count, bitsleft >> 3);	\
 	bitbuf = 0;							\
 	bitsleft = 0;							\
-})
+} while(0)
 
 /*
  * Read a 16-bit value from the input.  This must have been preceded by a call
  * to ALIGN_INPUT(), and the caller must have already checked for overrun.
  */
-#define READ_U16()							\
-({									\
-	u16 v;								\
-									\
-	v = get_unaligned_le16(in_next);				\
-	in_next += 2;							\
-	v;								\
-})
+#define READ_U16() (tmp16 = get_unaligned_le16(in_next), in_next += 2, tmp16)
 
 /*****************************************************************************
  *                              Huffman decoding                             *

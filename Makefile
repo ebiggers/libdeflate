@@ -53,19 +53,19 @@ ifneq ($(findstring -mingw,$(CC)),)
         AR := $(patsubst %-gcc,%-ar,$(CC))
     endif
     WINDOWS      := yes
-    LIB_SUFFIX   := .a
+    LIB_SUFFIX   := .lib
     SHLIB_SUFFIX := .dll
     PROG_SUFFIX  := .exe
-    PROG_CFLAGS  := -static
-    GZIP_CFLAGS  := -municode
+    PROG_SRC     := tools/wgetopt.c
+    PROG_CFLAGS  := -static -municode
     SHLIB_IS_PIC := no
 else
     WINDOWS      := no
     LIB_SUFFIX   := .a
     SHLIB_SUFFIX := .so
     PROG_SUFFIX  :=
+    PROG_SRC     :=
     PROG_CFLAGS  :=
-    GZIP_CFLAGS  :=
     SHLIB_IS_PIC := yes
 endif
 
@@ -101,6 +101,9 @@ endif
 ifneq ($(RUNTIME_CPU_DETECTION),yes)
   override CFLAGS += -DRUNTIME_CPU_DETECTION=0
 endif
+
+PROG_CFLAGS += $(CFLAGS)
+PROG_SRC += libdeflate$(LIB_SUFFIX)
 
 SRC := src/aligned_malloc.c
 ifeq ($(SUPPORT_COMPRESSION),yes)
@@ -151,15 +154,15 @@ libdeflate$(SHLIB_SUFFIX):$(SHLIB_OBJ)
 libdeflate$(LIB_SUFFIX):$(OBJ)
 	$(AR) cr $@ $+
 
-benchmark$(PROG_SUFFIX):tools/benchmark.c libdeflate$(LIB_SUFFIX)
-	$(CC) -o $@ $(CFLAGS) -L. $+ libdeflate$(LIB_SUFFIX) -lz
+benchmark$(PROG_SUFFIX):tools/benchmark.c $(PROG_SRC)
+	$(CC) -o $@ $(PROG_CFLAGS) $+ -lz
 
-gzip$(PROG_SUFFIX):tools/gzip.c libdeflate$(LIB_SUFFIX)
-	$(CC) -o $@ $(CFLAGS) $(GZIP_CFLAGS) $(PROG_CFLAGS) -L. $+ libdeflate$(LIB_SUFFIX)
+gzip$(PROG_SUFFIX):tools/gzip.c $(PROG_SRC)
+	$(CC) -o $@ $(PROG_CFLAGS) $+
 
 ifeq ($(WINDOWS),yes)
-gunzip$(PROG_SUFFIX):tools/gzip.c libdeflate$(LIB_SUFFIX)
-	$(CC) -o $@ $(CFLAGS) $(GZIP_CFLAGS) $(PROG_CFLAGS) -L. $+ libdeflate$(LIB_SUFFIX)
+gunzip$(PROG_SUFFIX):tools/gzip.c $(PROG_SRC)
+	$(CC) -o $@ $(PROG_CFLAGS) $+
 else
 gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
 	ln -f gzip$(PROG_SUFFIX) $@
@@ -187,10 +190,8 @@ endif
 all:$(TARGETS)
 
 clean:
-	rm -f libdeflate.a libdeflate.so libdeflate.dll	src/*.o		\
-		benchmark benchmark.exe					\
-		gzip gzip.exe						\
-		gunzip gunzip.exe
+	rm -f libdeflate.a libdeflate.so libdeflate.dll	src/*.o	src/*.obj \
+		benchmark gzip gunzip *.exe *.lib *.obj *.exp
 
 .PHONY: all clean
 

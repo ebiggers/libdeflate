@@ -8,76 +8,7 @@
  * You can do whatever you want with this file.
  */
 
-#define _FILE_OFFSET_BITS 64
-
-#include <errno.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <limits.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-#ifdef __WIN32__
-#  include <wchar.h>
-#  include <windows.h>
-#else
-#  include <sys/mman.h>
-#endif
-
-#include "libdeflate.h"
-
-#ifdef __WIN32__
-#  define 	main		wmain
-#  define	tchar		wchar_t
-#  define	_T(text)	L##text
-#  define	T(text)		_T(text)
-#  define	TS		"ls"
-#  define	tstrcmp		wcscmp
-#  define	tstrlen		wcslen
-#  define	tmemcpy		wmemcpy
-#  define	tstrrchr	wcsrchr
-#  define 	tstrtol		wcstol
-#  define 	topen		_wopen
-#  define 	topen		_wopen
-#  define 	tstat		_wstati64
-#  define 	tunlink		_wunlink
-#else
-#  define 	main		main
-#  define 	tchar		char
-#  define 	T(text)		text
-#  define	TS		"s"
-#  define 	tstrcmp		strcmp
-#  define	tstrlen		strlen
-#  define	tmemcpy		memcpy
-#  define 	tstrrchr	strrchr
-#  define 	tstrtol		strtol
-#  define 	topen		open
-#  define 	tstat		stat
-#  define 	tunlink		unlink
-#endif
-
-#ifndef O_BINARY
-#  define	O_BINARY	0
-#endif
-
-static const tchar *
-basename(const tchar *argv0)
-{
-	const tchar *p = tstrrchr(argv0, '/');
-#ifdef __WIN32__
-	const tchar *p2 = tstrrchr(argv0, '\\');
-	if (p2 && (!p || p2 > p))
-		p = p2;
-#endif
-	if (p)
-		return p + 1;
-	return argv0;
-}
+#include "util.h"
 
 static bool
 is_gunzip(const tchar *argv0)
@@ -86,7 +17,7 @@ is_gunzip(const tchar *argv0)
 
 	if (!tstrcmp(name, T("gunzip")))
 		return true;
-#ifdef __WIN32__
+#ifdef _WIN32
 	if (!tstrcmp(name, T("gunzip.exe")))
 		return true;
 #endif
@@ -102,26 +33,6 @@ usage(void)
 "    Note: this program is *not* intended as a full gzip replacement and only\n"
 "    works well on small to medium-sized files.\n");
 	exit(1);
-}
-
-static void
-fatal_error(const char *fmt, ...)
-{
-	va_list va;
-
-	va_start(va, fmt);
-	fprintf(stderr, "ERROR: ");
-	vfprintf(stderr, fmt, va);
-	fprintf(stderr, "\n");
-	va_end(va);
-
-	exit(1);
-}
-
-#define ASSERT(expr, fmt, ...)				\
-{							\
-	if (!(expr))					\
-		fatal_error((fmt), ## __VA_ARGS__);	\
 }
 
 static void *
@@ -148,8 +59,8 @@ map_file_contents(const tchar *path, size_t *size_ret, void **token_ret)
 	       "File \"%"TS"\" cannot be processed by "
 	       "this program because it is too large.", path);
 
-#ifdef __WIN32__
-	HANDLE h = CreateFileMapping((HANDLE)_get_osfhandle(fd),
+#ifdef _WIN32
+	HANDLE h = CreateFileMapping((HANDLE)(intptr_t)_get_osfhandle(fd),
 				     NULL, PAGE_READONLY, 0, 0, NULL);
 	ASSERT(h != NULL, "Unable create file mapping for \"%"TS"\": "
 	       "Windows error %u", path, (unsigned int )GetLastError());
@@ -178,7 +89,7 @@ map_file_contents(const tchar *path, size_t *size_ret, void **token_ret)
 static void
 unmap_file_contents(void *token, void *map, size_t size)
 {
-#ifdef __WIN32__
+#ifdef _WIN32
 	UnmapViewOfFile(map);
 	CloseHandle((HANDLE)token);
 #else
@@ -207,7 +118,7 @@ write_file(const tchar *path, const void *contents, size_t size)
 		ASSERT(ret > 0, "Error writing data to \"%"TS"\": %s",
 		       path, strerror(errno));
 		size -= ret;
-		contents += ret;
+		contents = (const uint8_t *)contents + ret;
 	}
 
 	ASSERT(!close(fd), "Error writing data to \"%"TS"\"",
@@ -253,7 +164,7 @@ decompress_file(struct deflate_decompressor *d, const tchar *path, bool force)
 
 	ASSERT(compressed_size >= sizeof(uint32_t),
 	       "File \"%"TS"\" is not a gzip file.", path);
-	uncompressed_size = load_u32_gzip(compressed_data +
+	uncompressed_size = load_u32_gzip((const uint8_t *)compressed_data +
 					  (compressed_size - sizeof(uint32_t)));
 	uncompressed_data = malloc(uncompressed_size);
 	ASSERT(uncompressed_data != NULL,

@@ -11,6 +11,19 @@ extern "C" {
 
 #include <stddef.h>
 
+/* Microsoft C / Visual Studio garbage.  If you want to link to the DLL version
+ * of libdeflate, then #define LIBDEFLATE_DLL.  */
+#ifdef _MSC_VER
+#  ifdef BUILDING_LIBDEFLATE
+#    define LIBDEFLATEAPI __declspec(dllexport)
+#  elif defined(LIBDEFLATE_DLL)
+#    define LIBDEFLATEAPI __declspec(dllimport)
+#  endif
+#endif
+#ifndef LIBDEFLATEAPI
+#  define LIBDEFLATEAPI
+#endif
+
 /* ========================================================================== */
 /*                             Compression                                    */
 /* ========================================================================== */
@@ -28,7 +41,7 @@ struct deflate_compressor;
  * to 32768, the largest size permissible in the DEFLATE format.  It cannot be
  * changed at runtime.
  */
-extern struct deflate_compressor *
+LIBDEFLATEAPI struct deflate_compressor *
 deflate_alloc_compressor(unsigned int compression_level);
 
 /*
@@ -38,7 +51,7 @@ deflate_alloc_compressor(unsigned int compression_level);
  * The return value is the compressed size in bytes, or 0 if the data could not
  * be compressed to 'out_nbytes_avail' bytes or fewer.
  */
-extern size_t
+LIBDEFLATEAPI size_t
 deflate_compress(struct deflate_compressor *compressor,
 		 const void *in, size_t in_nbytes,
 		 void *out, size_t out_nbytes_avail);
@@ -62,13 +75,13 @@ deflate_compress(struct deflate_compressor *compressor,
  * and store the data uncompressed if deflate_compress() returns 0, indicating
  * that the compressed data did not fit into the provided output buffer.
  */
-extern size_t
+LIBDEFLATEAPI size_t
 deflate_compress_bound(struct deflate_compressor *compressor, size_t in_nbytes);
 
 /*
  * Like deflate_compress(), but stores the data in the zlib wrapper format.
  */
-extern size_t
+LIBDEFLATEAPI size_t
 zlib_compress(struct deflate_compressor *compressor,
 	      const void *in, size_t in_nbytes,
 	      void *out, size_t out_nbytes_avail);
@@ -77,13 +90,13 @@ zlib_compress(struct deflate_compressor *compressor,
  * Like deflate_compress_bound(), but assumes the data will be compressed with
  * zlib_compress() rather than with deflate_compress().
  */
-extern size_t
+LIBDEFLATEAPI size_t
 zlib_compress_bound(struct deflate_compressor *compressor, size_t in_nbytes);
 
 /*
  * Like deflate_compress(), but stores the data in the gzip wrapper format.
  */
-extern size_t
+LIBDEFLATEAPI size_t
 gzip_compress(struct deflate_compressor *compressor,
 	      const void *in, size_t in_nbytes,
 	      void *out, size_t out_nbytes_avail);
@@ -92,7 +105,7 @@ gzip_compress(struct deflate_compressor *compressor,
  * Like deflate_compress_bound(), but assumes the data will be compressed with
  * gzip_compress() rather than with deflate_compress().
  */
-extern size_t
+LIBDEFLATEAPI size_t
 gzip_compress_bound(struct deflate_compressor *compressor, size_t in_nbytes);
 
 /*
@@ -100,7 +113,7 @@ gzip_compress_bound(struct deflate_compressor *compressor, size_t in_nbytes);
  * deflate_alloc_compressor().  If a NULL pointer is passed in, no action is
  * taken.
  */
-extern void
+LIBDEFLATEAPI void
 deflate_free_compressor(struct deflate_compressor *compressor);
 
 /* ========================================================================== */
@@ -120,7 +133,7 @@ struct deflate_decompressor;
  * DEFLATE, zlib, or gzip); however, the appropriate decompression function must
  * be called.
  */
-extern struct deflate_decompressor *
+LIBDEFLATEAPI struct deflate_decompressor *
 deflate_alloc_decompressor(void);
 
 /*
@@ -172,7 +185,7 @@ enum decompress_result {
  *     but no other problems were encountered, or another nonzero result code if
  *     decompression failed for another reason.
  */
-extern enum decompress_result
+LIBDEFLATEAPI enum decompress_result
 deflate_decompress(struct deflate_decompressor *decompressor,
 		   const void *in, size_t in_nbytes,
 		   void *out, size_t out_nbytes_avail,
@@ -182,7 +195,7 @@ deflate_decompress(struct deflate_decompressor *decompressor,
  * Like deflate_decompress(), but assumes the zlib wrapper format instead of raw
  * DEFLATE.
  */
-extern enum decompress_result
+LIBDEFLATEAPI enum decompress_result
 zlib_decompress(struct deflate_decompressor *decompressor,
 		const void *in, size_t in_nbytes,
 		void *out, size_t out_nbytes_avail,
@@ -192,7 +205,7 @@ zlib_decompress(struct deflate_decompressor *decompressor,
  * Like deflate_decompress(), but assumes the gzip wrapper format instead of raw
  * DEFLATE.
  */
-extern enum decompress_result
+LIBDEFLATEAPI enum decompress_result
 gzip_decompress(struct deflate_decompressor *decompressor,
 		const void *in, size_t in_nbytes,
 		void *out, size_t out_nbytes_avail,
@@ -203,7 +216,7 @@ gzip_decompress(struct deflate_decompressor *decompressor,
  * with deflate_alloc_decompressor().  If a NULL pointer is passed in, no action
  * is taken.
  */
-extern void
+LIBDEFLATEAPI void
 deflate_free_decompressor(struct deflate_decompressor *decompressor);
 
 

@@ -167,12 +167,12 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 			     const u32 max_len,
 			     const u32 nice_len,
 			     const u32 max_search_depth,
-			     u32 next_hashes[const restrict static 2],
+			     u32 next_hashes[restrict 2],
 			     u32 * const restrict offset_ret)
 {
 	const u8 *in_next = in_base + cur_pos;
 	u32 depth_remaining = max_search_depth;
-	const u8 *best_matchptr = best_matchptr; /* uninitialized */
+	const u8 *best_matchptr = in_next;
 	const mf_pos_t cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
 	mf_pos_t cur_node3, cur_node4;
 	u32 hash3, hash4;
@@ -335,7 +335,7 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 			      const ptrdiff_t cur_pos,
 			      const ptrdiff_t end_pos,
 			      const u32 count,
-			      u32 next_hashes[const restrict static 2])
+			      u32 next_hashes[restrict 2])
 {
 	const u8 *in_next = in_base + cur_pos;
 	const u8 * const stop_ptr = in_next + count;

@@ -2,9 +2,7 @@
  * compiler-gcc.h - definitions for the GNU C compiler (and for clang)
  */
 
-#pragma once
-
-#ifdef __WIN32__
+#ifdef _WIN32
 #  define LIBEXPORT __declspec(dllexport)
 #else
 #  define LIBEXPORT __attribute__((visibility("default")))

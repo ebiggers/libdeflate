@@ -8,11 +8,11 @@
  * You can do whatever you want with this file.
  */
 
-#include "libdeflate.h"
-
 #include "adler32.h"
 #include "unaligned.h"
 #include "zlib_constants.h"
+
+#include "libdeflate.h"
 
 LIBEXPORT enum decompress_result
 zlib_decompress(struct deflate_decompressor *d,

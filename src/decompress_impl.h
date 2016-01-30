@@ -26,6 +26,8 @@ FUNCNAME(struct deflate_decompressor * restrict d,
 	u16 nlen;
 	unsigned num_litlen_syms;
 	unsigned num_offset_syms;
+	u16 tmp16;
+	u32 tmp32;
 
 next_block:
 	/* Starting to read the next block.  */
