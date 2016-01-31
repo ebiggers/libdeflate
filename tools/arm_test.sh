@@ -10,4 +10,5 @@ make -j4 BUILD_SHARED_LIBRARY=no BUILD_BENCHMARK_PROGRAM=yes \
 	CFLAGS="--sysroot=$NDKDIR/platforms/android-12/arch-arm -march=armv7-a -fPIC -pie -mfpu=neon -mfloat-abi=softfp"
 
 adb push benchmark /data/local/tmp
-adb shell /data/local/tmp/benchmark /data/local/tmp/testdata "$@"
+adb push $HOME/data/testdata  /data/local/tmp
+adb shell /data/local/tmp/benchmark "$@" /data/local/tmp/testdata

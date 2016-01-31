@@ -9,5 +9,5 @@ make -j4 BUILD_SHARED_LIBRARY=no BUILD_BENCHMARK_PROGRAM=yes \
 	CC="$TOOLCHAIN_DIR/bin/mips-openwrt-linux-musl-gcc" \
 	CFLAGS="-DNEED_PRINTF"
 
-scp benchmark root@dd-wrt:
-ssh root@dd-wrt ./benchmark a "$@"
+scp benchmark $HOME/data/test root@dd-wrt:
+ssh root@dd-wrt ./benchmark "$@" test
