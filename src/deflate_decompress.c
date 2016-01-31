@@ -533,6 +533,19 @@ build_decode_table(u32 decode_table[],
 	for (sym = 0; sym < num_syms; sym++)
 		len_counts[lens[sym]]++;
 
+	/* Sort the symbols primarily by increasing codeword length and
+	 * secondarily by increasing symbol value.  */
+
+	/* Initialize 'offsets' so that offsets[len] is the number of codewords
+	 * shorter than 'len' bits, including length 0.  */
+	offsets[0] = 0;
+	for (len = 0; len < max_codeword_len; len++)
+		offsets[len + 1] = offsets[len] + len_counts[len];
+
+	/* Use the 'offsets' array to sort the symbols.  */
+	for (sym = 0; sym < num_syms; sym++)
+		sorted_syms[offsets[lens[sym]]++] = sym;
+
 	/* It is already guaranteed that all lengths are <= max_codeword_len,
 	 * but it cannot be assumed they form a complete prefix code.  A
 	 * codeword of length n should require a proportion of the codespace
@@ -576,19 +589,6 @@ build_decode_table(u32 decode_table[],
 		    len_counts[1] != 1)
 			return false;
 	}
-
-	/* Sort the symbols primarily by increasing codeword length and
-	 * secondarily by increasing symbol value.  */
-
-	/* Initialize 'offsets' so that offsets[len] is the number of codewords
-	 * shorter than 'len' bits, including length 0.  */
-	offsets[0] = 0;
-	for (len = 0; len < max_codeword_len; len++)
-		offsets[len + 1] = offsets[len] + len_counts[len];
-
-	/* Use the 'offsets' array to sort the symbols.  */
-	for (sym = 0; sym < num_syms; sym++)
-		sorted_syms[offsets[lens[sym]]++] = sym;
 
 	/* Generate the decode table entries.  Since we process codewords from
 	 * shortest to longest, the main portion of the decode table is filled
