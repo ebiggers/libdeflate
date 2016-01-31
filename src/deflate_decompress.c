@@ -783,7 +783,8 @@ copy_word_unaligned(const void *src, void *dst)
 #undef FUNCNAME
 #undef ATTRIBUTES
 
-#if X86_CPU_FEATURES_ENABLED && !defined(__BMI2__)
+#if X86_CPU_FEATURES_ENABLED && \
+	COMPILER_SUPPORTS_BMI2_TARGET && !defined(__BMI2__)
 #  define FUNCNAME deflate_decompress_bmi2
 #  define ATTRIBUTES __attribute__((target("bmi2")))
 #  include "decompress_impl.h"

@@ -1,6 +1,17 @@
 /*
- * compiler-gcc.h - definitions for the GNU C compiler (and for clang)
+ * compiler-gcc.h - definitions for the GNU C Compiler.  Currently this also
+ * handles clang and the Intel C Compiler.
  */
+
+#define GCC_PREREQ(major, minor)					\
+	(!defined(__clang__) && !defined(__INTEL_COMPILER) &&		\
+	 (__GNUC__ > major ||						\
+	  (__GNUC__ == major && __GNUC_MINOR__ >= minor)))
+
+#define CLANG_PREREQ(major, minor)					\
+	(defined(__clang__) &&						\
+	 (__clang_major__ > major ||					\
+	  (__clang_major__ == major && __clang_minor__ >= minor)))
 
 #ifdef _WIN32
 #  define LIBEXPORT __declspec(dllexport)
@@ -42,11 +53,11 @@ store_##type##_unaligned(type v, void *p)			\
 #  define UNALIGNED_ACCESS_IS_FAST 1
 #endif
 
-#if (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)
+#if GCC_PREREQ(4, 8)
 #  define compiler_bswap16	__builtin_bswap16
 #endif
 
-#if (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3)
+#if GCC_PREREQ(4, 3)
 #  define compiler_bswap32	__builtin_bswap32
 #  define compiler_bswap64	__builtin_bswap64
 #endif
@@ -55,3 +66,12 @@ store_##type##_unaligned(type v, void *p)			\
 #define compiler_fls64(n)	(63 - __builtin_clzll(n))
 #define compiler_ffs32(n)	__builtin_ctz(n)
 #define compiler_ffs64(n)	__builtin_ctzll(n)
+
+/* Does the compiler support the 'target' function attribute?  */
+#define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE		\
+	(CLANG_PREREQ(3, 7) || GCC_PREREQ(4, 4))
+
+/* Does the compiler support __attribute__((target("bmi2")))?  */
+#define COMPILER_SUPPORTS_BMI2_TARGET				\
+	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
+	 (CLANG_PREREQ(3, 7) || GCC_PREREQ(4, 7)))

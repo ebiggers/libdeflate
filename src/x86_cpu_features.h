@@ -10,7 +10,8 @@
 #  define RUNTIME_CPU_DETECTION 1
 #endif
 
-#if RUNTIME_CPU_DETECTION && defined(__GNUC__) && defined(__x86_64__)
+#if RUNTIME_CPU_DETECTION && defined(__x86_64__) && \
+	COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
 #  define X86_CPU_FEATURES_ENABLED 1
 #endif
 
