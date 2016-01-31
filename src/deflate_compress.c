@@ -304,7 +304,7 @@ struct deflate_compressor {
 	/* Dynamic Huffman codes for the current block  */
 	struct deflate_codes codes;
 
-	/* Static Huffman codes set at allocation time  */
+	/* Static Huffman codes set just before first use  */
 	struct deflate_codes static_codes;
 
 	/* A table for fast lookups of offset slot by match offset.
@@ -1116,6 +1116,27 @@ deflate_make_huffman_codes(const struct deflate_freqs *freqs,
 				  codes->codewords.offset);
 }
 
+/* Initialize c->static_codes.  */
+static void
+deflate_init_static_codes(struct deflate_compressor *c)
+{
+	unsigned i;
+
+	for (i = 0; i < 144; i++)
+		c->freqs.litlen[i] = 1 << (9 - 8);
+	for (; i < 256; i++)
+		c->freqs.litlen[i] = 1 << (9 - 9);
+	for (; i < 280; i++)
+		c->freqs.litlen[i] = 1 << (9 - 7);
+	for (; i < 288; i++)
+		c->freqs.litlen[i] = 1 << (9 - 8);
+
+	for (i = 0; i < 32; i++)
+		c->freqs.offset[i] = 1 << (5 - 5);
+
+	deflate_make_huffman_codes(&c->freqs, &c->static_codes);
+}
+
 /* Write the header fields common to all DEFLATE block types.  */
 static void
 deflate_write_block_header(struct deflate_output_bitstream *os,
@@ -1476,19 +1497,21 @@ deflate_write_block(struct deflate_compressor * restrict c,
 	/* Account for end-of-block symbol  */
 	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 
-       if (items_remaining < MAX_ITEMS_PER_BLOCK - 100) {
-               /* Use custom ("dynamic") Huffman codes.  */
-               deflate_write_block_header(os, is_final_block,
-                                          DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN);
-               deflate_make_huffman_codes(&c->freqs, &c->codes);
-               deflate_write_huffman_codes(c, os);
-               codes = &c->codes;
-       } else {
-               /* This is a very short block.  Just use the static codes.  */
-               deflate_write_block_header(os, is_final_block,
-                                          DEFLATE_BLOCKTYPE_STATIC_HUFFMAN);
-               codes = &c->static_codes;
-       }
+	if (items_remaining < MAX_ITEMS_PER_BLOCK - 100) {
+		/* Use custom ("dynamic") Huffman codes.  */
+		deflate_write_block_header(os, is_final_block,
+					   DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN);
+		deflate_make_huffman_codes(&c->freqs, &c->codes);
+		deflate_write_huffman_codes(c, os);
+		codes = &c->codes;
+	} else {
+		/* This is a very short block.  Just use the static codes.  */
+		deflate_write_block_header(os, is_final_block,
+					   DEFLATE_BLOCKTYPE_STATIC_HUFFMAN);
+		codes = &c->static_codes;
+		if (codes->codewords.litlen[0] == 0xFFFFFFFF)
+			deflate_init_static_codes(c);
+	}
 
 	deflate_write_sequences(os, block_begin, c->sequences, codes);
 	deflate_write_end_of_block(os, codes);
@@ -2377,27 +2400,6 @@ deflate_init_offset_slot_fast(struct deflate_compressor *c)
 	}
 }
 
-/* Initialize c->static_codes.  */
-static void
-deflate_init_static_codes(struct deflate_compressor *c)
-{
-	unsigned i;
-
-	for (i = 0; i < 144; i++)
-		c->freqs.litlen[i] = 1 << (9 - 8);
-	for (; i < 256; i++)
-		c->freqs.litlen[i] = 1 << (9 - 9);
-	for (; i < 280; i++)
-		c->freqs.litlen[i] = 1 << (9 - 7);
-	for (; i < 288; i++)
-		c->freqs.litlen[i] = 1 << (9 - 8);
-
-	for (i = 0; i < 32; i++)
-		c->freqs.offset[i] = 1 << (5 - 5);
-
-	deflate_make_huffman_codes(&c->freqs, &c->static_codes);
-}
-
 LIBEXPORT struct deflate_compressor *
 deflate_alloc_compressor(unsigned int compression_level)
 {
@@ -2502,7 +2504,7 @@ deflate_alloc_compressor(unsigned int compression_level)
 	}
 
 	deflate_init_offset_slot_fast(c);
-	deflate_init_static_codes(c);
+	c->static_codes.codewords.litlen[0] = 0xFFFFFFFF;
 
 	return c;
 }
