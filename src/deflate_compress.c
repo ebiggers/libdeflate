@@ -2344,28 +2344,6 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
-#if 0
-/* Initialize c->length_slot_fast.  */
-static void
-deflate_init_length_slot_fast(struct deflate_compressor *c)
-{
-	unsigned length_slot;
-	unsigned length;
-	unsigned length_end;
-
-	for (length_slot = 0;
-	     length_slot < ARRAY_LEN(deflate_length_slot_base);
-	     length_slot++)
-	{
-		length = deflate_length_slot_base[length_slot];
-		length_end = length + (1 << deflate_extra_length_bits[length_slot]);
-		do {
-			c->length_slot_fast[length] = length_slot;
-		} while (++length != length_end);
-	}
-}
-#endif
-
 /* Initialize c->offset_slot_fast.  */
 static void
 deflate_init_offset_slot_fast(struct deflate_compressor *c)
