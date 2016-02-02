@@ -65,6 +65,10 @@ deflate_compress(struct deflate_compressor *compressor,
  * the true upper bound.  The return value is guaranteed to be the same for all
  * invocations with the same compressor and same 'in_nbytes'.
  *
+ * As a special case, 'compressor' may be NULL.  This causes the bound to be
+ * taken across *any* deflate_compressor that could ever be allocated with this
+ * build of the library, with any options.
+ *
  * Note that this function is not necessary in many applications.  With
  * block-based compression, it is usually preferable to separately store the
  * uncompressed size of each block and to store any blocks that did not compress
