@@ -8,10 +8,15 @@
 	 (__GNUC__ > major ||						\
 	  (__GNUC__ == major && __GNUC_MINOR__ >= minor)))
 
-#define CLANG_PREREQ(major, minor)					\
-	(defined(__clang__) &&						\
-	 (__clang_major__ > major ||					\
-	  (__clang_major__ == major && __clang_minor__ >= minor)))
+#ifndef __has_attribute
+#  define __has_attribute(attribute)	0
+#endif
+#ifndef __has_feature
+#  define __has_feature(feature)	0
+#endif
+#ifndef __has_builtin
+#  define __has_builtin(builtin)	0
+#endif
 
 #ifdef _WIN32
 #  define LIBEXPORT __declspec(dllexport)
@@ -53,12 +58,15 @@ store_##type##_unaligned(type v, void *p)			\
 #  define UNALIGNED_ACCESS_IS_FAST 1
 #endif
 
-#if GCC_PREREQ(4, 8)
+#if GCC_PREREQ(4, 8) || __has_builtin(__builtin_bswap16)
 #  define compiler_bswap16	__builtin_bswap16
 #endif
 
-#if GCC_PREREQ(4, 3)
+#if GCC_PREREQ(4, 3) || __has_builtin(__builtin_bswap32)
 #  define compiler_bswap32	__builtin_bswap32
+#endif
+
+#if GCC_PREREQ(4, 3) || __has_builtin(__builtin_bswap64)
 #  define compiler_bswap64	__builtin_bswap64
 #endif
 
@@ -69,9 +77,9 @@ store_##type##_unaligned(type v, void *p)			\
 
 /* Does the compiler support the 'target' function attribute?  */
 #define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE		\
-	(CLANG_PREREQ(3, 7) || GCC_PREREQ(4, 4))
+	(GCC_PREREQ(4, 4) || __has_attribute(target))
 
 /* Does the compiler support __attribute__((target("bmi2")))?  */
 #define COMPILER_SUPPORTS_BMI2_TARGET				\
 	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
-	 (CLANG_PREREQ(3, 7) || GCC_PREREQ(4, 7)))
+	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di)))
