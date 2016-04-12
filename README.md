@@ -15,10 +15,8 @@ library, both for compression and decompression, and especially on x86
 processors.  In addition, libdeflate provides optional high compression modes
 that provide a better compression ratio than the zlib's "level 9".
 
-libdeflate is released into the public domain.  The author claims no copyright
-on it, and anyone is free to use it for any reason.  The software is provided
-'as-is', without any express or implied warranty; in no event will the author be
-held liable for any damages arising from the use of the software.
+libdeflate is placed in the public domain; see the CC0 Public Domain Dedication
+in the COPYING file for more details.
 
 Building
 ========
