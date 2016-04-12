@@ -1,0 +1,14 @@
+*.a
+*.o
+*.so
+*.obj
+*.exe
+*.dll
+*.lib
+benchmark
+gzip
+gunzip
+tags
+cscope*
+libdeflate-*-bin
+libdeflate-*-bin.zip
