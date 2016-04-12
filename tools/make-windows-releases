@@ -16,5 +16,5 @@ for arch in 'i686' 'x86_64'; do
 	for file in README.md; do
 		sed < $file > ${dir}/${file} -e 's/$/\r/g'
 	done
-	zip -r ${dir}.zip ${dir}
+	(cd ${dir} && zip -r ../${dir}.zip .)
 done
