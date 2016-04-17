@@ -125,7 +125,7 @@ write_file(const tchar *path, const void *contents, size_t size)
 		contents = (const uint8_t *)contents + ret;
 	}
 
-	ASSERT(!close(fd), "Error writing data to \"%"TS"\"",
+	ASSERT(!close(fd), "Error writing data to \"%"TS"\": %s",
 	       path, strerror(errno));
 }
 
@@ -181,13 +181,13 @@ decompress_file(struct deflate_decompressor *d, const tchar *path, bool force)
 				 uncompressed_data, uncompressed_size, NULL);
 	ASSERT(result != DECOMPRESS_INSUFFICIENT_SPACE,
 	       "Decompression of \"%"TS"\" failed with error code: "
-	       "INSUFFICIENT_SPACE.\n",
+	       "INSUFFICIENT_SPACE.\n"
 	       "       The file is probably too large to be processed by "
 	       "this program.", path);
 
 	ASSERT(result == DECOMPRESS_SUCCESS,
 	       "Decompression of \"%"TS"\" failed with error code: %d.\n",
-	       result);
+	       path, result);
 
 	write_file(newpath, uncompressed_data, uncompressed_size);
 
