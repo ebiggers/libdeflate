@@ -334,7 +334,7 @@ do_benchmark(int fd, char *ubuf1, char *ubuf2,
 	if (decompress_time_total == 0)
 		decompress_time_total++;
 
-	printf("\tCompressed %"PRIu64 " => %"PRIu64" bytes (%u.%u%%)\n",
+	printf("\tCompressed %"PRIu64 " => %"PRIu64" bytes (%u.%03u%%)\n",
 	       usize_total, csize_total,
 	       (unsigned int)(csize_total * 100 / usize_total),
 	       (unsigned int)(csize_total * 100000 / usize_total % 1000));
