@@ -46,13 +46,13 @@ struct options {
 	const tchar *suffix;
 };
 
-static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhkL:s:S:V");
+static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhkS:V");
 
 static void
 show_usage(FILE *fp)
 {
 	fprintf(fp,
-"Usage: %"TS" [-LEVEL] [-cdfhkV] [-s SIZE] [-S SUF] FILE...\n"
+"Usage: %"TS" [-LEVEL] [-cdfhkV] [-S SUF] FILE...\n"
 "Compress or decompress the specified FILEs.\n"
 "\n"
 "Options:\n"
