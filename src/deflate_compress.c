@@ -54,26 +54,13 @@
 #  include "bt_matchfinder.h"
 #endif
 
-/*
- * Number of literals+matches to output before starting new Huffman codes.
- *
- * This is just a heuristic, as there is no efficient algorithm for computing
- * optimal block splitting in general.
- *
- * Note: a lower value than defined here usually results in a slightly better
- * compression ratio, but creates more overhead in compression and
- * decompression.
- *
- * This value is not used by the near-optimal parsing algorithm, which uses
- * OPTIM_BLOCK_LENGTH instead.
- */
-#define MAX_ITEMS_PER_BLOCK	16384
+/* The minimum and maximum block lengths, in bytes of source data, which the
+ * parsing algorithms may choose.  */
+#define MIN_BLOCK_LENGTH	10000
+#define MAX_BLOCK_LENGTH	300000
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 /* Constants specific to the near-optimal parsing algorithm.  */
-
-/* The preferred DEFLATE block length in bytes.  */
-#  define OPTIM_BLOCK_LENGTH	16384
 
 /* The maximum number of matches the matchfinder can find at a single position.
  * Since the matchfinder never finds more than one match for the same length,
@@ -84,10 +71,10 @@
 
 /* The number of array spaces to reserve for a single block's matches.  This
  * value should be high enough so that virtually the time, all matches found in
- * OPTIM_BLOCK_LENGTH consecutive positions can fit in this array.  However,
- * this is *not* the true upper bound on the number of matches that can possibly
- * be found.  Therefore, checks for overflow are still required.  */
-#  define CACHE_LEN		((OPTIM_BLOCK_LENGTH * 8) + (MAX_MATCHES_PER_POS + 1))
+ * MAX_BLOCK_LENGTH consecutive positions can fit in this array.  However, this
+ * is *not* the true upper bound on the number of matches that can possibly be
+ * found.  Therefore, checks for overflow are still required.  */
+#  define CACHE_LEN		((MAX_BLOCK_LENGTH * 5) + (MAX_MATCHES_PER_POS + 1))
 
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
@@ -351,7 +338,14 @@ struct deflate_compressor {
 			/* Hash chain matchfinder  */
 			struct hc_matchfinder hc_mf;
 
-			struct deflate_sequence sequences[MAX_ITEMS_PER_BLOCK];
+			/* The matches and literals that the parser has chosen
+			 * for the current block.  The required length of this
+			 * array is limited by the maximum number of matches
+			 * that can ever be chosen for a single block, plus one
+			 * for the special entry at the end.  */
+			struct deflate_sequence sequences[
+				DIV_ROUND_UP(MAX_BLOCK_LENGTH,
+					     DEFLATE_MIN_MATCH_LEN) + 1];
 
 			u8 nonoptimal_end[0];
 		};
@@ -371,8 +365,8 @@ struct deflate_compressor {
 
 			/* Array of structures, one per position, for running
 			 * the minimum-cost path algorithm.  */
-			struct deflate_optimum_node optimum[OPTIM_BLOCK_LENGTH +
-							    1 + DEFLATE_MAX_MATCH_LEN];
+			struct deflate_optimum_node optimum[MAX_BLOCK_LENGTH +
+							    3 * DEFLATE_MAX_MATCH_LEN];
 
 			/* The current cost model being used.  */
 			struct deflate_costs costs;
@@ -1491,7 +1485,7 @@ deflate_write_end_of_block(struct deflate_output_bitstream *os,
 static void
 deflate_write_block(struct deflate_compressor * restrict c,
 		    struct deflate_output_bitstream * restrict os,
-		    const u8 * restrict block_begin, s32 items_remaining,
+		    const u8 * restrict block_begin, u32 block_length,
 		    bool is_final_block)
 {
 	struct deflate_codes *codes;
@@ -1501,7 +1495,7 @@ deflate_write_block(struct deflate_compressor * restrict c,
 	/* Account for end-of-block symbol  */
 	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 
-	if (items_remaining < MAX_ITEMS_PER_BLOCK - 100) {
+	if (block_length >= 1000) {
 		/* Use custom ("dynamic") Huffman codes.  */
 		deflate_write_block_header(os, is_final_block,
 					   DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN);
@@ -1577,6 +1571,131 @@ deflate_finish_sequence(struct deflate_sequence *seq, unsigned litrunlen)
 	seq->length = 0;
 }
 
+/******************************************************************************/
+
+/*
+ * Block splitting algorithm.  The problem is to decide when it is worthwhile to
+ * start a new block with new Huffman codes.  There is a theoretically optimal
+ * solution: recursively consider every possible block split, considering the
+ * exact cost of each block, and choose the minimum cost approach.  But this is
+ * far too slow.  Instead, as an approximation, we can count symbols and after
+ * every N symbols, compare the expected distribution of symbols based on the
+ * previous data with the actual distribution.  If they differ "by enough", then
+ * start a new block.
+ *
+ * As an optimization and heuristic, we don't distinguish between every symbol
+ * but rather we combine many symbols into a single "observation type".  For
+ * literals we only look at the high bits and low bits, and for matches we only
+ * look at whether the match is long or not.  The assumption is that for typical
+ * "real" data, places that are good block boundaries will tend to be noticable
+ * based only on changes in these aggregate frequencies, without looking for
+ * subtle differences in individual symbols.  For example, a change from ASCII
+ * bytes to non-ASCII bytes, or from few matches (generally less compressible)
+ * to many matches (generally more compressible), would be easily noticed based
+ * on the aggregates.
+ *
+ * For determining whether the frequency distributions are "different enough" to
+ * start a new block, the simply heuristic of splitting when the sum of absolute
+ * differences exceeds a constant seems to be good enough.  We also add a number
+ * proportional to the block size so that the algorithm is more likely to end
+ * large blocks than small blocks.  This reflects the general expectation that
+ * it will become increasingly beneficial to start a new block as the current
+ * blocks grows larger.
+ *
+ * Finally, for an approximation, it is not strictly necessary that the exact
+ * symbols being used are considered.  With "near-optimal parsing", for example,
+ * the actual symbols that will be used are unknown until after the block
+ * boundary is chosen and the block has been optimized.  Since the final choices
+ * cannot be used, we can use preliminary "greedy" choices instead.
+ */
+
+#define NUM_LITERAL_OBSERVATION_TYPES 8
+#define NUM_MATCH_OBSERVATION_TYPES 2
+#define NUM_OBSERVATION_TYPES (NUM_LITERAL_OBSERVATION_TYPES + NUM_MATCH_OBSERVATION_TYPES)
+struct block_split_stats {
+	u32 new_observations[NUM_OBSERVATION_TYPES];
+	u32 observations[NUM_OBSERVATION_TYPES];
+	u32 num_new_observations;
+	u32 num_observations;
+};
+
+/* Initialize the block split statistics when starting a new block. */
+static void
+init_block_split_stats(struct block_split_stats *stats)
+{
+	for (int i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+		stats->new_observations[i] = 0;
+		stats->observations[i] = 0;
+	}
+	stats->num_new_observations = 0;
+	stats->num_observations = 0;
+}
+
+/* Literal observation.  Heuristic: use the top 2 bits and low 1 bits of the
+ * literal, for 8 possible literal observation types.  */
+static forceinline void
+observe_literal(struct block_split_stats *stats, u8 lit)
+{
+	stats->new_observations[((lit >> 5) & 0x6) | (lit & 1)]++;
+	stats->num_new_observations++;
+}
+
+/* Match observation.  Heuristic: use one observation type for "short match" and
+ * one observation type for "long match".  */
+static forceinline void
+observe_match(struct block_split_stats *stats, unsigned length)
+{
+	stats->new_observations[NUM_LITERAL_OBSERVATION_TYPES + (length >= 9)]++;
+	stats->num_new_observations++;
+}
+
+static bool
+do_end_block_check(struct block_split_stats *stats, u32 block_size)
+{
+	if (stats->num_observations > 0) {
+
+		/* Note: to avoid slow divisions, we do not divide by
+		 * 'num_observations', but rather do all math with the numbers
+		 * multiplied by 'num_observations'.  */
+		u32 total_delta = 0;
+		for (int i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+			u32 expected = stats->observations[i] * stats->num_new_observations;
+			u32 actual = stats->new_observations[i] * stats->num_observations;
+			u32 delta = (actual > expected) ? actual - expected :
+							  expected - actual;
+			total_delta += delta;
+		}
+
+		/* Ready to end the block? */
+		if (total_delta + (block_size >> 12) * stats->num_observations >=
+		    200 * stats->num_observations)
+			return true;
+	}
+
+	for (int i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+		stats->num_observations += stats->new_observations[i];
+		stats->observations[i] += stats->new_observations[i];
+		stats->new_observations[i] = 0;
+	}
+	stats->num_new_observations = 0;
+	return false;
+}
+
+static forceinline bool
+should_end_block(struct block_split_stats *stats,
+		 const u8 *in_block_begin, const u8 *in_next, const u8 *in_end)
+{
+	/* Ready to check block split statistics? */
+	if (stats->num_new_observations < 512 ||
+	    in_next - in_block_begin < MIN_BLOCK_LENGTH ||
+	    in_end - in_next < 16384)
+		return false;
+
+	return do_end_block_check(stats, in_next - in_block_begin);
+}
+
+/******************************************************************************/
+
 /*
  * This is the "greedy" DEFLATE compressor. It always chooses the longest match.
  */
@@ -1601,9 +1720,12 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 		/* Starting a new DEFLATE block.  */
 
 		const u8 * const in_block_begin = in_next;
+		const u8 * const in_max_block_end = in_next + MIN(in_end - in_next, MAX_BLOCK_LENGTH);
 		u32 litrunlen = 0;
 		struct deflate_sequence *next_seq = c->sequences;
-		s32 items_remaining = MAX_ITEMS_PER_BLOCK;
+		struct block_split_stats split_stats;
+
+		init_block_split_stats(&split_stats);
 
 		do {
 			u32 length;
@@ -1630,6 +1752,7 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 				/* Match found.  */
 				deflate_choose_match(c, length, offset,
 						     &litrunlen, &next_seq);
+				observe_match(&split_stats, length);
 				in_next = hc_matchfinder_skip_positions(&c->hc_mf,
 									&in_cur_base,
 									in_next + 1,
@@ -1638,15 +1761,18 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 									next_hashes);
 			} else {
 				/* No match found.  */
-				deflate_choose_literal(c, *in_next++, &litrunlen);
+				deflate_choose_literal(c, *in_next, &litrunlen);
+				observe_literal(&split_stats, *in_next);
+				in_next++;
 			}
 
 			/* Check if it's time to output another block.  */
-		} while (in_next != in_end && --items_remaining > 0);
+		} while (in_next < in_max_block_end &&
+			 !should_end_block(&split_stats, in_block_begin, in_next, in_end));
 
 		deflate_finish_sequence(next_seq, litrunlen);
 		deflate_write_block(c, &os, in_block_begin,
-				    items_remaining, in_next == in_end);
+				    in_next - in_block_begin, in_next == in_end);
 	} while (in_next != in_end);
 
 	return deflate_flush_output(&os);
@@ -1678,9 +1804,12 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 		/* Starting a new DEFLATE block.  */
 
 		const u8 * const in_block_begin = in_next;
+		const u8 * const in_max_block_end = in_next + MIN(in_end - in_next, MAX_BLOCK_LENGTH);
 		u32 litrunlen = 0;
 		struct deflate_sequence *next_seq = c->sequences;
-		s32 items_remaining = MAX_ITEMS_PER_BLOCK;
+		struct block_split_stats split_stats;
+
+		init_block_split_stats(&split_stats);
 
 		do {
 			unsigned cur_len;
@@ -1708,10 +1837,13 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 			if (cur_len < DEFLATE_MIN_MATCH_LEN) {
 				/* No match found.  Choose a literal.  */
 				deflate_choose_literal(c, *(in_next - 1), &litrunlen);
+				observe_literal(&split_stats, *(in_next - 1));
 				continue;
 			}
 
 		have_cur_match:
+			observe_match(&split_stats, cur_len);
+
 			/* We have a match at the current position.  */
 
 			/* If the current match is very long, choose it
@@ -1764,7 +1896,6 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 				 * Output a literal.  Then the next match
 				 * becomes the current match.  */
 				deflate_choose_literal(c, *(in_next - 2), &litrunlen);
-				items_remaining--;
 				cur_len = next_len;
 				cur_offset = next_offset;
 				goto have_cur_match;
@@ -1782,11 +1913,12 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 								next_hashes);
 
 			/* Check if it's time to output another block.  */
-		} while (in_next != in_end && --items_remaining > 0);
+		} while (in_next < in_max_block_end &&
+			 !should_end_block(&split_stats, in_block_begin, in_next, in_end));
 
 		deflate_finish_sequence(next_seq, litrunlen);
 		deflate_write_block(c, &os, in_block_begin,
-				    items_remaining, in_next == in_end);
+				    in_next - in_block_begin, in_next == in_end);
 
 	} while (in_next != in_end);
 
@@ -2012,6 +2144,11 @@ deflate_optimize_and_write_block(struct deflate_compressor *c,
 	struct deflate_optimum_node *end_node = c->optimum + block_len;
 	unsigned num_passes_remaining = c->num_optim_passes;
 
+	/* Force the block to really end at 'end_node', even if some matches
+	 * extend beyond it.  */
+	for (int i = 1; i < DEFLATE_MAX_MATCH_LEN; i++)
+		end_node[i].cost_to_end = 0x80000000;
+
 	do {
 		/*
 		 * Beginning a new optimization pass and finding a new
@@ -2151,17 +2288,23 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 		struct lz_match *cache_ptr = c->cached_matches;
 		struct lz_match * const cache_end = &c->cached_matches[CACHE_LEN - (MAX_MATCHES_PER_POS + 1)];
 		const u8 * const in_block_begin = in_next;
-		const u8 * const in_block_end = in_next + MIN(in_end - in_next, OPTIM_BLOCK_LENGTH);
+		const u8 * const in_max_block_end = in_next + MIN(in_end - in_next, MAX_BLOCK_LENGTH);
+		struct block_split_stats split_stats;
+		const u8 *next_observation = in_next;
 
-		/* Find all match possibilities in this block.  */
+		init_block_split_stats(&split_stats);
+
+		/*
+		 * Find matches until we decide to end the block.  We end the
+		 * block if any of the following is true:
+		 *
+		 * (1) Maximum block size has been reached
+		 * (2) Match catch may overflow.
+		 * (3) Block split heuristic says to split now.
+		 */
 		do {
 			struct lz_match *matches;
 			unsigned best_len;
-
-			/* Force the block to end if the match cache may
-			 * overflow.  This case is very unlikely.  */
-			if (unlikely(cache_ptr > cache_end))
-				break;
 
 			/* Slide the window forward if needed.  */
 			if (in_next == in_next_slide) {
@@ -2208,6 +2351,17 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 								       &best_len,
 								       matches);
 			}
+
+			if (in_next >= next_observation) {
+				if (best_len >= 4) {
+					observe_match(&split_stats, best_len);
+					next_observation = in_next + best_len;
+				} else {
+					observe_literal(&split_stats, *in_next);
+					next_observation = in_next + 1;
+				}
+			}
+
 			cache_ptr->length = cache_ptr - matches;
 			cache_ptr->offset = *in_next;
 			in_next++;
@@ -2224,15 +2378,8 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 			 * ratio very much.  If there's a long match, then the
 			 * data must be highly compressible, so it doesn't
 			 * matter much what we do.
-			 *
-			 * We also trigger this same case when approaching the
-			 * desired end of the block.  This forces the block to
-			 * reach a "stopping point" where there are no matches
-			 * extending to later positions.  (XXX: this behavior is
-			 * non-optimal and should be improved.)
 			 */
-			if (best_len >= DEFLATE_MIN_MATCH_LEN &&
-			    best_len >= MIN(nice_len, in_block_end - in_next)) {
+			if (best_len >= DEFLATE_MIN_MATCH_LEN && best_len >= nice_len) {
 				--best_len;
 				do {
 					if (in_next == in_next_slide) {
@@ -2260,7 +2407,9 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 					cache_ptr++;
 				} while (--best_len);
 			}
-		} while (in_next < in_block_end);
+		} while (in_next < in_max_block_end &&
+			 cache_ptr <= cache_end &&
+			 !should_end_block(&split_stats, in_block_begin, in_next, in_end));
 
 		/* All the matches for this block have been cached.  Now compute
 		 * a near-optimal sequence of literals and matches, and output
@@ -2354,17 +2503,17 @@ deflate_alloc_compressor(unsigned int compression_level)
 		break;
 	case 5:
 		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 28;
-		c->nice_match_length = 28;
+		c->max_search_depth = 20;
+		c->nice_match_length = 30;
 		break;
 	case 6:
 		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 70;
-		c->nice_match_length = 70;
+		c->max_search_depth = 40;
+		c->nice_match_length = 65;
 		break;
 	case 7:
 		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 130;
+		c->max_search_depth = 100;
 		c->nice_match_length = 130;
 		break;
 #if SUPPORT_NEAR_OPTIMAL_PARSING
@@ -2376,14 +2525,14 @@ deflate_alloc_compressor(unsigned int compression_level)
 		break;
 	case 9:
 		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 18;
-		c->nice_match_length = 24;
+		c->max_search_depth = 16;
+		c->nice_match_length = 26;
 		c->num_optim_passes = 2;
 		break;
 	case 10:
 		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 36;
-		c->nice_match_length = 48;
+		c->max_search_depth = 30;
+		c->nice_match_length = 50;
 		c->num_optim_passes = 2;
 		break;
 	case 11:
@@ -2401,12 +2550,12 @@ deflate_alloc_compressor(unsigned int compression_level)
 #else
 	case 8:
 		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 200;
+		c->max_search_depth = 150;
 		c->nice_match_length = 200;
 		break;
 	case 9:
 		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 300;
+		c->max_search_depth = 200;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		break;
 #endif
@@ -2457,10 +2606,9 @@ deflate_get_compression_level(struct deflate_compressor *c)
 LIBEXPORT size_t
 deflate_compress_bound(struct deflate_compressor *c, size_t in_nbytes)
 {
-	size_t max_num_blocks =
-		(in_nbytes + MAX_ITEMS_PER_BLOCK - 1) / MAX_ITEMS_PER_BLOCK;
+	size_t max_num_blocks = DIV_ROUND_UP(in_nbytes, MIN_BLOCK_LENGTH);
 	if (max_num_blocks == 0)
 		max_num_blocks++;
-	return MIN_OUTPUT_SIZE + (in_nbytes * 9 + 7) / 8 +
+	return MIN_OUTPUT_SIZE + DIV_ROUND_UP(in_nbytes * 9, 8) +
 		max_num_blocks * 200;
 }

@@ -48,3 +48,6 @@ typedef size_t machine_word_t;
 /* MAX() - calculate the maximum of two variables.  Arguments may be evaluted
  * multiple times.  */
 #define MAX(a, b)	((a) >= (b) ? (a) : (b))
+
+/* Calculate 'n / d', but round up instead of down.  */
+#define DIV_ROUND_UP(n, d)	(((n) + (d) - 1) / (d))
