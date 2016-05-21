@@ -25,7 +25,7 @@
 /*
  * Note: when compiling this file, SUPPORT_NEAR_OPTIMAL_PARSING should be
  * defined to either 0 or 1.  When defined to 1, the near-optimal parsing
- * algorithm is enabled at compression level 80 and above.  The near-optimal
+ * algorithm is enabled at compression level 8 and above.  The near-optimal
  * parsing algorithm produces a compression ratio significantly better than the
  * greedy and lazy algorithms implemented here, and also the algorithm used by
  * zlib at level 9.  However, it is slow.
@@ -2190,51 +2190,28 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
 	struct deflate_output_bitstream os;
-	const u8 *in_cur_base;
-	const u8 *in_next_slide;
-	unsigned max_len;
-	unsigned nice_len;
-	struct lz_match *cache_ptr;
-	struct lz_match *cache_end;
-	const u8 *in_block_begin;
-	const u8 *in_block_end;
+	const u8 *in_cur_base = in_next;
+	const u8 *in_next_slide = in_next + MIN(in_end - in_next, MATCHFINDER_WINDOW_SIZE);
+	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
+	unsigned nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	deflate_reset_symbol_frequencies(c);
-
 	bt_matchfinder_init(&c->bt_mf);
-	in_cur_base = in_next;
-	in_next_slide = in_next + MIN(in_end - in_next, MATCHFINDER_WINDOW_SIZE);
-
-	max_len = DEFLATE_MAX_MATCH_LEN;
-	nice_len = MIN(c->nice_match_length, max_len);
 
 	do {
 		/* Starting a new DEFLATE block.  */
 
-		cache_ptr = c->cached_matches;
-		cache_end = &c->cached_matches[CACHE_LEN - (MAX_MATCHES_PER_POS + 1)];
-		in_block_begin = in_next;
-		in_block_end = in_next + MIN(in_end - in_next, OPTIM_BLOCK_LENGTH);
-
-		/* Set the initial cost model.  */
-		if (in_next == in)
-			deflate_set_default_costs(c);
-		else
-			deflate_adjust_costs(c);
+		struct lz_match *cache_ptr = c->cached_matches;
+		struct lz_match * const cache_end = &c->cached_matches[CACHE_LEN - (MAX_MATCHES_PER_POS + 1)];
+		const u8 * const in_block_begin = in_next;
+		const u8 * const in_block_end = in_next + MIN(in_end - in_next, OPTIM_BLOCK_LENGTH);
 
 		/* Find all match possibilities in this block.  */
 		do {
 			struct lz_match *matches;
 			unsigned best_len;
-
-			/* Decrease the maximum and nice match lengths if we're
-			 * approaching the end of the input buffer.  */
-			if (unlikely(max_len > in_end - in_next)) {
-				max_len = in_end - in_next;
-				nice_len = MIN(max_len, nice_len);
-			}
 
 			/* Force the block to end if the match cache may
 			 * overflow.  This case is very unlikely.  */
@@ -2247,6 +2224,13 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 				in_cur_base = in_next;
 				in_next_slide = in_next + MIN(in_end - in_next,
 							      MATCHFINDER_WINDOW_SIZE);
+			}
+
+			/* Decrease the maximum and nice match lengths if we're
+			 * approaching the end of the input buffer.  */
+			if (unlikely(max_len > in_end - in_next)) {
+				max_len = in_end - in_next;
+				nice_len = MIN(nice_len, max_len);
 			}
 
 			/*
@@ -2267,10 +2251,8 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 			 *   advantage of hash chains is negated.
 			 */
 			matches = cache_ptr;
-			if (max_len < BT_MATCHFINDER_REQUIRED_NBYTES) {
-				best_len = 0;
-				cache_ptr = matches;
-			} else {
+			best_len = 0;
+			if (likely(max_len >= BT_MATCHFINDER_REQUIRED_NBYTES)) {
 				cache_ptr = bt_matchfinder_get_matches(&c->bt_mf,
 								       in_cur_base,
 								       in_next - in_cur_base,
@@ -2308,15 +2290,15 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 			    best_len >= MIN(nice_len, in_block_end - in_next)) {
 				--best_len;
 				do {
-					if (unlikely(max_len > in_end - in_next)) {
-						max_len = in_end - in_next;
-						nice_len = MIN(max_len, nice_len);
-					}
 					if (in_next == in_next_slide) {
 						bt_matchfinder_slide_window(&c->bt_mf);
 						in_cur_base = in_next;
 						in_next_slide = in_next + MIN(in_end - in_next,
 									      MATCHFINDER_WINDOW_SIZE);
+					}
+					if (unlikely(max_len > in_end - in_next)) {
+						max_len = in_end - in_next;
+						nice_len = MIN(nice_len, max_len);
 					}
 					if (max_len >= BT_MATCHFINDER_REQUIRED_NBYTES) {
 						bt_matchfinder_skip_position(&c->bt_mf,
@@ -2338,7 +2320,10 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 		/* All the matches for this block have been cached.  Now compute
 		 * a near-optimal sequence of literals and matches, and output
 		 * the block.  */
-
+		if (in_block_begin == in)
+			deflate_set_default_costs(c);
+		else
+			deflate_adjust_costs(c);
 		deflate_optimize_and_write_block(c, &os, in_next - in_block_begin,
 						 cache_ptr, in_next == in_end);
 	} while (in_next != in_end);
