@@ -2738,5 +2738,5 @@ deflate_compress_bound(struct deflate_compressor *c, size_t in_nbytes)
 	 * and alignment to a byte boundary; 2 for LEN; and 2 for NLEN.
 	 */
 	size_t max_num_blocks = MAX(DIV_ROUND_UP(in_nbytes, MIN_BLOCK_LENGTH), 1);
-	return MAX((5 * max_num_blocks) + in_nbytes, MIN_OUTPUT_SIZE);
+	return (5 * max_num_blocks) + in_nbytes + 1 + MIN_OUTPUT_SIZE;
 }
