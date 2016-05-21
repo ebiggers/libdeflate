@@ -1491,7 +1491,7 @@ deflate_write_end_of_block(struct deflate_output_bitstream *os,
 static void
 deflate_write_block(struct deflate_compressor * restrict c,
 		    struct deflate_output_bitstream * restrict os,
-		    const u8 * restrict block_begin, u32 items_remaining,
+		    const u8 * restrict block_begin, s32 items_remaining,
 		    bool is_final_block)
 {
 	struct deflate_codes *codes;
@@ -1588,41 +1588,37 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
 	struct deflate_output_bitstream os;
-	const u8 *block_begin = in_next;
-	struct deflate_sequence *next_seq = c->sequences;
-	u32 litrunlen = 0;
-	u32 items_remaining = MAX_ITEMS_PER_BLOCK;
+	const u8 *in_cur_base = in_next;
+	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
+	unsigned nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	deflate_reset_symbol_frequencies(c);
+	hc_matchfinder_init(&c->hc_mf);
 
-	/* The outer loop repeats every WINDOW_SIZE bytes and handles the
-	 * sliding window.  */
 	do {
-		const u8 *in_cur_base;
-		const u8 *in_cur_end;
+		/* Starting a new DEFLATE block.  */
 
-		if (in == in_next)
-			hc_matchfinder_init(&c->hc_mf);
-		else
-			hc_matchfinder_slide_window(&c->hc_mf);
+		const u8 * const in_block_begin = in_next;
+		u32 litrunlen = 0;
+		struct deflate_sequence *next_seq = c->sequences;
+		s32 items_remaining = MAX_ITEMS_PER_BLOCK;
 
-		in_cur_base = in_next;
-		in_cur_end = in_next + MIN(in_end - in_next,
-					   MATCHFINDER_WINDOW_SIZE);
 		do {
-			unsigned max_len;
-			unsigned nice_len;
-			unsigned length;
-			unsigned offset;
+			u32 length;
+			u32 offset;
 
-			max_len = MIN(in_cur_end - in_next, DEFLATE_MAX_MATCH_LEN);
-			nice_len = MIN(max_len, c->nice_match_length);
+			/* Decrease the maximum and nice match lengths if we're
+			 * approaching the end of the input buffer.  */
+			if (unlikely(max_len > in_end - in_next)) {
+				max_len = in_end - in_next;
+				nice_len = MIN(nice_len, max_len);
+			}
 
 			length = hc_matchfinder_longest_match(&c->hc_mf,
-							      in_cur_base,
-							      in_next - in_cur_base,
+							      &in_cur_base,
+							      in_next,
 							      DEFLATE_MIN_MATCH_LEN - 1,
 							      max_len,
 							      nice_len,
@@ -1635,9 +1631,9 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 				deflate_choose_match(c, length, offset,
 						     &litrunlen, &next_seq);
 				in_next = hc_matchfinder_skip_positions(&c->hc_mf,
-									in_cur_base,
-									in_next + 1 - in_cur_base,
-									in_end - in_cur_base,
+									&in_cur_base,
+									in_next + 1,
+									in_end,
 									length - 1,
 									next_hashes);
 			} else {
@@ -1646,28 +1642,12 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 			}
 
 			/* Check if it's time to output another block.  */
-			if (--items_remaining == 0) {
-				deflate_finish_sequence(next_seq, litrunlen);
-				deflate_write_block(c, &os, block_begin,
-						    items_remaining,
-						    in_next == in_end);
+		} while (in_next != in_end && --items_remaining > 0);
 
-				block_begin = in_next;
-				next_seq = c->sequences;
-				litrunlen = 0;
-				items_remaining = MAX_ITEMS_PER_BLOCK;
-			}
-
-		} while (in_next != in_cur_end);
-
-	} while (in_next != in_end);
-
-	/* Output the last block.  */
-	if (items_remaining != MAX_ITEMS_PER_BLOCK) {
 		deflate_finish_sequence(next_seq, litrunlen);
-		deflate_write_block(c, &os, block_begin,
-				    items_remaining, true);
-	}
+		deflate_write_block(c, &os, in_block_begin,
+				    items_remaining, in_next == in_end);
+	} while (in_next != in_end);
 
 	return deflate_flush_output(&os);
 }
@@ -1685,48 +1665,38 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
 	struct deflate_output_bitstream os;
-	const u8 *block_begin = in_next;
-	struct deflate_sequence *next_seq = c->sequences;
-	u32 litrunlen = 0;
-	u32 items_remaining = MAX_ITEMS_PER_BLOCK;
+	const u8 *in_cur_base = in_next;
+	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
+	unsigned nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	deflate_reset_symbol_frequencies(c);
+	hc_matchfinder_init(&c->hc_mf);
 
-	/* The outer loop repeats every WINDOW_SIZE bytes and handles the
-	 * sliding window.  */
 	do {
-		const u8 *in_cur_base;
-		const u8 *in_cur_end;
-		unsigned max_len;
-		unsigned nice_len;
+		/* Starting a new DEFLATE block.  */
 
-		if (in == in_next)
-			hc_matchfinder_init(&c->hc_mf);
-		else
-			hc_matchfinder_slide_window(&c->hc_mf);
+		const u8 * const in_block_begin = in_next;
+		u32 litrunlen = 0;
+		struct deflate_sequence *next_seq = c->sequences;
+		s32 items_remaining = MAX_ITEMS_PER_BLOCK;
 
-		in_cur_base = in_next;
-		in_cur_end = in_next + MIN(in_end - in_next,
-					   MATCHFINDER_WINDOW_SIZE);
-		max_len = DEFLATE_MAX_MATCH_LEN;
-		nice_len = MIN(c->nice_match_length, max_len);
 		do {
 			unsigned cur_len;
 			unsigned cur_offset;
 			unsigned next_len;
 			unsigned next_offset;
 
-			if (unlikely(in_cur_end - in_next < DEFLATE_MAX_MATCH_LEN)) {
-				max_len = in_cur_end - in_next;
-				nice_len = MIN(max_len, nice_len);
+			if (unlikely(in_end - in_next < DEFLATE_MAX_MATCH_LEN)) {
+				max_len = in_end - in_next;
+				nice_len = MIN(nice_len, max_len);
 			}
 
 			/* Find the longest match at the current position.  */
 			cur_len = hc_matchfinder_longest_match(&c->hc_mf,
-							       in_cur_base,
-							       in_next - in_cur_base,
+							       &in_cur_base,
+							       in_next,
 							       DEFLATE_MIN_MATCH_LEN - 1,
 							       max_len,
 							       nice_len,
@@ -1738,7 +1708,7 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 			if (cur_len < DEFLATE_MIN_MATCH_LEN) {
 				/* No match found.  Choose a literal.  */
 				deflate_choose_literal(c, *(in_next - 1), &litrunlen);
-				goto check_block_and_continue;
+				continue;
 			}
 
 		have_cur_match:
@@ -1750,12 +1720,12 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 				deflate_choose_match(c, cur_len, cur_offset,
 						     &litrunlen, &next_seq);
 				in_next = hc_matchfinder_skip_positions(&c->hc_mf,
-									in_cur_base,
-									in_next - in_cur_base,
-									in_end - in_cur_base,
+									&in_cur_base,
+									in_next,
+									in_end,
 									cur_len - 1,
 									next_hashes);
-				goto check_block_and_continue;
+				continue;
 			}
 
 			/*
@@ -1774,13 +1744,13 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 			 * have two call sites, with longest_match() inlined at
 			 * each.
 			 */
-			if (unlikely(in_cur_end - in_next < DEFLATE_MAX_MATCH_LEN)) {
-				max_len = in_cur_end - in_next;
-				nice_len = MIN(max_len, nice_len);
+			if (unlikely(in_end - in_next < DEFLATE_MAX_MATCH_LEN)) {
+				max_len = in_end - in_next;
+				nice_len = MIN(nice_len, max_len);
 			}
 			next_len = hc_matchfinder_longest_match(&c->hc_mf,
-								in_cur_base,
-								in_next - in_cur_base,
+								&in_cur_base,
+								in_next,
 								cur_len,
 								max_len,
 								nice_len,
@@ -1794,56 +1764,31 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 				 * Output a literal.  Then the next match
 				 * becomes the current match.  */
 				deflate_choose_literal(c, *(in_next - 2), &litrunlen);
-				if (--items_remaining == 0) {
-					deflate_finish_sequence(next_seq, litrunlen);
-					deflate_write_block(c, &os, block_begin,
-							    items_remaining,
-							    in_next == in_end);
-
-					block_begin = in_next - 1;
-					next_seq = c->sequences;
-					litrunlen = 0;
-					items_remaining = MAX_ITEMS_PER_BLOCK;
-				}
+				items_remaining--;
 				cur_len = next_len;
 				cur_offset = next_offset;
 				goto have_cur_match;
-			} else {
-				/* No longer match at the next position.
-				 * Output the current match.  */
-				deflate_choose_match(c, cur_len, cur_offset,
-						     &litrunlen, &next_seq);
-				in_next = hc_matchfinder_skip_positions(&c->hc_mf,
-									in_cur_base,
-									in_next - in_cur_base,
-									in_end - in_cur_base,
-									cur_len - 2,
-									next_hashes);
-				goto check_block_and_continue;
 			}
 
-		check_block_and_continue:
+			/* No longer match at the next position.
+			 * Output the current match.  */
+			deflate_choose_match(c, cur_len, cur_offset,
+					     &litrunlen, &next_seq);
+			in_next = hc_matchfinder_skip_positions(&c->hc_mf,
+								&in_cur_base,
+								in_next,
+								in_end,
+								cur_len - 2,
+								next_hashes);
+
 			/* Check if it's time to output another block.  */
-			if (--items_remaining == 0) {
-				deflate_finish_sequence(next_seq, litrunlen);
-				deflate_write_block(c, &os, block_begin,
-						    items_remaining,
-						    in_next == in_end);
+		} while (in_next != in_end && --items_remaining > 0);
 
-				block_begin = in_next;
-				next_seq = c->sequences;
-				litrunlen = 0;
-				items_remaining = MAX_ITEMS_PER_BLOCK;
-			}
-		} while (in_next != in_cur_end);
+		deflate_finish_sequence(next_seq, litrunlen);
+		deflate_write_block(c, &os, in_block_begin,
+				    items_remaining, in_next == in_end);
 
 	} while (in_next != in_end);
-
-	/* Output the last block.  */
-	if (items_remaining != MAX_ITEMS_PER_BLOCK) {
-		deflate_finish_sequence(next_seq, litrunlen);
-		deflate_write_block(c, &os, block_begin, items_remaining, true);
-	}
 
 	return deflate_flush_output(&os);
 }

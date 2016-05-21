@@ -138,9 +138,10 @@ hc_matchfinder_slide_window(struct hc_matchfinder *mf)
  *
  * @mf
  *	The matchfinder structure.
- * @in_base
- *	Pointer to the next byte in the input buffer to process _at the last
- *	time hc_matchfinder_init() or hc_matchfinder_slide_window() was called_.
+ * @in_base_p
+ *	Location of a pointer which points to the place in the input data the
+ *	matchfinder currently stores positions relative to.  This may be updated
+ *	by this function.
  * @cur_pos
  *	The current position in the input buffer relative to @in_base (the
  *	position of the sequence being matched against).
@@ -165,16 +166,23 @@ hc_matchfinder_slide_window(struct hc_matchfinder *mf)
  */
 static forceinline u32
 hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
-			     const u8 * const restrict in_base,
-			     const ptrdiff_t cur_pos,
+			     const u8 ** const restrict in_base_p,
+			     const u8 * const restrict in_next,
 			     u32 best_len,
 			     const u32 max_len,
 			     const u32 nice_len,
 			     const u32 max_search_depth,
-			     u32 next_hashes[restrict 2],
+			     u32 * const restrict next_hashes,
 			     u32 * const restrict offset_ret)
 {
-	const u8 *in_next = in_base + cur_pos;
+	u32 cur_pos = in_next - *in_base_p;
+	if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
+		hc_matchfinder_slide_window(mf);
+		*in_base_p += MATCHFINDER_WINDOW_SIZE;
+		cur_pos = 0;
+	}
+
+	const u8 * const in_base = *in_base_p;
 	u32 depth_remaining = max_search_depth;
 	const u8 *best_matchptr = in_next;
 	const mf_pos_t cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
@@ -317,9 +325,10 @@ out:
  *
  * @mf
  *	The matchfinder structure.
- * @in_base
- *	Pointer to the next byte in the input buffer to process _at the last
- *	time hc_matchfinder_init() or hc_matchfinder_slide_window() was called_.
+ * @in_base_p
+ *	Location of a pointer which points to the place in the input data the
+ *	matchfinder currently stores positions relative to.  This may be updated
+ *	by this function.
  * @cur_pos
  *	The current position in the input buffer relative to @in_base.
  * @end_pos
@@ -335,38 +344,44 @@ out:
  */
 static forceinline const u8 *
 hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
-			      const u8 * const restrict in_base,
-			      const ptrdiff_t cur_pos,
-			      const ptrdiff_t end_pos,
+			      const u8 ** const restrict in_base_p,
+			      const u8 *in_next,
+			      const u8 * const in_end,
 			      const u32 count,
-			      u32 next_hashes[restrict 2])
+			      u32 * const restrict next_hashes)
 {
-	const u8 *in_next = in_base + cur_pos;
-	const u8 * const stop_ptr = in_next + count;
+	u32 cur_pos;
+	u32 hash3, hash4;
+	u32 next_seq3, next_seq4;
+	u32 remaining = count;
 
-	if (likely(count + 5 <= end_pos - cur_pos)) {
-		u32 hash3, hash4;
-		u32 next_seq3, next_seq4;
+	if (unlikely(count + 5 > in_end - in_next))
+		return &in_next[count];
 
-		hash3 = next_hashes[0];
-		hash4 = next_hashes[1];
-		do {
-			mf->hash3_tab[hash3] = in_next - in_base;
-			mf->next_tab[in_next - in_base] = mf->hash4_tab[hash4];
-			mf->hash4_tab[hash4] = in_next - in_base;
+	cur_pos = in_next - *in_base_p;
+	hash3 = next_hashes[0];
+	hash4 = next_hashes[1];
+	do {
+		if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
+			hc_matchfinder_slide_window(mf);
+			*in_base_p += MATCHFINDER_WINDOW_SIZE;
+			cur_pos = 0;
+		}
+		mf->hash3_tab[hash3] = cur_pos;
+		mf->next_tab[cur_pos] = mf->hash4_tab[hash4];
+		mf->hash4_tab[hash4] = cur_pos;
 
-			next_seq4 = load_u32_unaligned(++in_next);
-			next_seq3 = loaded_u32_to_u24(next_seq4);
-			hash3 = lz_hash(next_seq3, HC_MATCHFINDER_HASH3_ORDER);
-			hash4 = lz_hash(next_seq4, HC_MATCHFINDER_HASH4_ORDER);
+		next_seq4 = load_u32_unaligned(++in_next);
+		next_seq3 = loaded_u32_to_u24(next_seq4);
+		hash3 = lz_hash(next_seq3, HC_MATCHFINDER_HASH3_ORDER);
+		hash4 = lz_hash(next_seq4, HC_MATCHFINDER_HASH4_ORDER);
+		cur_pos++;
+	} while (--remaining);
 
-		} while (in_next != stop_ptr);
+	prefetchw(&mf->hash3_tab[hash3]);
+	prefetchw(&mf->hash4_tab[hash4]);
+	next_hashes[0] = hash3;
+	next_hashes[1] = hash4;
 
-		prefetchw(&mf->hash3_tab[hash3]);
-		prefetchw(&mf->hash4_tab[hash4]);
-		next_hashes[0] = hash3;
-		next_hashes[1] = hash4;
-	}
-
-	return stop_ptr;
+	return in_next;
 }
