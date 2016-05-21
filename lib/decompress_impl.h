@@ -313,43 +313,43 @@ next_block:
 		 * 'out_next'.  */
 
 		if (UNALIGNED_ACCESS_IS_FAST &&
-		    length <= (3 * WORDSIZE) &&
-		    offset >= WORDSIZE &&
-		    length + (3 * WORDSIZE) <= out_end - out_next)
+		    length <= (3 * WORDBYTES) &&
+		    offset >= WORDBYTES &&
+		    length + (3 * WORDBYTES) <= out_end - out_next)
 		{
 			/* Fast case: short length, no overlaps if we copy one
 			 * word at a time, and we aren't getting too close to
 			 * the end of the output array.  */
-			copy_word_unaligned(out_next - offset + (0 * WORDSIZE),
-					    out_next + (0 * WORDSIZE));
-			copy_word_unaligned(out_next - offset + (1 * WORDSIZE),
-					    out_next + (1 * WORDSIZE));
-			copy_word_unaligned(out_next - offset + (2 * WORDSIZE),
-					    out_next + (2 * WORDSIZE));
+			copy_word_unaligned(out_next - offset + (0 * WORDBYTES),
+					    out_next + (0 * WORDBYTES));
+			copy_word_unaligned(out_next - offset + (1 * WORDBYTES),
+					    out_next + (1 * WORDBYTES));
+			copy_word_unaligned(out_next - offset + (2 * WORDBYTES),
+					    out_next + (2 * WORDBYTES));
 		} else {
 			const u8 *src = out_next - offset;
 			u8 *dst = out_next;
 			u8 *end = out_next + length;
 
 			if (UNALIGNED_ACCESS_IS_FAST &&
-			    likely(out_end - end >= WORDSIZE - 1)) {
-				if (offset >= WORDSIZE) {
+			    likely(out_end - end >= WORDBYTES - 1)) {
+				if (offset >= WORDBYTES) {
 					copy_word_unaligned(src, dst);
-					src += WORDSIZE;
-					dst += WORDSIZE;
+					src += WORDBYTES;
+					dst += WORDBYTES;
 					if (dst < end) {
 						do {
 							copy_word_unaligned(src, dst);
-							src += WORDSIZE;
-							dst += WORDSIZE;
+							src += WORDBYTES;
+							dst += WORDBYTES;
 						} while (dst < end);
 					}
 				} else if (offset == 1) {
 					machine_word_t v = repeat_byte(*(dst - 1));
 					do {
 						store_word_unaligned(v, dst);
-						src += WORDSIZE;
-						dst += WORDSIZE;
+						src += WORDBYTES;
+						dst += WORDBYTES;
 					} while (dst < end);
 				} else {
 					*dst++ = *src++;

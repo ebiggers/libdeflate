@@ -2,7 +2,8 @@
  * deflate_constants.h - constants for the DEFLATE compression format
  */
 
-#pragma once
+#ifndef _LIB_DEFLATE_CONSTANTS_H
+#define _LIB_DEFLATE_CONSTANTS_H
 
 /* Valid block types  */
 #define DEFLATE_BLOCKTYPE_UNCOMPRESSED		0
@@ -61,3 +62,5 @@
 #define DEFLATE_MAX_MATCH_BITS	\
 	(DEFLATE_MAX_LITLEN_CODEWORD_LEN + DEFLATE_MAX_EXTRA_LENGTH_BITS + \
 	DEFLATE_MAX_OFFSET_CODEWORD_LEN + DEFLATE_MAX_EXTRA_OFFSET_BITS)
+
+#endif /* _LIB_DEFLATE_CONSTANTS_H */

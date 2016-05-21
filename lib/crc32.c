@@ -157,7 +157,6 @@
 
 #include "crc32.h"
 #include "crc32_table.h"
-#include "endianness.h"
 
 static forceinline u32
 crc32_update_byte(u32 remainder, u8 next_byte)
@@ -169,9 +168,11 @@ crc32_update_byte(u32 remainder, u8 next_byte)
 static u32
 crc32_slice1(u32 remainder, const u8 *buffer, size_t nbytes)
 {
+	size_t i;
+
 	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x100);
 
-	for (size_t i = 0; i < nbytes; i++)
+	for (i = 0; i < nbytes; i++)
 		remainder = crc32_update_byte(remainder, buffer[i]);
 	return remainder;
 }
@@ -181,18 +182,18 @@ crc32_slice1(u32 remainder, const u8 *buffer, size_t nbytes)
 static u32
 crc32_slice4(u32 remainder, const u8 *buffer, size_t nbytes)
 {
-	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x400);
-
 	const u8 *p = buffer;
 	const u8 *end = buffer + nbytes;
 	const u8 *end32;
+
+	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x400);
 
 	for (; ((uintptr_t)p & 3) && p != end; p++)
 		remainder = crc32_update_byte(remainder, *p);
 
 	end32 = p + ((end - p) & ~3);
 	for (; p != end32; p += 4) {
-		u32 v = le32_to_cpu(*(const u32 *)p);
+		u32 v = le32_bswap(*(const u32 *)p);
 		remainder =
 		    crc32_table[0x300 + (u8)((remainder ^ v) >>  0)] ^
 		    crc32_table[0x200 + (u8)((remainder ^ v) >>  8)] ^
@@ -211,19 +212,19 @@ crc32_slice4(u32 remainder, const u8 *buffer, size_t nbytes)
 static u32
 crc32_slice8(u32 remainder, const u8 *buffer, size_t nbytes)
 {
-	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x800);
-
 	const u8 *p = buffer;
 	const u8 *end = buffer + nbytes;
 	const u8 *end64;
+
+	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x800);
 
 	for (; ((uintptr_t)p & 7) && p != end; p++)
 		remainder = crc32_update_byte(remainder, *p);
 
 	end64 = p + ((end - p) & ~7);
 	for (; p != end64; p += 8) {
-		u32 v1 = le32_to_cpu(*(const u32 *)(p + 0));
-		u32 v2 = le32_to_cpu(*(const u32 *)(p + 4));
+		u32 v1 = le32_bswap(*(const u32 *)(p + 0));
+		u32 v2 = le32_bswap(*(const u32 *)(p + 4));
 		remainder =
 		    crc32_table[0x700 + (u8)((remainder ^ v1) >>  0)] ^
 		    crc32_table[0x600 + (u8)((remainder ^ v1) >>  8)] ^

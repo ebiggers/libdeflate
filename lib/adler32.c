@@ -13,7 +13,6 @@
  */
 
 #include "adler32.h"
-#include "compiler.h"
 
 /*
  * The Adler-32 divisor, or "base", value.

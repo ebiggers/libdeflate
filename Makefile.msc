@@ -1,6 +1,5 @@
 #
-# Makefile for the Microsoft toolchain.  It builds a static library and a shared
-# library (DLL) and its corresponding import library.
+# Makefile for the Microsoft toolchain
 #
 # Usage:
 #	nmake /f Makefile.msc
@@ -9,40 +8,49 @@
 CC = cl
 LD = link
 AR = lib
-CFLAGS = /MD /O2 -I.
+CFLAGS = /MD /O2 -I. -Icommon
+LDFLAGS =
 
 STATICLIB = libdeflatestatic.lib
 SHAREDLIB = libdeflate.dll
 IMPLIB    = libdeflate.lib
 
-OBJS =	src/adler32.obj			\
-	src/aligned_malloc.obj		\
-	src/crc32.obj			\
-	src/deflate_compress.obj	\
-	src/deflate_decompress.obj	\
-	src/gzip_compress.obj		\
-	src/gzip_decompress.obj		\
-	src/x86_cpu_features.obj	\
-	src/zlib_compress.obj		\
-	src/zlib_decompress.obj
+LIB_OBJ = lib/aligned_malloc.obj	\
+	  lib/adler32.obj		\
+	  lib/crc32.obj			\
+	  lib/deflate_compress.obj	\
+	  lib/deflate_decompress.obj	\
+	  lib/gzip_compress.obj		\
+	  lib/gzip_decompress.obj	\
+	  lib/x86_cpu_features.obj	\
+	  lib/zlib_compress.obj		\
+	  lib/zlib_decompress.obj
 
-all: $(STATICLIB) $(SHAREDLIB) $(IMPLIB)
+PROG_COMMON_OBJ = programs/prog_util.obj \
+		  programs/tgetopt.obj \
+		  $(STATICLIB)
 
-$(STATICLIB): $(OBJS)
-	$(AR) $(ARFLAGS) -out:$@ $(OBJS)
+PROG_CFLAGS = $(CFLAGS) -Iprograms
+
+all: $(STATICLIB) $(SHAREDLIB) $(IMPLIB) gzip.exe gunzip.exe
+
+.c.obj:
+	$(CC) -c /Fo$@ $(CFLAGS) $**
+
+$(STATICLIB): $(LIB_OBJ)
+	$(AR) $(ARFLAGS) -out:$@ $(LIB_OBJ)
+
+$(SHAREDLIB): $(LIB_OBJ)
+	$(LD) $(LDFLAGS) -out:$@ -dll -implib:$(IMPLIB) $(LIB_OBJ)
 
 $(IMPLIB): $(SHAREDLIB)
 
-$(SHAREDLIB): $(OBJS)
-	$(LD) $(LDFLAGS) -out:$@ -dll -implib:$(IMPLIB) $(OBJS)
+gzip.exe:programs/gzip.obj $(PROG_COMMON_OBJ)
+	$(LD) $(LDFLAGS) -out:$@ $**
 
-.c.obj:
-	$(CC) -c /Fo:$@ $(CFLAGS) $<
+gunzip.exe:gzip.exe
+	copy $** $@
 
 clean:
-	-del *.lib
-	-del *.dll
-	-del *.exe
-	-del *.exp
-	-del *.obj
-	-del src\*.obj
+	-del *.dll *.exe *.exp libdeflate.lib libdeflatestatic.lib gzip.lib \
+		lib\*.obj programs\*.obj 2>nul

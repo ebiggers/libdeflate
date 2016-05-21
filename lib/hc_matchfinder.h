@@ -175,23 +175,26 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 			     u32 * const restrict next_hashes,
 			     u32 * const restrict offset_ret)
 {
-	u32 cur_pos = in_next - *in_base_p;
-	if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
-		hc_matchfinder_slide_window(mf);
-		*in_base_p += MATCHFINDER_WINDOW_SIZE;
-		cur_pos = 0;
-	}
-
-	const u8 * const in_base = *in_base_p;
 	u32 depth_remaining = max_search_depth;
 	const u8 *best_matchptr = in_next;
-	const mf_pos_t cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
 	mf_pos_t cur_node3, cur_node4;
 	u32 hash3, hash4;
 	u32 next_seq3, next_seq4;
 	u32 seq4;
 	const u8 *matchptr;
 	u32 len;
+	u32 cur_pos = in_next - *in_base_p;
+	const u8 *in_base;
+	mf_pos_t cutoff;
+
+	if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
+		hc_matchfinder_slide_window(mf);
+		*in_base_p += MATCHFINDER_WINDOW_SIZE;
+		cur_pos = 0;
+	}
+
+	in_base = *in_base_p;
+	cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
 
 	if (unlikely(max_len < 5)) /* can we read 4 bytes from 'in_next + 1'? */
 		goto out;

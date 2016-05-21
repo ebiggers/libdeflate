@@ -1,5 +1,4 @@
-Overview
-========
+# Overview
 
 libdeflate is a library for fast, whole-buffer DEFLATE-based compression and
 decompression.
@@ -15,27 +14,43 @@ library, both for compression and decompression, and especially on x86
 processors.  In addition, libdeflate provides optional high compression modes
 that provide a better compression ratio than the zlib's "level 9".
 
-libdeflate is placed in the public domain; see the CC0 Public Domain Dedication
-in the COPYING file for more details.
+libdeflate itself is a library, but the following command-line programs which
+use this library are also provided:
 
-Building
-========
+* gzip (or gunzip), a program which mostly behaves like the standard equivalent,
+  except that it does not yet support reading from standard input and does not
+  yet support very large files
+* benchmark, a program for benchmarking in-memory compression and decompression
 
-On a UNIX-like system, just run `make`.  You need GNU Make and either GCC or
-Clang.  There is no `make install` yet; just copy the file(s) to where you want.
-There are various options which can be set on the `make` command line; see the
-Makefile for details.  As an example, you can run `make SUPPORT_COMPRESSION=no`
-to build a decompression-only library.
+# Building
 
-On Windows, a separate Makefile, `Makefile.msc`, is provided for the tools that
-come with Visual Studio.  However, using MinGW (GCC) instead is recommended
-because it is a superior compiler that produces better-performing binaries.  You
-can build Windows binaries using MinGW with a command like this:
+## For UNIX
+
+Just run `make`.  You need GNU Make and either GCC or Clang.  There is no `make
+install` yet; just copy the file(s) to where you want.
+
+By default, all targets are built, including the library and programs, with the
+exception of the `benchmark` program.  `make help` shows the available targets.
+There are also several options which can be set on the `make` command line.  See
+the Makefile for details.
+
+## For Windows
+
+MinGW (GCC) is the recommended compiler to use when building binaries for
+Windows.  MinGW can be used on either Windows or Linux.  Use a command like:
 
     $ make CC=x86_64-w64-mingw32-gcc
 
-API
-===
+Windows binaries prebuilt with MinGW may also be downloaded from
+https://github.com/ebiggers/libdeflate/releases.
+
+Alternatively, a separate Makefile, `Makefile.msc`, is provided for the tools
+that come with Visual Studio, for those who strongly prefer that toolchain.
+
+As usual, 64-bit binaries are faster than 32-bit binaries and should be
+preferred whenever possible.
+
+# API
 
 libdeflate has a simple API that is not zlib-compatible.  You can create
 compressors and decompressors and use them to compress or decompress buffers.
@@ -56,8 +71,7 @@ This enables you to allocate an output buffer of the correct size without
 guessing.  However, libdeflate's decompression routines do optionally provide
 the actual number of output bytes in case you need it.
 
-DEFLATE vs. zlib vs. gzip
-=========================
+# DEFLATE vs. zlib vs. gzip
 
 The DEFLATE format ([rfc1951](https://www.ietf.org/rfc/rfc1951.txt)), the zlib
 format ([rfc1950](https://www.ietf.org/rfc/rfc1950.txt)), and the gzip format
@@ -84,8 +98,7 @@ choose a format as follows:
 Note that gzip and zlib streams can be distinguished from each other based on
 their starting bytes, but this is not necessarily true of raw DEFLATE streams.
 
-Compression levels
-==================
+# Compression levels
 
 An often-underappreciated fact of compression formats such as DEFLATE is that
 there are an enormous number of different ways that a given input could be
@@ -105,8 +118,7 @@ significantly improve on zlib's compression ratio.
 If you are using DEFLATE (or zlib, or gzip) in your application, you should test
 different levels to see which works best for your application.
 
-Motivation
-==========
+# Motivation
 
 Despite DEFLATE's widespread use mainly through the zlib library, in the
 compression community this format from the early 1990s is often considered
@@ -130,3 +142,17 @@ poorly to certain newer code because zlib is not well optimized for modern
 processors.  libdeflate addresses this by providing an optimized DEFLATE
 implementation which can be used for benchmarking purposes.  And, of course,
 real applications can use it as well.
+
+That being said, I have also started [a separate
+project](https://github.com/ebiggers/xpack) for an experimental, more modern
+compression format.
+
+# License
+
+The library portion of libdeflate has been released into the public domain.
+There is NO WARRANTY, to the extent permitted by law.  See the CC0 Public Domain
+Dedication in the COPYING.LIB file for details.
+
+The non-library portions of the project, such as the gzip program, may be
+modified and/or redistributed under the terms of the MIT license.  There is NO
+WARRANTY, to the extent permitted by law.  See the COPYING file for details.

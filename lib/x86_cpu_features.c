@@ -14,7 +14,7 @@
 
 #include "x86_cpu_features.h"
 
-#ifdef X86_CPU_FEATURES_ENABLED
+#if X86_CPU_FEATURES_ENABLED
 
 #define DEBUG 0
 

@@ -2,12 +2,9 @@
 
 set -e
 
-make clean
-make -j4 CC=i686-w64-mingw32-gcc BUILD_PROGRAMS=yes
+make -j CC=i686-w64-mingw32-gcc
 cp -vf *.exe /j/exe/
-
-make clean
-make -j4 CC=x86_64-w64-mingw32-gcc BUILD_PROGRAMS=yes
+make -j CC=x86_64-w64-mingw32-gcc
 cp -vf *.exe /j/exe64/
 
-sudo systemctl restart smbd
+sudo $HOME/bin/sudo/restart-smbd

@@ -23,16 +23,12 @@
 #include "libdeflate.h"
 
 /*
- * Note: when compiling this file, SUPPORT_NEAR_OPTIMAL_PARSING should be
- * defined to either 0 or 1.  When defined to 1, the near-optimal parsing
- * algorithm is enabled at compression level 8 and above.  The near-optimal
- * parsing algorithm produces a compression ratio significantly better than the
- * greedy and lazy algorithms implemented here, and also the algorithm used by
- * zlib at level 9.  However, it is slow.
+ * By default, the near-optimal parsing algorithm is enabled at compression
+ * level 8 and above.  The near-optimal parsing algorithm produces a compression
+ * ratio significantly better than the greedy and lazy algorithms implemented
+ * here, and also the algorithm used by zlib at level 9.  However, it is slow.
  */
-#ifndef SUPPORT_NEAR_OPTIMAL_PARSING
-#  define SUPPORT_NEAR_OPTIMAL_PARSING 1
-#endif
+#define SUPPORT_NEAR_OPTIMAL_PARSING 1
 
 /*
  * Define to 1 to maintain the full map from match offsets to offset slots.
@@ -90,7 +86,7 @@
 #define MAX_PRE_CODEWORD_LEN		DEFLATE_MAX_PRE_CODEWORD_LEN
 
 /* Table: length slot => length slot base value  */
-static const unsigned deflate_length_slot_base[] = {
+static const unsigned deflate_length_slot_base[DEFLATE_NUM_LEN_SYMS] = {
 	3   , 4   , 5   , 6   , 7   , 8   , 9   , 10  ,
 	11  , 13  , 15  , 17  , 19  , 23  , 27  , 31  ,
 	35  , 43  , 51  , 59  , 67  , 83  , 99  , 115 ,
@@ -98,7 +94,7 @@ static const unsigned deflate_length_slot_base[] = {
 };
 
 /* Table: length slot => number of extra length bits  */
-static const u8 deflate_extra_length_bits[] = {
+static const u8 deflate_extra_length_bits[DEFLATE_NUM_LEN_SYMS] = {
 	0   , 0   , 0   , 0   , 0   , 0   , 0   , 0 ,
 	1   , 1   , 1   , 1   , 2   , 2   , 2   , 2 ,
 	3   , 3   , 3   , 3   , 4   , 4   , 4   , 4 ,
@@ -106,7 +102,7 @@ static const u8 deflate_extra_length_bits[] = {
 };
 
 /* Table: offset slot => offset slot base value  */
-static const unsigned deflate_offset_slot_base[] = {
+static const unsigned deflate_offset_slot_base[DEFLATE_NUM_OFFSET_SYMS] = {
 	1    , 2    , 3    , 4     , 5     , 7     , 9     , 13    ,
 	17   , 25   , 33   , 49    , 65    , 97    , 129   , 193   ,
 	257  , 385  , 513  , 769   , 1025  , 1537  , 2049  , 3073  ,
@@ -114,7 +110,7 @@ static const unsigned deflate_offset_slot_base[] = {
 };
 
 /* Table: offset slot => number of extra offset bits  */
-static const u8 deflate_extra_offset_bits[] = {
+static const u8 deflate_extra_offset_bits[DEFLATE_NUM_OFFSET_SYMS] = {
 	0    , 0    , 0    , 0     , 1     , 1     , 2     , 2     ,
 	3    , 3    , 4    , 4     , 5     , 5     , 6     , 6     ,
 	7    , 7    , 8    , 8     , 9     , 9     , 10    , 10    ,
@@ -526,7 +522,9 @@ heapify_subtree(u32 A[], unsigned length, unsigned subtree_idx)
 static void
 heapify_array(u32 A[], unsigned length)
 {
-	for (unsigned subtree_idx = length / 2; subtree_idx >= 1; subtree_idx--)
+	unsigned subtree_idx;
+
+	for (subtree_idx = length / 2; subtree_idx >= 1; subtree_idx--)
 		heapify_subtree(A, length, subtree_idx);
 }
 
@@ -581,6 +579,8 @@ static unsigned
 sort_symbols(unsigned num_syms, const u32 freqs[restrict],
 	     u8 lens[restrict], u32 symout[restrict])
 {
+	unsigned sym;
+	unsigned i;
 	unsigned num_used_syms;
 	unsigned num_counters;
 	unsigned counters[GET_NUM_COUNTERS(DEFLATE_MAX_NUM_SYMS)];
@@ -611,14 +611,14 @@ sort_symbols(unsigned num_syms, const u32 freqs[restrict],
 	memset(counters, 0, num_counters * sizeof(counters[0]));
 
 	/* Count the frequencies.  */
-	for (unsigned sym = 0; sym < num_syms; sym++)
+	for (sym = 0; sym < num_syms; sym++)
 		counters[MIN(freqs[sym], num_counters - 1)]++;
 
 	/* Make the counters cumulative, ignoring the zero-th, which
 	 * counted symbols with zero frequency.  As a side effect, this
 	 * calculates the number of symbols with nonzero frequency.  */
 	num_used_syms = 0;
-	for (unsigned i = 1; i < num_counters; i++) {
+	for (i = 1; i < num_counters; i++) {
 		unsigned count = counters[i];
 		counters[i] = num_used_syms;
 		num_used_syms += count;
@@ -627,7 +627,7 @@ sort_symbols(unsigned num_syms, const u32 freqs[restrict],
 	/* Sort nonzero-frequency symbols using the counters.  At the
 	 * same time, set the codeword lengths of zero-frequency symbols
 	 * to 0.  */
-	for (unsigned sym = 0; sym < num_syms; sym++) {
+	for (sym = 0; sym < num_syms; sym++) {
 		u32 freq = freqs[sym];
 		if (freq != 0) {
 			symout[counters[MIN(freq, num_counters - 1)]++] =
@@ -766,6 +766,9 @@ static void
 compute_length_counts(u32 A[restrict], unsigned root_idx,
 		      unsigned len_counts[restrict], unsigned max_codeword_len)
 {
+	unsigned len;
+	int node;
+
 	/* The key observations are:
 	 *
 	 * (1) We can traverse the non-leaf nodes of the tree, always
@@ -788,14 +791,14 @@ compute_length_counts(u32 A[restrict], unsigned root_idx,
 	 * exceeds max_codeword_len.
 	 */
 
-	for (unsigned len = 0; len <= max_codeword_len; len++)
+	for (len = 0; len <= max_codeword_len; len++)
 		len_counts[len] = 0;
 	len_counts[1] = 2;
 
 	/* Set the root node's depth to 0.  */
 	A[root_idx] &= SYMBOL_MASK;
 
-	for (int node = root_idx - 1; node >= 0; node--) {
+	for (node = root_idx - 1; node >= 0; node--) {
 
 		/* Calculate the depth of this node.  */
 
@@ -856,13 +859,16 @@ gen_codewords(u32 A[restrict], u8 lens[restrict],
 	      unsigned max_codeword_len, unsigned num_syms)
 {
 	u32 next_codewords[DEFLATE_MAX_CODEWORD_LEN + 1];
+	unsigned i;
+	unsigned len;
+	unsigned sym;
 
 	/* Given the number of codewords that will have each length,
 	 * assign codeword lengths to symbols.  We do this by assigning
 	 * the lengths in decreasing order to the symbols sorted
 	 * primarily by increasing frequency and secondarily by
 	 * increasing symbol value.  */
-	for (unsigned i = 0, len = max_codeword_len; len >= 1; len--) {
+	for (i = 0, len = max_codeword_len; len >= 1; len--) {
 		unsigned count = len_counts[len];
 		while (count--)
 			lens[A[i++] & SYMBOL_MASK] = len;
@@ -874,11 +880,11 @@ gen_codewords(u32 A[restrict], u8 lens[restrict],
 	 * order.  This produces a canonical code.  */
 	next_codewords[0] = 0;
 	next_codewords[1] = 0;
-	for (unsigned len = 2; len <= max_codeword_len; len++)
+	for (len = 2; len <= max_codeword_len; len++)
 		next_codewords[len] =
 			(next_codewords[len - 1] + len_counts[len - 1]) << 1;
 
-	for (unsigned sym = 0; sym < num_syms; sym++)
+	for (sym = 0; sym < num_syms; sym++)
 		A[sym] = next_codewords[lens[sym]]++;
 }
 
@@ -1098,11 +1104,13 @@ static void
 deflate_make_huffman_code(unsigned num_syms, unsigned max_codeword_len,
 			  const u32 freqs[], u8 lens[], u32 codewords[])
 {
+	unsigned sym;
+
 	make_canonical_huffman_code(num_syms, max_codeword_len,
 				    freqs, lens, codewords);
 
-	for (unsigned i = 0; i < num_syms; i++)
-		codewords[i] = deflate_reverse_codeword(codewords[i], lens[i]);
+	for (sym = 0; sym < num_syms; sym++)
+		codewords[sym] = deflate_reverse_codeword(codewords[sym], lens[sym]);
 }
 
 /*
@@ -1801,7 +1809,9 @@ struct block_split_stats {
 static void
 init_block_split_stats(struct block_split_stats *stats)
 {
-	for (int i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+	int i;
+
+	for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
 		stats->new_observations[i] = 0;
 		stats->observations[i] = 0;
 	}
@@ -1830,13 +1840,15 @@ observe_match(struct block_split_stats *stats, unsigned length)
 static bool
 do_end_block_check(struct block_split_stats *stats, u32 block_size)
 {
+	int i;
+
 	if (stats->num_observations > 0) {
 
 		/* Note: to avoid slow divisions, we do not divide by
 		 * 'num_observations', but rather do all math with the numbers
 		 * multiplied by 'num_observations'.  */
 		u32 total_delta = 0;
-		for (int i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+		for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
 			u32 expected = stats->observations[i] * stats->num_new_observations;
 			u32 actual = stats->new_observations[i] * stats->num_observations;
 			u32 delta = (actual > expected) ? actual - expected :
@@ -1850,7 +1862,7 @@ do_end_block_check(struct block_split_stats *stats, u32 block_size)
 			return true;
 	}
 
-	for (int i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+	for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
 		stats->num_observations += stats->new_observations[i];
 		stats->observations[i] += stats->new_observations[i];
 		stats->new_observations[i] = 0;
@@ -2136,14 +2148,16 @@ deflate_tally_item_list(struct deflate_compressor *c,
 static void
 deflate_set_costs(struct deflate_compressor *c, const struct deflate_lens * lens)
 {
+	unsigned i;
+
 	/* Literals  */
-	for (unsigned i = 0; i < DEFLATE_NUM_LITERALS; i++) {
+	for (i = 0; i < DEFLATE_NUM_LITERALS; i++) {
 		u32 bits = (lens->litlen[i] ? lens->litlen[i] : LITERAL_NOSTAT_BITS);
 		c->costs.literal[i] = bits << COST_SHIFT;
 	}
 
 	/* Lengths  */
-	for (unsigned i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++) {
+	for (i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++) {
 		unsigned length_slot = deflate_length_slot[i];
 		unsigned litlen_sym = 257 + length_slot;
 		u32 bits = (lens->litlen[litlen_sym] ? lens->litlen[litlen_sym] : LENGTH_NOSTAT_BITS);
@@ -2152,7 +2166,7 @@ deflate_set_costs(struct deflate_compressor *c, const struct deflate_lens * lens
 	}
 
 	/* Offset slots  */
-	for (unsigned i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++) {
+	for (i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++) {
 		u32 bits = (lens->offset[i] ? lens->offset[i] : OFFSET_NOSTAT_BITS);
 		bits += deflate_extra_offset_bits[i];
 		c->costs.offset_slot[i] = bits << COST_SHIFT;
@@ -2259,10 +2273,11 @@ deflate_optimize_and_write_block(struct deflate_compressor *c,
 {
 	struct deflate_optimum_node * const end_node = c->optimum + block_length;
 	unsigned num_passes_remaining = c->num_optim_passes;
+	unsigned i;
 
 	/* Force the block to really end at 'end_node', even if some matches
 	 * extend beyond it.  */
-	for (int i = 1; i < DEFLATE_MAX_MATCH_LEN; i++)
+	for (i = 1; i < DEFLATE_MAX_MATCH_LEN; i++)
 		end_node[i].cost_to_end = 0x80000000;
 
 	do {

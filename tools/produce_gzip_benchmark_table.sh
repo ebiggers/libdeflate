@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 do_benchmark() {
 	usize=$(stat -c %s "$file")
 	"$HOME/proj/libdeflate/benchmark" -g -s $usize "$@" "$file" \
@@ -12,11 +14,11 @@ echo "-----|---------|---------|---------------|---------------|---------------"
 for file in "$@"; do
 	echo -n "$(basename "$file")"
 	results=()
-	results+=($(do_benchmark -Y -l 6))
-	results+=($(do_benchmark -Y -l 9))
-	results+=($(do_benchmark -l 6))
-	results+=($(do_benchmark -l 9))
-	results+=($(do_benchmark -l 12))
+	results+=($(do_benchmark -Y -6))
+	results+=($(do_benchmark -Y -9))
+	results+=($(do_benchmark -6))
+	results+=($(do_benchmark -9))
+	results+=($(do_benchmark -12))
 	best=2000000000
 	for result in "${results[@]}"; do
 		if (( result < best)); then

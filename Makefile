@@ -1,198 +1,217 @@
+#
+# Use 'make help' to list available targets.
+#
+# Define V=1 to enable "verbose" mode, showing all executed commands.
+#
+# Define DECOMPRESSION_ONLY to omit all compression code, building a
+# decompression-only library.  If doing this, you must also build a specific
+# library target such as 'libdeflate.a', as the programs will no longer compile.
+#
+# Define DISABLE_GZIP to disable support for the gzip wrapper format.
+#
+# Define DISABLE_ZLIB to disable support for the zlib wrapper format.
+#
 ##############################################################################
 
-# Build the static library libdeflate.a?
-BUILD_STATIC_LIBRARY := yes
+CC ?= gcc
+AR ?= ar
 
-# Build the shared library libdeflate.so?
-BUILD_SHARED_LIBRARY := no
+STATIC_LIB_SUFFIX := .a
+SHARED_LIB_SUFFIX := .so
+PROG_SUFFIX       :=
+PROG_CFLAGS       :=
+PIC_REQUIRED      := 1
+HARD_LINKS        := 1
 
-# Build the benchmark program?  Note that to allow comparisons, the benchmark
-# program will be linked with both zlib and libdeflate.
-BUILD_BENCHMARK_PROGRAM := no
-
-# Build the gzip program?  Note that this program is not intended to be a full
-# gzip replacement.  Like the benchmark program, it is primary intended for
-# benchmarking and testing.
-BUILD_GZIP_PROGRAM := no
-
-# Build all the programs?
-BUILD_PROGRAMS := no
-
-# Will compression be supported?
-SUPPORT_COMPRESSION := yes
-
-# Will decompression be supported?
-SUPPORT_DECOMPRESSION := yes
-
-# Will the zlib wrapper format be supported?
-SUPPORT_ZLIB := yes
-
-# Will the gzip wrapper format be supported?
-SUPPORT_GZIP := yes
-
-# Will near optimal parsing (high compression) be supported?
-SUPPORT_NEAR_OPTIMAL_PARSING := yes
-
-# Will the decompressor assume that all compressed data is valid?
-# This is faster but ***insecure***!  Default to secure.
-UNSAFE_DECOMPRESSION := no
-
-# Will the decompressor detect CPU features at runtime in order to run more
-# optimized code?  This only affects some platforms and architectures.
-RUNTIME_CPU_DETECTION := yes
-
-# The compiler and archiver
-CC := gcc
-AR := ar
-
-##############################################################################
-
-# Detect compiling for Windows with MinGW
+# Compiling for Windows with MinGW?
 ifneq ($(findstring -mingw,$(CC)),)
     ifeq ($(AR),ar)
         AR := $(patsubst %-gcc,%-ar,$(CC))
     endif
-    WINDOWS      := yes
-    LIB_SUFFIX   := .lib
-    SHLIB_SUFFIX := .dll
-    PROG_SUFFIX  := .exe
-    PROG_SRC     := tools/wgetopt.c
-    PROG_CFLAGS  := -static -municode
-    SHLIB_IS_PIC := no
-else
-    WINDOWS      := no
-    LIB_SUFFIX   := .a
-    SHLIB_SUFFIX := .so
-    PROG_SUFFIX  :=
-    PROG_SRC     :=
-    PROG_CFLAGS  :=
-    SHLIB_IS_PIC := yes
+    STATIC_LIB_SUFFIX := .lib
+    SHARED_LIB_SUFFIX := .dll
+    PROG_SUFFIX       := .exe
+    PROG_CFLAGS       := -static -municode
+    PIC_REQUIRED      :=
+    HARD_LINKS        :=
 endif
 
 ##############################################################################
 
-# Always compile with optimizations enabled!
-# But don't change it to -O3 and expect it to be better.
-override CFLAGS += -O2
+#### Common compiler flags; not intended to be overridden
 
-# Use a sane default symbol visibility.
-override CFLAGS += -fvisibility=hidden
+override CFLAGS += -O2 -fomit-frame-pointer -std=gnu89 -I. -Icommon	\
+		-Wall -Wundef -Wdeclaration-after-statement		\
+		-Wmissing-prototypes -Wstrict-prototypes
 
-# Set the C version.  We currently require at least C99.  Also, we actually need
-# -std=gnu99 instead of -std=c99 for unnamed structs and unions, which are in
-# C11 but not C99.  But we can't yet use -std=c11 because we want to support
-# older versions of gcc.
-override CFLAGS += -std=gnu99
+##############################################################################
 
-# Allow including libdeflate.h.
-override CFLAGS += -I.
+#### Quiet make is enabled by default.  Define V=1 to disable.
 
-# Hide non-standard functions from standard headers (e.g. heapsort() on *BSD).
-override CFLAGS += -D_ANSI_SOURCE
-
-ifneq ($(SUPPORT_NEAR_OPTIMAL_PARSING),yes)
-  override CFLAGS += -DSUPPORT_NEAR_OPTIMAL_PARSING=0
+ifneq ($(findstring s,$(MAKEFLAGS)),s)
+ifneq ($(V),1)
+        QUIET_CC       = @echo '  CC      ' $@;
+        QUIET_CCLD     = @echo '  CCLD    ' $@;
+        QUIET_AR       = @echo '  AR      ' $@;
+        QUIET_LN       = @echo '  LN      ' $@;
+        QUIET_CP       = @echo '  CP      ' $@;
+        QUIET_GEN      = @echo '  GEN     ' $@;
+endif
 endif
 
-ifeq ($(UNSAFE_DECOMPRESSION),yes)
-  override CFLAGS += -DUNSAFE_DECOMPRESSION=1
+##############################################################################
+
+COMMON_HEADERS := $(wildcard common/*.h)
+ALL_TARGETS :=
+
+#### Library
+
+STATIC_LIB := libdeflate$(STATIC_LIB_SUFFIX)
+SHARED_LIB := libdeflate$(SHARED_LIB_SUFFIX)
+
+LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
+
+
+LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c lib/x86_cpu_features.c
+
+DECOMPRESSION_ONLY :=
+ifeq ($(DECOMPRESSION_ONLY),)
+    LIB_SRC += lib/deflate_compress.c
 endif
 
-ifneq ($(RUNTIME_CPU_DETECTION),yes)
-  override CFLAGS += -DRUNTIME_CPU_DETECTION=0
-endif
-
-PROG_CFLAGS += $(CFLAGS)
-PROG_SRC += libdeflate$(LIB_SUFFIX)
-
-SRC := src/aligned_malloc.c
-ifeq ($(SUPPORT_COMPRESSION),yes)
-    SRC += src/deflate_compress.c
-endif
-ifeq ($(SUPPORT_DECOMPRESSION),yes)
-    SRC += src/deflate_decompress.c
-    ifeq ($(RUNTIME_CPU_DETECTION),yes)
-        SRC += src/x86_cpu_features.c
+DISABLE_ZLIB :=
+ifeq ($(DISABLE_ZLIB),)
+    LIB_SRC += lib/adler32.c lib/zlib_decompress.c
+    ifeq ($(DECOMPRESSION_ONLY),)
+        LIB_SRC += lib/zlib_compress.c
     endif
 endif
-ifeq ($(SUPPORT_ZLIB),yes)
-    ifeq ($(SUPPORT_COMPRESSION),yes)
-        SRC += src/zlib_compress.c
+
+DISABLE_GZIP :=
+ifeq ($(DISABLE_GZIP),)
+    LIB_SRC += lib/crc32.c lib/gzip_decompress.c
+    ifeq ($(DECOMPRESSION_ONLY),)
+        LIB_SRC += lib/gzip_compress.c
     endif
-    ifeq ($(SUPPORT_DECOMPRESSION),yes)
-        SRC += src/zlib_decompress.c
-    endif
-    SRC += src/adler32.c
-endif
-ifeq ($(SUPPORT_GZIP),yes)
-    ifeq ($(SUPPORT_COMPRESSION),yes)
-        SRC += src/gzip_compress.c
-    endif
-    ifeq ($(SUPPORT_DECOMPRESSION),yes)
-        SRC += src/gzip_decompress.c
-    endif
-    SRC += src/crc32.c
 endif
 
-OBJ := $(SRC:.c=.o)
-PIC_OBJ := $(SRC:.c=.pic.o)
-ifeq ($(SHLIB_IS_PIC),yes)
-    SHLIB_OBJ := $(PIC_OBJ)
+LIB_OBJ := $(LIB_SRC:.c=.o)
+LIB_PIC_OBJ := $(LIB_SRC:.c=.pic.o)
+ifeq ($(PIC_REQUIRED),)
+    SHLIB_OBJ := $(LIB_OBJ)
 else
-    SHLIB_OBJ := $(OBJ)
+    SHLIB_OBJ := $(LIB_PIC_OBJ)
 endif
 
-$(OBJ): %.o: %.c $(wildcard src/*.h)
-	$(CC) -o $@ -c $(CFLAGS) $<
+# Compile position dependent library object files
+$(LIB_OBJ): %.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
+	$(QUIET_CC) $(CC) -o $@ -c $(LIB_CFLAGS) $<
 
-$(PIC_OBJ): %.pic.o: %.c $(wildcard src/*.h)
-	$(CC) -o $@ -c $(CFLAGS) -fPIC $<
+# Compile position independent library object files
+$(LIB_PIC_OBJ): %.pic.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
+	$(QUIET_CC) $(CC) -o $@ -c $(LIB_CFLAGS) -fPIC $<
 
-libdeflate$(SHLIB_SUFFIX):$(SHLIB_OBJ)
-	$(CC) -o $@ -shared $(CFLAGS) $+
+# Link shared library
+$(SHARED_LIB):$(SHLIB_OBJ)
+	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(LIB_CFLAGS) -shared $+
 
-libdeflate$(LIB_SUFFIX):$(OBJ)
-	$(AR) cr $@ $+
+ALL_TARGETS += $(SHARED_LIB)
 
-benchmark$(PROG_SUFFIX):tools/benchmark.c $(PROG_SRC)
-	$(CC) -o $@ $(PROG_CFLAGS) $+ -lz
+# Create static library
+$(STATIC_LIB):$(LIB_OBJ)
+	$(QUIET_AR) $(AR) cr $@ $+
 
-gzip$(PROG_SUFFIX):tools/gzip.c $(PROG_SRC)
-	$(CC) -o $@ $(PROG_CFLAGS) $+
+ALL_TARGETS += $(STATIC_LIB)
 
-ifeq ($(WINDOWS),yes)
-gunzip$(PROG_SUFFIX):tools/gzip.c $(PROG_SRC)
-	$(CC) -o $@ $(PROG_CFLAGS) $+
-else
+# Rebuild if CC or LIB_CFLAGS changed
+.lib-cflags: FORCE
+	@flags='$(CC):$(LIB_CFLAGS)'; \
+	if [ "$$flags" != "`cat $@ 2>/dev/null`" ]; then \
+		[ -e $@ ] && echo "Rebuilding library due to new compiler flags"; \
+		echo "$$flags" > $@; \
+	fi
+
+##############################################################################
+
+#### Programs
+
+PROG_CFLAGS += $(CFLAGS)		\
+	       -D_DEFAULT_SOURCE	\
+	       -D_FILE_OFFSET_BITS=64	\
+	       -DHAVE_CONFIG_H
+
+PROG_COMMON_HEADERS := programs/prog_util.h programs/config.h
+PROG_COMMON_SRC := programs/prog_util.c programs/tgetopt.c
+PROG_SPECIFIC_SRC := programs/gzip.c programs/benchmark.c
+
+PROG_COMMON_OBJ := $(PROG_COMMON_SRC:.c=.o)
+PROG_SPECIFIC_OBJ := $(PROG_SPECIFIC_SRC:.c=.o)
+PROG_OBJ := $(PROG_COMMON_OBJ) $(PROG_SPECIFIC_OBJ)
+
+# Generate autodetected configuration header
+programs/config.h:programs/detect.sh .prog-cflags
+	$(QUIET_GEN) CC=$(CC) $< > $@
+
+# Compile program object files
+$(PROG_OBJ): %.o: %.c $(PROG_COMMON_HEADERS) $(COMMON_HEADERS) .prog-cflags
+	$(QUIET_CC) $(CC) -o $@ -c $(PROG_CFLAGS) $<
+
+# Link benchmark program
+benchmark$(PROG_SUFFIX):programs/benchmark.o $(PROG_COMMON_OBJ) $(STATIC_LIB)
+	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(PROG_CFLAGS) $+ -lz
+
+# 'benchmark' is not compiled by default because of the zlib link requirement.
+#ALL_TARGETS += benchmark$(PROG_SUFFIX)
+
+# Link gzip program
+gzip$(PROG_SUFFIX):programs/gzip.o $(PROG_COMMON_OBJ) $(STATIC_LIB)
+	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(PROG_CFLAGS) $+
+
+ALL_TARGETS += gzip$(PROG_SUFFIX)
+
+ifeq ($(HARD_LINKS),)
+# No hard links; copy gzip to gunzip
 gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
-	ln -f gzip$(PROG_SUFFIX) $@
+	$(QUIET_CP) cp -f $< $@
+else
+# Hard link gunzip to gzip
+gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
+	$(QUIET_LN) ln -f $< $@
 endif
 
-ifeq ($(BUILD_PROGRAMS),yes)
-    BUILD_BENCHMARK_PROGRAM := yes
-    BUILD_GZIP_PROGRAM := yes
-endif
+ALL_TARGETS += gunzip$(PROG_SUFFIX)
 
-TARGETS :=
-ifeq ($(BUILD_STATIC_LIBRARY),yes)
-    TARGETS += libdeflate$(LIB_SUFFIX)
-endif
-ifeq ($(BUILD_SHARED_LIBRARY),yes)
-    TARGETS += libdeflate$(SHLIB_SUFFIX)
-endif
-ifeq ($(BUILD_BENCHMARK_PROGRAM),yes)
-    TARGETS += benchmark$(PROG_SUFFIX)
-endif
-ifeq ($(BUILD_GZIP_PROGRAM),yes)
-    TARGETS += gzip$(PROG_SUFFIX) gunzip$(PROG_SUFFIX)
-endif
+# Rebuild if CC or PROG_CFLAGS changed
+.prog-cflags: FORCE
+	@flags='$(CC):$(PROG_CFLAGS)'; \
+	if [ "$$flags" != "`cat $@ 2>/dev/null`" ]; then \
+		[ -e $@ ] && echo "Rebuilding programs due to new compiler flags"; \
+		echo "$$flags" > $@; \
+	fi
 
-all:$(TARGETS)
+##############################################################################
+
+all:$(ALL_TARGETS)
+
+help:
+	@echo "Available targets:"
+	@echo "------------------"
+	@for target in $(ALL_TARGETS) benchmark$(PROG_SUFFIX); do \
+		echo -e "$$target";		\
+	done
 
 clean:
-	rm -f libdeflate.a libdeflate.so libdeflate.dll	src/*.o	src/*.obj \
-		benchmark gzip gunzip *.exe *.lib *.obj *.exp
+	rm -f *.a *.dll *.exe *.exp *.so \
+		lib/*.o lib/*.obj programs/*.o programs/*.obj \
+		benchmark gzip gunzip programs/config.h \
+		libdeflate.lib libdeflatestatic.lib \
+		.lib-cflags .prog-cflags
 
-.PHONY: all clean
+realclean: clean
+	rm -f tags cscope*
+
+FORCE:
+
+.PHONY: all help clean realclean
 
 .DEFAULT_GOAL = all

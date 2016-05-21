@@ -2,19 +2,16 @@
  * x86_cpu_features.h - feature detection for x86 processors
  */
 
-#pragma once
+#ifndef _LIB_X86_CPU_FEATURES_H
+#define _LIB_X86_CPU_FEATURES_H
 
-#include "util.h"
+#include "common_defs.h"
 
-#ifndef RUNTIME_CPU_DETECTION
-#  define RUNTIME_CPU_DETECTION 1
-#endif
-
-#if RUNTIME_CPU_DETECTION && defined(__x86_64__) && \
-	COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
+#if defined(__x86_64__) && COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
 #  define X86_CPU_FEATURES_ENABLED 1
+#else
+#  define X86_CPU_FEATURES_ENABLED 0
 #endif
-
 
 #if X86_CPU_FEATURES_ENABLED
 
@@ -46,3 +43,5 @@ x86_have_cpu_feature(u32 feature)
 }
 
 #endif /* X86_CPU_FEATURES_ENABLED */
+
+#endif /* _LIB_X86_CPU_FEATURES_H */

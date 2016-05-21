@@ -40,12 +40,15 @@
 
 #include "libdeflate.h"
 
-/* By default, if the expression passed to SAFETY_CHECK() evaluates to false,
- * then deflate_decompress() immediately returns DECOMPRESS_BAD_DATA as the
- * compressed data is invalid.  But if unsafe decompression is enabled, then the
- * value of the expression is ignored, allowing the compiler to optimize out
- * some code.  */
-#if UNSAFE_DECOMPRESSION
+/*
+ * If the expression passed to SAFETY_CHECK() evaluates to false, then the
+ * decompression routine immediately returns DECOMPRESS_BAD_DATA, indicating the
+ * compressed data is invalid.
+ *
+ * Theoretically, these checks could be disabled for specialized applications
+ * where all input to the decompressor will be trusted.
+ */
+#if 0
 #  pragma message("UNSAFE DECOMPRESSION IS ENABLED. THIS MUST ONLY BE USED IF THE DECOMPRESSOR INPUT WILL ALWAYS BE TRUSTED!")
 #  define SAFETY_CHECK(expr)	(void)(expr)
 #else
@@ -575,8 +578,8 @@ build_decode_table(u32 decode_table[],
 		 * never be used.  But since a malformed stream might contain
 		 * any bits at all, these entries need to be set anyway.  */
 		u32 entry = make_decode_table_entry(decode_results[0], 1);
-		for (unsigned i = 0; i < (1U << table_bits); i++)
-			decode_table[i] = entry;
+		for (sym = 0; sym < (1U << table_bits); sym++)
+			decode_table[sym] = entry;
 
 		/* A completely empty code is permitted.  */
 		if (remainder == (1U << max_codeword_len))
@@ -762,12 +765,12 @@ repeat_byte(u8 b)
 {
 	machine_word_t v;
 
-	STATIC_ASSERT(WORDSIZE == 4 || WORDSIZE == 8);
+	STATIC_ASSERT(WORDBITS == 32 || WORDBITS == 64);
 
 	v = b;
 	v |= v << 8;
 	v |= v << 16;
-	v |= v << ((WORDSIZE == 8) ? 32 : 0);
+	v |= v << ((WORDBITS == 64) ? 32 : 0);
 	return v;
 }
 
@@ -795,6 +798,8 @@ copy_word_unaligned(const void *src, void *dst)
 #  undef FUNCNAME
 #  undef ATTRIBUTES
 #  define DISPATCH_ENABLED 1
+#else
+#  define DISPATCH_ENABLED 0
 #endif
 
 #if DISPATCH_ENABLED

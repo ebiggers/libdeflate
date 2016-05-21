@@ -18,10 +18,9 @@
  * posix_memalign(), aligned_alloc(), etc.
  */
 
-#include "aligned_malloc.h"
-
-#include <stdint.h>
 #include <stdlib.h>
+
+#include "aligned_malloc.h"
 
 void *
 aligned_malloc(size_t alignment, size_t size)

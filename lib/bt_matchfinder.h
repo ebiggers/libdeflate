@@ -130,7 +130,7 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 				const u32 max_len,
 				const u32 nice_len,
 				const u32 max_search_depth,
-				u32 next_hashes[restrict 2],
+				u32 * const restrict next_hashes,
 				u32 * const restrict best_len_ret,
 				struct lz_match * restrict lz_matchptr,
 				const bool record_matches)
@@ -142,8 +142,6 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 	u32 next_seq3;
 	u32 hash3;
 	u32 hash4;
-	STATIC_ASSERT(BT_MATCHFINDER_HASH3_WAYS >= 1 &&
-		      BT_MATCHFINDER_HASH3_WAYS <= 2);
 	s32 cur_node;
 #if BT_MATCHFINDER_HASH3_WAYS >= 2
 	s32 cur_node_2;
@@ -153,6 +151,9 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 	u32 best_lt_len, best_gt_len;
 	u32 len;
 	u32 best_len = 3;
+
+	STATIC_ASSERT(BT_MATCHFINDER_HASH3_WAYS >= 1 &&
+		      BT_MATCHFINDER_HASH3_WAYS <= 2);
 
 	next_seq4 = load_u32_unaligned(in_next + 1);
 	next_seq3 = loaded_u32_to_u24(next_seq4);

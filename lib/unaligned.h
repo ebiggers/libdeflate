@@ -2,10 +2,10 @@
  * unaligned.h - inline functions for unaligned memory accesses
  */
 
-#pragma once
+#ifndef LIB_UNALIGNED_H
+#define LIB_UNALIGNED_H
 
-#include "endianness.h"
-#include "util.h"
+#include "common_defs.h"
 
 /*
  * Naming note:
@@ -14,10 +14,10 @@
  * {get,put}_unaligned_*() deal with a specific endianness.
  */
 
-DEFINE_UNALIGNED_TYPE(u16);
-DEFINE_UNALIGNED_TYPE(u32);
-DEFINE_UNALIGNED_TYPE(u64);
-DEFINE_UNALIGNED_TYPE(machine_word_t);
+DEFINE_UNALIGNED_TYPE(u16)
+DEFINE_UNALIGNED_TYPE(u32)
+DEFINE_UNALIGNED_TYPE(u64)
+DEFINE_UNALIGNED_TYPE(machine_word_t)
 
 #define load_word_unaligned	load_machine_word_t_unaligned
 #define store_word_unaligned	store_machine_word_t_unaligned
@@ -28,7 +28,7 @@ static forceinline u16
 get_unaligned_le16(const u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST)
-		return le16_to_cpu(load_u16_unaligned(p));
+		return le16_bswap(load_u16_unaligned(p));
 	else
 		return ((u16)p[1] << 8) | p[0];
 }
@@ -37,48 +37,48 @@ static forceinline u16
 get_unaligned_be16(const u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST)
-		return be16_to_cpu(load_u16_unaligned(p));
+		return be16_bswap(load_u16_unaligned(p));
 	else
-		return ((u16)p[0] << 8)| p[1];
+		return ((u16)p[0] << 8) | p[1];
 }
 
 static forceinline u32
 get_unaligned_le32(const u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST)
-		return le32_to_cpu(load_u32_unaligned(p));
+		return le32_bswap(load_u32_unaligned(p));
 	else
-		return ((u32)p[0] << 0) | ((u32)p[1] << 8) |
-			((u32)p[2] << 16) | ((u32)p[3] << 24);
+		return ((u32)p[3] << 24) | ((u32)p[2] << 16) |
+			((u32)p[1] << 8) | p[0];
 }
 
 static forceinline u32
 get_unaligned_be32(const u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST)
-		return be32_to_cpu(load_u32_unaligned(p));
+		return be32_bswap(load_u32_unaligned(p));
 	else
 		return ((u32)p[0] << 24) | ((u32)p[1] << 16) |
-			((u32)p[2] << 8) | ((u32)p[3] << 0);
+			((u32)p[2] << 8) | p[3];
 }
 
 static forceinline u64
 get_unaligned_le64(const u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST)
-		return le64_to_cpu(load_u64_unaligned(p));
+		return le64_bswap(load_u64_unaligned(p));
 	else
-		return ((u64)p[0] << 0) | ((u64)p[1] << 8) |
-			((u64)p[2] << 16) | ((u64)p[3] << 24) |
-			((u64)p[4] << 32) | ((u64)p[5] << 40) |
-			((u64)p[6] << 48) | ((u64)p[7] << 56);
+		return ((u64)p[7] << 56) | ((u64)p[6] << 48) |
+			((u64)p[5] << 40) | ((u64)p[4] << 32) |
+			((u64)p[3] << 24) | ((u64)p[2] << 16) |
+			((u64)p[1] << 8) | p[0];
 }
 
 static forceinline machine_word_t
 get_unaligned_leword(const u8 *p)
 {
-	STATIC_ASSERT(WORDSIZE == 4 || WORDSIZE == 8);
-	if (WORDSIZE == 4)
+	STATIC_ASSERT(WORDBITS == 32 || WORDBITS == 64);
+	if (WORDBITS == 32)
 		return get_unaligned_le32(p);
 	else
 		return get_unaligned_le64(p);
@@ -90,7 +90,7 @@ static forceinline void
 put_unaligned_le16(u16 v, u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST) {
-		store_u16_unaligned(cpu_to_le16(v), p);
+		store_u16_unaligned(le16_bswap(v), p);
 	} else {
 		p[0] = (u8)(v >> 0);
 		p[1] = (u8)(v >> 8);
@@ -101,7 +101,7 @@ static forceinline void
 put_unaligned_be16(u16 v, u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST) {
-		store_u16_unaligned(cpu_to_be16(v), p);
+		store_u16_unaligned(be16_bswap(v), p);
 	} else {
 		p[0] = (u8)(v >> 8);
 		p[1] = (u8)(v >> 0);
@@ -112,7 +112,7 @@ static forceinline void
 put_unaligned_le32(u32 v, u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST) {
-		store_u32_unaligned(cpu_to_le32(v), p);
+		store_u32_unaligned(le32_bswap(v), p);
 	} else {
 		p[0] = (u8)(v >> 0);
 		p[1] = (u8)(v >> 8);
@@ -125,7 +125,7 @@ static forceinline void
 put_unaligned_be32(u32 v, u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST) {
-		store_u32_unaligned(cpu_to_be32(v), p);
+		store_u32_unaligned(be32_bswap(v), p);
 	} else {
 		p[0] = (u8)(v >> 24);
 		p[1] = (u8)(v >> 16);
@@ -138,7 +138,7 @@ static forceinline void
 put_unaligned_le64(u64 v, u8 *p)
 {
 	if (UNALIGNED_ACCESS_IS_FAST) {
-		store_u64_unaligned(cpu_to_le64(v), p);
+		store_u64_unaligned(le64_bswap(v), p);
 	} else {
 		p[0] = (u8)(v >> 0);
 		p[1] = (u8)(v >> 8);
@@ -154,8 +154,8 @@ put_unaligned_le64(u64 v, u8 *p)
 static forceinline void
 put_unaligned_leword(machine_word_t v, u8 *p)
 {
-	STATIC_ASSERT(WORDSIZE == 4 || WORDSIZE == 8);
-	if (WORDSIZE == 4)
+	STATIC_ASSERT(WORDBITS == 32 || WORDBITS == 64);
+	if (WORDBITS == 32)
 		put_unaligned_le32(v, p);
 	else
 		put_unaligned_le64(v, p);
@@ -198,3 +198,5 @@ load_u24_unaligned(const u8 *p)
 		return ((u32)p[2] << 0) | ((u32)p[1] << 8) | ((u32)p[0] << 16);
 #endif
 }
+
+#endif /* LIB_UNALIGNED_H */

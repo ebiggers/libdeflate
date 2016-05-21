@@ -4,13 +4,13 @@ set -eu
 
 for arch in 'i686' 'x86_64'; do
 	make clean
-	make -j CC=${arch}-w64-mingw32-gcc BUILD_PROGRAMS=yes BUILD_SHARED_LIBRARY=yes
+	make -j CC=${arch}-w64-mingw32-gcc all benchmark.exe
 	dir=libdeflate-$(git describe --tags | tr -d v)-windows-${arch}-bin
 	rm -rf $dir ${dir}.zip
 	mkdir $dir
 	cp libdeflate.dll libdeflate.lib libdeflate.h *.exe $dir
 	${arch}-w64-mingw32-strip ${dir}/libdeflate.dll ${dir}/*.exe
-	for file in COPYING; do
+	for file in COPYING COPYING.LIB NEWS; do
 		sed < $file > ${dir}/${file}.txt -e 's/$/\r/g'
 	done
 	for file in README.md; do

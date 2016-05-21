@@ -2,11 +2,11 @@
  * matchfinder_common.h - common code for Lempel-Ziv matchfinding
  */
 
-#pragma once
+#ifndef _LIB_MATCHFINDER_COMMON_H
+#define _LIB_MATCHFINDER_COMMON_H
 
-#include "bitops.h"
+#include "common_defs.h"
 #include "unaligned.h"
-#include "util.h"
 
 #ifndef MATCHFINDER_WINDOW_ORDER
 #  error "MATCHFINDER_WINDOW_ORDER must be defined!"
@@ -54,24 +54,24 @@ typedef s16 mf_pos_t;
 static forceinline void
 matchfinder_init(mf_pos_t *data, size_t num_entries)
 {
-	const size_t size = num_entries * sizeof(data[0]);
+	size_t i;
 
 #if defined(__AVX2__) && defined(_aligned_attribute)
-	if (matchfinder_init_avx2(data, size))
+	if (matchfinder_init_avx2(data, num_entries * sizeof(data[0])))
 		return;
 #endif
 
 #if defined(__SSE2__) && defined(_aligned_attribute)
-	if (matchfinder_init_sse2(data, size))
+	if (matchfinder_init_sse2(data, num_entries * sizeof(data[0])))
 		return;
 #endif
 
 #if defined(__ARM_NEON__) && defined(_aligned_attribute)
-	if (matchfinder_init_neon(data, size))
+	if (matchfinder_init_neon(data, num_entries * sizeof(data[0])))
 		return;
 #endif
 
-	for (size_t i = 0; i < num_entries; i++)
+	for (i = 0; i < num_entries; i++)
 		data[i] = MATCHFINDER_INITVAL;
 }
 
@@ -99,20 +99,20 @@ matchfinder_init(mf_pos_t *data, size_t num_entries)
 static forceinline void
 matchfinder_rebase(mf_pos_t *data, size_t num_entries)
 {
-	const size_t size = num_entries * sizeof(data[0]);
+	size_t i;
 
 #if defined(__AVX2__) && defined(_aligned_attribute)
-	if (matchfinder_rebase_avx2(data, size))
+	if (matchfinder_rebase_avx2(data, num_entries * sizeof(data[0])))
 		return;
 #endif
 
 #if defined(__SSE2__) && defined(_aligned_attribute)
-	if (matchfinder_rebase_sse2(data, size))
+	if (matchfinder_rebase_sse2(data, num_entries * sizeof(data[0])))
 		return;
 #endif
 
 #if defined(__ARM_NEON__) && defined(_aligned_attribute)
-	if (matchfinder_rebase_neon(data, size))
+	if (matchfinder_rebase_neon(data, num_entries * sizeof(data[0])))
 		return;
 #endif
 
@@ -121,7 +121,7 @@ matchfinder_rebase(mf_pos_t *data, size_t num_entries)
 		 * already negative, clear all bits except the sign bit; this
 		 * changes the value to -32768.  Otherwise, set the sign bit;
 		 * this is equivalent to subtracting 32768.  */
-		for (size_t i = 0; i < num_entries; i++) {
+		for (i = 0; i < num_entries; i++) {
 			u16 v = data[i];
 			u16 sign_bit = v & 0x8000;
 			v &= sign_bit - ((sign_bit >> 15) ^ 1);
@@ -131,7 +131,7 @@ matchfinder_rebase(mf_pos_t *data, size_t num_entries)
 		return;
 	}
 
-	for (size_t i = 0; i < num_entries; i++) {
+	for (i = 0; i < num_entries; i++) {
 		if (data[i] >= 0)
 			data[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
 		else
@@ -165,14 +165,14 @@ lz_extend(const u8 * const strptr, const u8 * const matchptr,
 
 	if (UNALIGNED_ACCESS_IS_FAST) {
 
-		if (likely(max_len - len >= 4 * WORDSIZE)) {
+		if (likely(max_len - len >= 4 * WORDBYTES)) {
 
 		#define COMPARE_WORD_STEP				\
 			v_word = load_word_unaligned(&matchptr[len]) ^	\
 				 load_word_unaligned(&strptr[len]);	\
 			if (v_word != 0)				\
 				goto word_differs;			\
-			len += WORDSIZE;				\
+			len += WORDBYTES;				\
 
 			COMPARE_WORD_STEP
 			COMPARE_WORD_STEP
@@ -181,12 +181,12 @@ lz_extend(const u8 * const strptr, const u8 * const matchptr,
 		#undef COMPARE_WORD_STEP
 		}
 
-		while (len + WORDSIZE <= max_len) {
+		while (len + WORDBYTES <= max_len) {
 			v_word = load_word_unaligned(&matchptr[len]) ^
 				 load_word_unaligned(&strptr[len]);
 			if (v_word != 0)
 				goto word_differs;
-			len += WORDSIZE;
+			len += WORDBYTES;
 		}
 	}
 
@@ -196,8 +196,10 @@ lz_extend(const u8 * const strptr, const u8 * const matchptr,
 
 word_differs:
 	if (CPU_IS_LITTLE_ENDIAN())
-		len += (ffsw(v_word) >> 3);
+		len += (bsfw(v_word) >> 3);
 	else
-		len += (8 * WORDSIZE - 1 - flsw(v_word)) >> 3;
+		len += (WORDBITS - 1 - bsrw(v_word)) >> 3;
 	return len;
 }
+
+#endif /* _LIB_MATCHFINDER_COMMON_H */
