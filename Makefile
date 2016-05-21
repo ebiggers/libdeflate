@@ -71,6 +71,7 @@ SHARED_LIB := libdeflate$(SHARED_LIB_SUFFIX)
 
 LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
 
+LIB_HEADERS := $(wildcard lib/*.h)
 
 LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c lib/x86_cpu_features.c
 
