@@ -1,0 +1,16 @@
+Version 0.2:
+	Implemented a new block splitting algorithm which typically improves the
+	compression ratio slightly at all compression levels.
+
+	The compressor now outputs each block using the cheapest type (dynamic
+	Huffman, static Huffman, or uncompressed).
+
+	The gzip program has received an overhaul and now behaves more like the
+	standard version.
+
+	Build system updates, including: some build options were changed and
+	some build options were removed, and the default 'make' target now
+	includes the gzip program as well as the library.
+
+Version 0.1:
+	Initial official release.

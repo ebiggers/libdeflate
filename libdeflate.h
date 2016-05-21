@@ -9,6 +9,10 @@
 extern "C" {
 #endif
 
+#define LIBDEFLATE_VERSION_MAJOR	0
+#define LIBDEFLATE_VERSION_MINOR	2
+#define LIBDEFLATE_VERSION_STRING	"0.2"
+
 #include <stddef.h>
 
 /* Microsoft C / Visual Studio garbage.  If you want to link to the DLL version

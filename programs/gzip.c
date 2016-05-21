@@ -73,7 +73,7 @@ static void
 show_version(void)
 {
 	printf(
-"gzip compression program\n"
+"gzip compression program v" LIBDEFLATE_VERSION_STRING "\n"
 "Copyright 2016 Eric Biggers\n"
 "\n"
 "This program is free software which may be modified and/or redistributed\n"
