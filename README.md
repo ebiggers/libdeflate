@@ -26,8 +26,9 @@ use this library are also provided:
 
 ## For UNIX
 
-Just run `make`.  You need GNU Make and either GCC or Clang.  There is no `make
-install` yet; just copy the file(s) to where you want.
+Just run `make`.  You need GNU Make and either GCC or Clang.  GCC is recommended
+because it builds slightly faster binaries.  There is no `make install` yet;
+just copy the file(s) to where you want.
 
 By default, all targets are built, including the library and programs, with the
 exception of the `benchmark` program.  `make help` shows the available targets.
