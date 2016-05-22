@@ -13,9 +13,6 @@
 #
 ##############################################################################
 
-CC ?= gcc
-AR ?= ar
-
 STATIC_LIB_SUFFIX := .a
 SHARED_LIB_SUFFIX := .so
 PROG_SUFFIX       :=
