@@ -76,32 +76,32 @@ LIB_HEADERS := $(wildcard lib/*.h)
 LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c lib/x86_cpu_features.c
 
 DECOMPRESSION_ONLY :=
-ifeq ($(DECOMPRESSION_ONLY),)
+ifndef DECOMPRESSION_ONLY
     LIB_SRC += lib/deflate_compress.c
 endif
 
 DISABLE_ZLIB :=
-ifeq ($(DISABLE_ZLIB),)
+ifndef DISABLE_ZLIB
     LIB_SRC += lib/adler32.c lib/zlib_decompress.c
-    ifeq ($(DECOMPRESSION_ONLY),)
+    ifndef DECOMPRESSION_ONLY
         LIB_SRC += lib/zlib_compress.c
     endif
 endif
 
 DISABLE_GZIP :=
-ifeq ($(DISABLE_GZIP),)
+ifndef DISABLE_GZIP
     LIB_SRC += lib/crc32.c lib/gzip_decompress.c
-    ifeq ($(DECOMPRESSION_ONLY),)
+    ifndef DECOMPRESSION_ONLY
         LIB_SRC += lib/gzip_compress.c
     endif
 endif
 
 LIB_OBJ := $(LIB_SRC:.c=.o)
 LIB_PIC_OBJ := $(LIB_SRC:.c=.pic.o)
-ifeq ($(PIC_REQUIRED),)
-    SHLIB_OBJ := $(LIB_OBJ)
-else
+ifdef PIC_REQUIRED
     SHLIB_OBJ := $(LIB_PIC_OBJ)
+else
+    SHLIB_OBJ := $(LIB_OBJ)
 endif
 
 # Compile position dependent library object files
@@ -170,14 +170,14 @@ gzip$(PROG_SUFFIX):programs/gzip.o $(PROG_COMMON_OBJ) $(STATIC_LIB)
 
 ALL_TARGETS += gzip$(PROG_SUFFIX)
 
-ifeq ($(HARD_LINKS),)
-# No hard links; copy gzip to gunzip
-gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
-	$(QUIET_CP) cp -f $< $@
-else
+ifdef HARD_LINKS
 # Hard link gunzip to gzip
 gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
 	$(QUIET_LN) ln -f $< $@
+else
+# No hard links; copy gzip to gunzip
+gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
+	$(QUIET_CP) cp -f $< $@
 endif
 
 ALL_TARGETS += gunzip$(PROG_SUFFIX)
