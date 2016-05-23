@@ -50,27 +50,33 @@
 #  include "bt_matchfinder.h"
 #endif
 
-/* The minimum and maximum block lengths, in bytes of source data, which the
- * parsing algorithms may choose.  */
+/*
+ * The minimum and maximum block lengths, in bytes of source data, which the
+ * parsing algorithms may choose.
+ */
 #define MIN_BLOCK_LENGTH	10000
 #define MAX_BLOCK_LENGTH	300000
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
-/* Constants specific to the near-optimal parsing algorithm.  */
+/* Constants specific to the near-optimal parsing algorithm */
 
-/* The maximum number of matches the matchfinder can find at a single position.
+/*
+ * The maximum number of matches the matchfinder can find at a single position.
  * Since the matchfinder never finds more than one match for the same length,
  * presuming one of each possible length is sufficient for an upper bound.
  * (This says nothing about whether it is worthwhile to consider so many
- * matches; this is just defining the worst case.)  */
+ * matches; this is just defining the worst case.)
+ */
 #  define MAX_MATCHES_PER_POS	(DEFLATE_MAX_MATCH_LEN - DEFLATE_MIN_MATCH_LEN + 1)
 
-/* The number of array spaces to reserve for a single block's matches.  This
- * value should be high enough so that virtually the time, all matches found in
- * MAX_BLOCK_LENGTH consecutive positions can fit in this array.  However, this
- * is *not* the true upper bound on the number of matches that can possibly be
- * found.  Therefore, checks for overflow are still required.  */
-#  define CACHE_LEN		((MAX_BLOCK_LENGTH * 5) + (MAX_MATCHES_PER_POS + 1))
+/*
+ * The number of lz_match structures in the match cache, excluding the extra
+ * "overflow" entries.  This value should be high enough so that nearly the
+ * time, all matches found in a given block can fit in the match cache.
+ * However, fallback behavior (immediately terminating the block) on cache
+ * overflow is still required.
+ */
+#  define CACHE_LENGTH      (MAX_BLOCK_LENGTH * 5)
 
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
@@ -251,8 +257,8 @@ struct deflate_sequence {
  * each outgoing edge from this node is labeled with a literal or a match that
  * can be taken to advance from this position to a later position.
  *
- * But these "edges" are actually stored elsewhere (in 'cached_matches').
- * Here we associate with each node just two pieces of information:
+ * But these "edges" are actually stored elsewhere (in 'match_cache').  Here we
+ * associate with each node just two pieces of information:
  *
  *	'cost_to_end' is the minimum cost to reach the end of the block from
  *	this position.
@@ -362,11 +368,33 @@ struct deflate_compressor {
 			/* Binary tree matchfinder  */
 			struct bt_matchfinder bt_mf;
 
-			/* Matches found using the matchfinder are cached in
-			 * this array so that later optimization of the block
-			 * has the matches easily available.  The cached matches
-			 * are cleared when a new block is started.  */
-			struct lz_match cached_matches[CACHE_LEN];
+			/*
+			 * Cached matches for the current block.  This array
+			 * contains the matches that were found at each position
+			 * in the block.  Specifically, for each position, there
+			 * is a list of matches found at that position, if any,
+			 * sorted by strictly increasing length.  In addition,
+			 * following the matches for each position, there is a
+			 * special 'struct lz_match' whose 'length' member
+			 * contains the number of matches found at that
+			 * position, and whose 'offset' member contains the
+			 * literal at that position.
+			 *
+			 * Note: in rare cases, there will be a very high number
+			 * of matches in the block and this array will overflow.
+			 * If this happens, we force the end of the current
+			 * block.  CACHE_LENGTH is the length at which we
+			 * actually check for overflow.  The extra slots beyond
+			 * this are enough to absorb the worst case overflow,
+			 * which occurs if starting at &match_cache[CACHE_LENGTH
+			 * - 1], we write the match count header, then write
+			 * MAX_MATCHES_PER_POS matches, then skip searching for
+			 * matches at 'DEFLATE_MAX_MATCH_LEN - 1' positions and
+			 * write the match count header for each.
+			 */
+			struct lz_match match_cache[CACHE_LENGTH +
+						    MAX_MATCHES_PER_POS +
+						    DEFLATE_MAX_MATCH_LEN - 1];
 
 			/* Array of structures, one per position, for running
 			 * the minimum-cost path algorithm.  */
@@ -2268,7 +2296,7 @@ deflate_optimize_and_write_block(struct deflate_compressor *c,
 				 struct deflate_output_bitstream *os,
 				 const u8 * const block_begin,
 				 const u32 block_length,
-				 struct lz_match * const end_cache_ptr,
+				 const struct lz_match * const end_cache_ptr,
 				 const bool is_final_block)
 {
 	struct deflate_optimum_node * const end_node = c->optimum + block_length;
@@ -2298,7 +2326,7 @@ deflate_optimize_and_write_block(struct deflate_compressor *c,
 		 * and the match/literal choice is saved.
 		 */
 		struct deflate_optimum_node *cur_node = end_node;
-		struct lz_match *cache_ptr = end_cache_ptr;
+		const struct lz_match *cache_ptr = end_cache_ptr;
 
 		cur_node->cost_to_end = 0;
 		do {
@@ -2320,7 +2348,7 @@ deflate_optimize_and_write_block(struct deflate_compressor *c,
 
 			/* Also consider matches if there are any.  */
 			if (num_matches) {
-				struct lz_match *match;
+				const struct lz_match *match;
 				unsigned len;
 				unsigned offset;
 				unsigned offset_slot;
@@ -2410,8 +2438,7 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 	do {
 		/* Starting a new DEFLATE block.  */
 
-		struct lz_match *cache_ptr = c->cached_matches;
-		struct lz_match * const cache_end = &c->cached_matches[CACHE_LEN - (MAX_MATCHES_PER_POS + 1)];
+		struct lz_match *cache_ptr = c->match_cache;
 		const u8 * const in_block_begin = in_next;
 		const u8 * const in_max_block_end = in_next + MIN(in_end - in_next, MAX_BLOCK_LENGTH);
 		struct block_split_stats split_stats;
@@ -2450,7 +2477,7 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 			/*
 			 * Find matches with the current position using the
 			 * binary tree matchfinder and save them in
-			 * 'cached_matches'.
+			 * 'match_cache'.
 			 *
 			 * Note: the binary tree matchfinder is more suited for
 			 * optimal parsing than the hash chain matchfinder.  The
@@ -2534,7 +2561,7 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 				} while (--best_len);
 			}
 		} while (in_next < in_max_block_end &&
-			 cache_ptr <= cache_end &&
+			 cache_ptr < &c->match_cache[CACHE_LENGTH] &&
 			 !should_end_block(&split_stats, in_block_begin, in_next, in_end));
 
 		/* All the matches for this block have been cached.  Now compute
