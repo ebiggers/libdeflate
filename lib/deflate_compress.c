@@ -52,7 +52,8 @@
 
 /*
  * The minimum and maximum block lengths, in bytes of source data, which the
- * parsing algorithms may choose.
+ * parsing algorithms may choose.  Caveat: due to implementation details, the
+ * actual maximum will be slightly higher than the number defined below.
  */
 #define MIN_BLOCK_LENGTH	10000
 #define MAX_BLOCK_LENGTH	300000
@@ -396,10 +397,19 @@ struct deflate_compressor {
 						    MAX_MATCHES_PER_POS +
 						    DEFLATE_MAX_MATCH_LEN - 1];
 
-			/* Array of structures, one per position, for running
-			 * the minimum-cost path algorithm.  */
-			struct deflate_optimum_node optimum[MAX_BLOCK_LENGTH +
-							    3 * DEFLATE_MAX_MATCH_LEN];
+			/*
+			 * Array of nodes, one per position, for running the
+			 * minimum-cost path algorithm.
+			 *
+			 * This array must be large enough to accommodate the
+			 * worst-case number of nodes, which occurs if we find a
+			 * match of length DEFLATE_MAX_MATCH_LEN at position
+			 * MAX_BLOCK_LENGTH - 1, producing a block of length
+			 * MAX_BLOCK_LENGTH - 1 + DEFLATE_MAX_MATCH_LEN.  Add
+			 * one for the end-of-block node.
+			 */
+			struct deflate_optimum_node optimum[MAX_BLOCK_LENGTH - 1 +
+							    DEFLATE_MAX_MATCH_LEN + 1];
 
 			/* The current cost model being used.  */
 			struct deflate_costs costs;
@@ -2301,12 +2311,13 @@ deflate_optimize_and_write_block(struct deflate_compressor *c,
 {
 	struct deflate_optimum_node * const end_node = c->optimum + block_length;
 	unsigned num_passes_remaining = c->num_optim_passes;
-	unsigned i;
+	u32 i;
 
 	/* Force the block to really end at 'end_node', even if some matches
 	 * extend beyond it.  */
-	for (i = 1; i < DEFLATE_MAX_MATCH_LEN; i++)
-		end_node[i].cost_to_end = 0x80000000;
+	for (i = block_length; i <= MIN(block_length - 1 + DEFLATE_MAX_MATCH_LEN,
+					ARRAY_LEN(c->optimum) - 1); i++)
+		c->optimum[i].cost_to_end = 0x80000000;
 
 	do {
 		/*
