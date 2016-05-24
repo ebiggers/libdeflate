@@ -290,6 +290,17 @@ struct deflate_optimum_node {
 
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
+/* Block split statistics.  See "Block splitting algorithm" below. */
+#define NUM_LITERAL_OBSERVATION_TYPES 8
+#define NUM_MATCH_OBSERVATION_TYPES 2
+#define NUM_OBSERVATION_TYPES (NUM_LITERAL_OBSERVATION_TYPES + NUM_MATCH_OBSERVATION_TYPES)
+struct block_split_stats {
+	u32 new_observations[NUM_OBSERVATION_TYPES];
+	u32 observations[NUM_OBSERVATION_TYPES];
+	u32 num_new_observations;
+	u32 num_observations;
+};
+
 /* The main DEFLATE compressor structure  */
 struct deflate_compressor {
 
@@ -305,6 +316,9 @@ struct deflate_compressor {
 
 	/* Static Huffman codes */
 	struct deflate_codes static_codes;
+
+	/* Block split statistics for the currently pending block */
+	struct block_split_stats split_stats;
 
 	/* A table for fast lookups of offset slot by match offset.
 	 *
@@ -1836,16 +1850,6 @@ deflate_finish_sequence(struct deflate_sequence *seq, unsigned litrunlen)
  * cannot be used, we can use preliminary "greedy" choices instead.
  */
 
-#define NUM_LITERAL_OBSERVATION_TYPES 8
-#define NUM_MATCH_OBSERVATION_TYPES 2
-#define NUM_OBSERVATION_TYPES (NUM_LITERAL_OBSERVATION_TYPES + NUM_MATCH_OBSERVATION_TYPES)
-struct block_split_stats {
-	u32 new_observations[NUM_OBSERVATION_TYPES];
-	u32 observations[NUM_OBSERVATION_TYPES];
-	u32 num_new_observations;
-	u32 num_observations;
-};
-
 /* Initialize the block split statistics when starting a new block. */
 static void
 init_block_split_stats(struct block_split_stats *stats)
@@ -1953,9 +1957,8 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 		const u8 * const in_max_block_end = in_next + MIN(in_end - in_next, MAX_BLOCK_LENGTH);
 		u32 litrunlen = 0;
 		struct deflate_sequence *next_seq = c->sequences;
-		struct block_split_stats split_stats;
 
-		init_block_split_stats(&split_stats);
+		init_block_split_stats(&c->split_stats);
 		deflate_reset_symbol_frequencies(c);
 
 		do {
@@ -1983,7 +1986,7 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 				/* Match found.  */
 				deflate_choose_match(c, length, offset,
 						     &litrunlen, &next_seq);
-				observe_match(&split_stats, length);
+				observe_match(&c->split_stats, length);
 				in_next = hc_matchfinder_skip_positions(&c->hc_mf,
 									&in_cur_base,
 									in_next + 1,
@@ -1993,13 +1996,13 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
 			} else {
 				/* No match found.  */
 				deflate_choose_literal(c, *in_next, &litrunlen);
-				observe_literal(&split_stats, *in_next);
+				observe_literal(&c->split_stats, *in_next);
 				in_next++;
 			}
 
 			/* Check if it's time to output another block.  */
 		} while (in_next < in_max_block_end &&
-			 !should_end_block(&split_stats, in_block_begin, in_next, in_end));
+			 !should_end_block(&c->split_stats, in_block_begin, in_next, in_end));
 
 		deflate_finish_sequence(next_seq, litrunlen);
 		deflate_flush_block(c, &os, in_block_begin,
@@ -2038,9 +2041,8 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 		const u8 * const in_max_block_end = in_next + MIN(in_end - in_next, MAX_BLOCK_LENGTH);
 		u32 litrunlen = 0;
 		struct deflate_sequence *next_seq = c->sequences;
-		struct block_split_stats split_stats;
 
-		init_block_split_stats(&split_stats);
+		init_block_split_stats(&c->split_stats);
 		deflate_reset_symbol_frequencies(c);
 
 		do {
@@ -2069,12 +2071,12 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 			if (cur_len < DEFLATE_MIN_MATCH_LEN) {
 				/* No match found.  Choose a literal.  */
 				deflate_choose_literal(c, *(in_next - 1), &litrunlen);
-				observe_literal(&split_stats, *(in_next - 1));
+				observe_literal(&c->split_stats, *(in_next - 1));
 				continue;
 			}
 
 		have_cur_match:
-			observe_match(&split_stats, cur_len);
+			observe_match(&c->split_stats, cur_len);
 
 			/* We have a match at the current position.  */
 
@@ -2146,7 +2148,7 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
 
 			/* Check if it's time to output another block.  */
 		} while (in_next < in_max_block_end &&
-			 !should_end_block(&split_stats, in_block_begin, in_next, in_end));
+			 !should_end_block(&c->split_stats, in_block_begin, in_next, in_end));
 
 		deflate_finish_sequence(next_seq, litrunlen);
 		deflate_flush_block(c, &os, in_block_begin,
@@ -2456,10 +2458,9 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 		struct lz_match *cache_ptr = c->match_cache;
 		const u8 * const in_block_begin = in_next;
 		const u8 * const in_max_block_end = in_next + MIN(in_end - in_next, MAX_BLOCK_LENGTH);
-		struct block_split_stats split_stats;
 		const u8 *next_observation = in_next;
 
-		init_block_split_stats(&split_stats);
+		init_block_split_stats(&c->split_stats);
 		deflate_reset_symbol_frequencies(c);
 
 		/*
@@ -2522,10 +2523,10 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 
 			if (in_next >= next_observation) {
 				if (best_len >= 4) {
-					observe_match(&split_stats, best_len);
+					observe_match(&c->split_stats, best_len);
 					next_observation = in_next + best_len;
 				} else {
-					observe_literal(&split_stats, *in_next);
+					observe_literal(&c->split_stats, *in_next);
 					next_observation = in_next + 1;
 				}
 			}
@@ -2577,7 +2578,7 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 			}
 		} while (in_next < in_max_block_end &&
 			 cache_ptr < &c->match_cache[CACHE_LENGTH] &&
-			 !should_end_block(&split_stats, in_block_begin, in_next, in_end));
+			 !should_end_block(&c->split_stats, in_block_begin, in_next, in_end));
 
 		/* All the matches for this block have been cached.  Now compute
 		 * a near-optimal sequence of literals and matches, and output
