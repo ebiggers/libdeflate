@@ -64,10 +64,10 @@
 struct lz_match {
 
 	/* The number of bytes matched.  */
-	u32 length;
+	u16 length;
 
 	/* The offset back from the current position that was matched.  */
-	u32 offset;
+	u16 offset;
 };
 
 struct bt_matchfinder {
