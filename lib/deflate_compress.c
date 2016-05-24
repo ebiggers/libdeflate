@@ -408,8 +408,8 @@ struct deflate_compressor {
 			 * MAX_BLOCK_LENGTH - 1 + DEFLATE_MAX_MATCH_LEN.  Add
 			 * one for the end-of-block node.
 			 */
-			struct deflate_optimum_node optimum[MAX_BLOCK_LENGTH - 1 +
-							    DEFLATE_MAX_MATCH_LEN + 1];
+			struct deflate_optimum_node optimum_nodes[MAX_BLOCK_LENGTH - 1 +
+								  DEFLATE_MAX_MATCH_LEN + 1];
 
 			/* The current cost model being used.  */
 			struct deflate_costs costs;
@@ -1548,8 +1548,8 @@ deflate_write_item_list(struct deflate_output_bitstream *os,
 			struct deflate_compressor *c,
 			u32 block_length)
 {
-	struct deflate_optimum_node *cur_node = c->optimum;
-	struct deflate_optimum_node * const end_node = cur_node + block_length;
+	struct deflate_optimum_node *cur_node = &c->optimum_nodes[0];
+	struct deflate_optimum_node * const end_node = &c->optimum_nodes[block_length];
 	do {
 		unsigned length = cur_node->item & OPTIMUM_LEN_MASK;
 		unsigned offset = cur_node->item >> OPTIMUM_OFFSET_SHIFT;
@@ -2165,7 +2165,7 @@ static void
 deflate_tally_item_list(struct deflate_compressor *c,
 			struct deflate_optimum_node *end_node)
 {
-	struct deflate_optimum_node *cur_node = c->optimum;
+	struct deflate_optimum_node *cur_node = &c->optimum_nodes[0];
 	do {
 		unsigned length = cur_node->item & OPTIMUM_LEN_MASK;
 		unsigned offset = cur_node->item >> OPTIMUM_OFFSET_SHIFT;
@@ -2309,15 +2309,16 @@ deflate_optimize_and_write_block(struct deflate_compressor *c,
 				 const struct lz_match * const end_cache_ptr,
 				 const bool is_final_block)
 {
-	struct deflate_optimum_node * const end_node = c->optimum + block_length;
+	struct deflate_optimum_node * const end_node =
+		&c->optimum_nodes[block_length];
 	unsigned num_passes_remaining = c->num_optim_passes;
 	u32 i;
 
 	/* Force the block to really end at 'end_node', even if some matches
 	 * extend beyond it.  */
 	for (i = block_length; i <= MIN(block_length - 1 + DEFLATE_MAX_MATCH_LEN,
-					ARRAY_LEN(c->optimum) - 1); i++)
-		c->optimum[i].cost_to_end = 0x80000000;
+					ARRAY_LEN(c->optimum_nodes) - 1); i++)
+		c->optimum_nodes[i].cost_to_end = 0x80000000;
 
 	do {
 		/*
@@ -2325,8 +2326,8 @@ deflate_optimize_and_write_block(struct deflate_compressor *c,
 		 * minimum-cost path through the graph of possible match/literal
 		 * choices for this block.
 		 *
-		 * We find the minimum cost path from 'c->optimum', which
-		 * represents the node at the beginning of the block, to
+		 * We find the minimum cost path from 'c->optimum_nodes[0]',
+		 * which represents the node at the beginning of the block, to
 		 * 'end_node', which represents the node at the end of the
 		 * block.  Edge costs are evaluated using the cost model
 		 * 'c->costs'.
@@ -2397,7 +2398,7 @@ deflate_optimize_and_write_block(struct deflate_compressor *c,
 			}
 			cur_node->cost_to_end = best_cost_to_end;
 			cur_node->item = best_item;
-		} while (cur_node != c->optimum);
+		} while (cur_node != &c->optimum_nodes[0]);
 
 		/* Tally Huffman symbol frequencies.  */
 		deflate_tally_item_list(c, end_node);
