@@ -33,7 +33,7 @@
 /*
  * Define to 1 to maintain the full map from match offsets to offset slots.
  * This slightly speeds up translations of match offsets to offset slots, but it
- * uses 32768 bytes of memory rather than the 512 bytes used by the condensed
+ * uses 32769 bytes of memory rather than the 512 bytes used by the condensed
  * map.  The speedup provided by the larger map is most helpful when the
  * near-optimal parsing algorithm is being used.
  */
@@ -93,7 +93,7 @@
 #define MAX_PRE_CODEWORD_LEN		DEFLATE_MAX_PRE_CODEWORD_LEN
 
 /* Table: length slot => length slot base value  */
-static const unsigned deflate_length_slot_base[DEFLATE_NUM_LEN_SYMS] = {
+static const unsigned deflate_length_slot_base[] = {
 	3   , 4   , 5   , 6   , 7   , 8   , 9   , 10  ,
 	11  , 13  , 15  , 17  , 19  , 23  , 27  , 31  ,
 	35  , 43  , 51  , 59  , 67  , 83  , 99  , 115 ,
@@ -101,7 +101,7 @@ static const unsigned deflate_length_slot_base[DEFLATE_NUM_LEN_SYMS] = {
 };
 
 /* Table: length slot => number of extra length bits  */
-static const u8 deflate_extra_length_bits[DEFLATE_NUM_LEN_SYMS] = {
+static const u8 deflate_extra_length_bits[] = {
 	0   , 0   , 0   , 0   , 0   , 0   , 0   , 0 ,
 	1   , 1   , 1   , 1   , 2   , 2   , 2   , 2 ,
 	3   , 3   , 3   , 3   , 4   , 4   , 4   , 4 ,
@@ -109,7 +109,7 @@ static const u8 deflate_extra_length_bits[DEFLATE_NUM_LEN_SYMS] = {
 };
 
 /* Table: offset slot => offset slot base value  */
-static const unsigned deflate_offset_slot_base[DEFLATE_NUM_OFFSET_SYMS] = {
+static const unsigned deflate_offset_slot_base[] = {
 	1    , 2    , 3    , 4     , 5     , 7     , 9     , 13    ,
 	17   , 25   , 33   , 49    , 65    , 97    , 129   , 193   ,
 	257  , 385  , 513  , 769   , 1025  , 1537  , 2049  , 3073  ,
@@ -117,7 +117,7 @@ static const unsigned deflate_offset_slot_base[DEFLATE_NUM_OFFSET_SYMS] = {
 };
 
 /* Table: offset slot => number of extra offset bits  */
-static const u8 deflate_extra_offset_bits[DEFLATE_NUM_OFFSET_SYMS] = {
+static const u8 deflate_extra_offset_bits[] = {
 	0    , 0    , 0    , 0     , 1     , 1     , 2     , 2     ,
 	3    , 3    , 4    , 4     , 5     , 5     , 6     , 6     ,
 	7    , 7    , 8    , 8     , 9     , 9     , 10    , 10    ,
@@ -1533,6 +1533,7 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 	}
 }
 
+#if SUPPORT_NEAR_OPTIMAL_PARSING
 /*
  * Follow the minimum-cost path in the graph of possible match/literal choices
  * for the current block and write out the matches/literals using the specified
@@ -1597,6 +1598,7 @@ deflate_write_item_list(struct deflate_output_bitstream *os,
 		cur_node += length;
 	} while (cur_node != end_node);
 }
+#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
 /* Output the end-of-block symbol.  */
 static void
@@ -1697,7 +1699,7 @@ deflate_flush_block(struct deflate_compressor * restrict c,
 	static_cost += 7;
 
 	/* Account for the cost of encoding lengths. */
-	for (sym = 257; sym < DEFLATE_NUM_LITLEN_SYMS; sym++) {
+	for (sym = 257; sym < 257 + ARRAY_LEN(deflate_extra_length_bits); sym++) {
 		u32 extra = deflate_extra_length_bits[sym - 257];
 		dynamic_cost += c->freqs.litlen[sym] *
 				(extra + c->codes.lens.litlen[sym]);
@@ -1706,7 +1708,7 @@ deflate_flush_block(struct deflate_compressor * restrict c,
 	}
 
 	/* Account for the cost of encoding offsets. */
-	for (sym = 0; sym < DEFLATE_NUM_OFFSET_SYMS; sym++) {
+	for (sym = 0; sym < ARRAY_LEN(deflate_extra_offset_bits); sym++) {
 		u32 extra = deflate_extra_offset_bits[sym];
 		dynamic_cost += c->freqs.offset[sym] *
 				(extra + c->codes.lens.offset[sym]);
@@ -1747,12 +1749,13 @@ deflate_flush_block(struct deflate_compressor * restrict c,
 			deflate_write_huffman_header(c, os);
 
 		/* Output the literals, matches, and end-of-block symbol. */
-		if (use_item_list) {
+	#if SUPPORT_NEAR_OPTIMAL_PARSING
+		if (use_item_list)
 			deflate_write_item_list(os, codes, c, block_length);
-		} else {
+		else
+	#endif
 			deflate_write_sequences(os, codes, c->sequences,
 						block_begin);
-		}
 		deflate_write_end_of_block(os, codes);
 	}
 }
