@@ -387,10 +387,10 @@ struct deflate_compressor {
 			 * actually check for overflow.  The extra slots beyond
 			 * this are enough to absorb the worst case overflow,
 			 * which occurs if starting at &match_cache[CACHE_LENGTH
-			 * - 1], we write the match count header, then write
-			 * MAX_MATCHES_PER_POS matches, then skip searching for
-			 * matches at 'DEFLATE_MAX_MATCH_LEN - 1' positions and
-			 * write the match count header for each.
+			 * - 1], we write MAX_MATCHES_PER_POS matches and a
+			 * match count header, then skip searching for matches
+			 * at 'DEFLATE_MAX_MATCH_LEN - 1' positions and write
+			 * the match count header for each.
 			 */
 			struct lz_match match_cache[CACHE_LENGTH +
 						    MAX_MATCHES_PER_POS +
