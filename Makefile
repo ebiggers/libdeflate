@@ -37,8 +37,8 @@ endif
 
 #### Common compiler flags; not intended to be overridden
 
-override CFLAGS += -O2 -fomit-frame-pointer -std=gnu89 -I. -Icommon	\
-		-Wall -Wundef -Wdeclaration-after-statement		\
+override CFLAGS += -O2 -fomit-frame-pointer -std=c99 -I. -Icommon	\
+		-Wall -Wpedantic -Wundef -Wdeclaration-after-statement	\
 		-Wmissing-prototypes -Wstrict-prototypes
 
 ##############################################################################

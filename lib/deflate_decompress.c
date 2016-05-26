@@ -118,10 +118,10 @@ struct deflate_decompressor {
 				   DEFLATE_MAX_LENS_OVERRUN];
 
 			u32 precode_decode_table[PRECODE_ENOUGH];
-		};
+		} l;
 
 		u32 litlen_decode_table[LITLEN_ENOUGH];
-	};
+	} u;
 
 	u32 offset_decode_table[OFFSET_ENOUGH];
 
@@ -717,8 +717,8 @@ build_precode_decode_table(struct deflate_decompressor *d)
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
 	STATIC_ASSERT(PRECODE_TABLEBITS == 7 && PRECODE_ENOUGH == 128);
 
-	return build_decode_table(d->precode_decode_table,
-				  d->precode_lens,
+	return build_decode_table(d->u.l.precode_decode_table,
+				  d->u.precode_lens,
 				  DEFLATE_NUM_PRECODE_SYMS,
 				  precode_decode_results,
 				  PRECODE_TABLEBITS,
@@ -734,8 +734,8 @@ build_litlen_decode_table(struct deflate_decompressor *d,
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
 	STATIC_ASSERT(LITLEN_TABLEBITS == 10 && LITLEN_ENOUGH == 1334);
 
-	return build_decode_table(d->litlen_decode_table,
-				  d->lens,
+	return build_decode_table(d->u.litlen_decode_table,
+				  d->u.l.lens,
 				  num_litlen_syms,
 				  litlen_decode_results,
 				  LITLEN_TABLEBITS,
@@ -752,7 +752,7 @@ build_offset_decode_table(struct deflate_decompressor *d,
 	STATIC_ASSERT(OFFSET_TABLEBITS == 8 && OFFSET_ENOUGH == 402);
 
 	return build_decode_table(d->offset_decode_table,
-				  d->lens + num_litlen_syms,
+				  d->u.l.lens + num_litlen_syms,
 				  num_offset_syms,
 				  offset_decode_results,
 				  OFFSET_TABLEBITS,

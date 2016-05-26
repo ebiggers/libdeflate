@@ -83,16 +83,16 @@ next_block:
 			ENSURE_BITS(DEFLATE_NUM_PRECODE_SYMS * 3);
 
 			for (i = 0; i < num_explicit_precode_lens; i++)
-				d->precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
+				d->u.precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
 		} else {
 			for (i = 0; i < num_explicit_precode_lens; i++) {
 				ENSURE_BITS(3);
-				d->precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
+				d->u.precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
 			}
 		}
 
 		for (; i < DEFLATE_NUM_PRECODE_SYMS; i++)
-			d->precode_lens[deflate_precode_lens_permutation[i]] = 0;
+			d->u.precode_lens[deflate_precode_lens_permutation[i]] = 0;
 
 		/* Build the decode table for the precode.  */
 		SAFETY_CHECK(build_precode_decode_table(d));
@@ -111,13 +111,13 @@ next_block:
 			STATIC_ASSERT(PRECODE_TABLEBITS == DEFLATE_MAX_PRE_CODEWORD_LEN);
 
 			/* Read the next precode symbol.  */
-			entry = d->precode_decode_table[BITS(DEFLATE_MAX_PRE_CODEWORD_LEN)];
+			entry = d->u.l.precode_decode_table[BITS(DEFLATE_MAX_PRE_CODEWORD_LEN)];
 			REMOVE_BITS(entry & HUFFDEC_LENGTH_MASK);
 			presym = entry >> HUFFDEC_RESULT_SHIFT;
 
 			if (presym < 16) {
 				/* Explicit codeword length  */
-				d->lens[i++] = presym;
+				d->u.l.lens[i++] = presym;
 				continue;
 			}
 
@@ -144,36 +144,37 @@ next_block:
 			if (presym == 16) {
 				/* Repeat the previous length 3 - 6 times  */
 				SAFETY_CHECK(i != 0);
-				rep_val = d->lens[i - 1];
+				rep_val = d->u.l.lens[i - 1];
 				STATIC_ASSERT(3 + ((1 << 2) - 1) == 6);
 				rep_count = 3 + POP_BITS(2);
-				d->lens[i + 0] = rep_val;
-				d->lens[i + 1] = rep_val;
-				d->lens[i + 2] = rep_val;
-				d->lens[i + 3] = rep_val;
-				d->lens[i + 4] = rep_val;
-				d->lens[i + 5] = rep_val;
+				d->u.l.lens[i + 0] = rep_val;
+				d->u.l.lens[i + 1] = rep_val;
+				d->u.l.lens[i + 2] = rep_val;
+				d->u.l.lens[i + 3] = rep_val;
+				d->u.l.lens[i + 4] = rep_val;
+				d->u.l.lens[i + 5] = rep_val;
 				i += rep_count;
 			} else if (presym == 17) {
 				/* Repeat zero 3 - 10 times  */
 				STATIC_ASSERT(3 + ((1 << 3) - 1) == 10);
 				rep_count = 3 + POP_BITS(3);
-				d->lens[i + 0] = 0;
-				d->lens[i + 1] = 0;
-				d->lens[i + 2] = 0;
-				d->lens[i + 3] = 0;
-				d->lens[i + 4] = 0;
-				d->lens[i + 5] = 0;
-				d->lens[i + 6] = 0;
-				d->lens[i + 7] = 0;
-				d->lens[i + 8] = 0;
-				d->lens[i + 9] = 0;
+				d->u.l.lens[i + 0] = 0;
+				d->u.l.lens[i + 1] = 0;
+				d->u.l.lens[i + 2] = 0;
+				d->u.l.lens[i + 3] = 0;
+				d->u.l.lens[i + 4] = 0;
+				d->u.l.lens[i + 5] = 0;
+				d->u.l.lens[i + 6] = 0;
+				d->u.l.lens[i + 7] = 0;
+				d->u.l.lens[i + 8] = 0;
+				d->u.l.lens[i + 9] = 0;
 				i += rep_count;
 			} else {
 				/* Repeat zero 11 - 138 times  */
 				STATIC_ASSERT(11 + ((1 << 7) - 1) == 138);
 				rep_count = 11 + POP_BITS(7);
-				memset(&d->lens[i], 0, rep_count * sizeof(d->lens[i]));
+				memset(&d->u.l.lens[i], 0,
+				       rep_count * sizeof(d->u.l.lens[i]));
 				i += rep_count;
 			}
 		}
@@ -211,16 +212,16 @@ next_block:
 		STATIC_ASSERT(DEFLATE_NUM_OFFSET_SYMS == 32);
 
 		for (i = 0; i < 144; i++)
-			d->lens[i] = 8;
+			d->u.l.lens[i] = 8;
 		for (; i < 256; i++)
-			d->lens[i] = 9;
+			d->u.l.lens[i] = 9;
 		for (; i < 280; i++)
-			d->lens[i] = 7;
+			d->u.l.lens[i] = 7;
 		for (; i < 288; i++)
-			d->lens[i] = 8;
+			d->u.l.lens[i] = 8;
 
 		for (; i < 288 + 32; i++)
-			d->lens[i] = 5;
+			d->u.l.lens[i] = 5;
 
 		num_litlen_syms = 288;
 		num_offset_syms = 32;
@@ -240,11 +241,11 @@ next_block:
 
 		/* Decode a litlen symbol.  */
 		ENSURE_BITS(DEFLATE_MAX_LITLEN_CODEWORD_LEN);
-		entry = d->litlen_decode_table[BITS(LITLEN_TABLEBITS)];
+		entry = d->u.litlen_decode_table[BITS(LITLEN_TABLEBITS)];
 		if (entry & HUFFDEC_SUBTABLE_POINTER) {
 			/* Litlen subtable required (uncommon case)  */
 			REMOVE_BITS(LITLEN_TABLEBITS);
-			entry = d->litlen_decode_table[
+			entry = d->u.litlen_decode_table[
 				((entry >> HUFFDEC_RESULT_SHIFT) & 0xFFFF) +
 				BITS(entry & HUFFDEC_LENGTH_MASK)];
 		}
