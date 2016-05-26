@@ -35,11 +35,20 @@ endif
 
 ##############################################################################
 
-#### Common compiler flags; not intended to be overridden
+#### Common compiler flags.
+#### Flags given here are not intended to be overridden, but you can add more
+#### by defining CFLAGS in the environment or on the 'make' command line.
 
-override CFLAGS += -O2 -fomit-frame-pointer -std=c99 -I. -Icommon	\
-		-Wall -Wpedantic -Wundef -Wdeclaration-after-statement	\
-		-Wmissing-prototypes -Wstrict-prototypes
+override CFLAGS :=							\
+	$(CFLAGS) -O2 -fomit-frame-pointer -std=c99 -I. -Icommon	\
+	-Wall -Wundef							\
+	$(call cc-option,-Wpedantic)					\
+	$(call cc-option,-Wdeclaration-after-statement)			\
+	$(call cc-option,-Wmissing-prototypes)				\
+	$(call cc-option,-Wstrict-prototypes)
+
+cc-option = $(shell if $(CC) $(1) -c -x c /dev/null -o /dev/null \
+	      1>&2 2>/dev/null; then echo $(1); fi)
 
 ##############################################################################
 
