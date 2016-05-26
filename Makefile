@@ -45,7 +45,8 @@ override CFLAGS :=							\
 	$(call cc-option,-Wpedantic)					\
 	$(call cc-option,-Wdeclaration-after-statement)			\
 	$(call cc-option,-Wmissing-prototypes)				\
-	$(call cc-option,-Wstrict-prototypes)
+	$(call cc-option,-Wstrict-prototypes)				\
+	$(call cc-option,-Wvla)
 
 cc-option = $(shell if $(CC) $(1) -c -x c /dev/null -o /dev/null \
 	      1>&2 2>/dev/null; then echo $(1); fi)
