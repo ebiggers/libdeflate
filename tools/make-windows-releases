@@ -4,7 +4,7 @@ set -eu
 
 for arch in 'i686' 'x86_64'; do
 	make clean
-	make -j CC=${arch}-w64-mingw32-gcc all benchmark.exe
+	make -j CC=${arch}-w64-mingw32-gcc CFLAGS="-Werror" all benchmark.exe
 	dir=libdeflate-$(git describe --tags | tr -d v)-windows-${arch}-bin
 	rm -rf $dir ${dir}.zip
 	mkdir $dir
