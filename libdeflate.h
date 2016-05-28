@@ -10,8 +10,8 @@ extern "C" {
 #endif
 
 #define LIBDEFLATE_VERSION_MAJOR	0
-#define LIBDEFLATE_VERSION_MINOR	2
-#define LIBDEFLATE_VERSION_STRING	"0.2"
+#define LIBDEFLATE_VERSION_MINOR	3
+#define LIBDEFLATE_VERSION_STRING	"0.3"
 
 #include <stddef.h>
 

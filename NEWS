@@ -1,3 +1,6 @@
+Version 0.3:
+	Some bug fixes and other minor changes.
+
 Version 0.2:
 	Implemented a new block splitting algorithm which typically improves the
 	compression ratio slightly at all compression levels.
