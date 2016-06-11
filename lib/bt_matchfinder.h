@@ -211,8 +211,7 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 		matchptr = &in_base[cur_node];
 
 		if (matchptr[len] == in_next[len]) {
-			len = lz_extend(in_next, matchptr, len + 1,
-					(record_matches ? max_len : nice_len));
+			len = lz_extend(in_next, matchptr, len + 1, max_len);
 			if (!record_matches || len > best_len) {
 				if (record_matches) {
 					best_len = len;
@@ -325,7 +324,6 @@ static forceinline void
 bt_matchfinder_skip_position(struct bt_matchfinder *mf,
 			     const u8 *in_base,
 			     ptrdiff_t cur_pos,
-			     u32 max_len,
 			     u32 nice_len,
 			     u32 max_search_depth,
 			     u32 next_hashes[2])
@@ -334,7 +332,7 @@ bt_matchfinder_skip_position(struct bt_matchfinder *mf,
 	bt_matchfinder_advance_one_byte(mf,
 					in_base,
 					cur_pos,
-					max_len,
+					nice_len,
 					nice_len,
 					max_search_depth,
 					next_hashes,
