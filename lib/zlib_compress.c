@@ -57,7 +57,7 @@ zlib_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 	out_next += deflate_size;
 
 	/* ADLER32  */
-	put_unaligned_be32(adler32(in, in_size), out_next);
+	put_unaligned_be32(adler32_zlib(in, in_size), out_next);
 	out_next += 4;
 
 	return out_next - (u8 *)out;

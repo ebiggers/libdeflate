@@ -7,6 +7,6 @@
 
 #include "common_defs.h"
 
-extern u32 adler32(const void *buffer, size_t size);
+extern u32 adler32_zlib(const void *buffer, size_t size);
 
 #endif /* _LIB_ADLER32_H */

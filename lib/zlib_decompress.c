@@ -69,7 +69,7 @@ zlib_decompress(struct deflate_decompressor *d,
 	in_next = in_end - ZLIB_FOOTER_SIZE;
 
 	/* ADLER32  */
-	if (adler32(out, actual_out_nbytes) != get_unaligned_be32(in_next))
+	if (adler32_zlib(out, actual_out_nbytes) != get_unaligned_be32(in_next))
 		return DECOMPRESS_BAD_DATA;
 
 	return DECOMPRESS_SUCCESS;
