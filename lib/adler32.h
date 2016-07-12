@@ -5,7 +5,7 @@
 #ifndef _LIB_ADLER32_H
 #define _LIB_ADLER32_H
 
-#include "common_defs.h"
+#include "lib_common.h"
 
 extern u32 adler32(const void *buffer, size_t size);
 

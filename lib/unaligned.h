@@ -5,7 +5,7 @@
 #ifndef LIB_UNALIGNED_H
 #define LIB_UNALIGNED_H
 
-#include "common_defs.h"
+#include "lib_common.h"
 
 /*
  * Naming note:

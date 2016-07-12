@@ -5,7 +5,7 @@
 #ifndef _LIB_ALIGNED_MALLOC_H
 #define _LIB_ALIGNED_MALLOC_H
 
-#include "common_defs.h"
+#include "lib_common.h"
 
 extern void *aligned_malloc(size_t alignment, size_t size);
 extern void aligned_free(void *ptr);

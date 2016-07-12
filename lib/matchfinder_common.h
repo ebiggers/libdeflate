@@ -5,7 +5,7 @@
 #ifndef _LIB_MATCHFINDER_COMMON_H
 #define _LIB_MATCHFINDER_COMMON_H
 
-#include "common_defs.h"
+#include "lib_common.h"
 #include "unaligned.h"
 
 #ifndef MATCHFINDER_WINDOW_ORDER
