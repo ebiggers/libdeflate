@@ -39,6 +39,16 @@
 #  include <sys/time.h>
 #endif
 
+#ifndef O_BINARY
+#  define O_BINARY 0
+#endif
+#ifndef O_NOFOLLOW
+#  define O_NOFOLLOW 0
+#endif
+#ifndef O_SEQUENTIAL
+#  define O_SEQUENTIAL 0
+#endif
+
 /* The invocation name of the program (filename component only) */
 const tchar *program_invocation_name;
 
@@ -173,12 +183,16 @@ xopen_for_read(const tchar *path, struct file_stream *strm)
 	if (strm->name == NULL)
 		return -1;
 
-	strm->fd = topen(path, O_RDONLY | O_BINARY | O_NOFOLLOW);
+	strm->fd = topen(path, O_RDONLY | O_BINARY | O_NOFOLLOW | O_SEQUENTIAL);
 	if (strm->fd < 0) {
 		msg_errno("Can't open %"TS" for reading", strm->name);
 		free(strm->name);
 		return -1;
 	}
+
+#if defined(HAVE_POSIX_FADVISE) && (O_SEQUENTIAL == 0)
+	posix_fadvise(strm->fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+#endif
 
 	return 0;
 }
@@ -267,7 +281,7 @@ map_file_contents(struct file_stream *strm, u64 size)
 		CloseHandle((HANDLE)strm->mmap_token);
 		return -1;
 	}
-#else
+#else /* _WIN32 */
 	strm->mmap_mem = mmap(NULL, size, PROT_READ, MAP_SHARED, strm->fd, 0);
 	if (strm->mmap_mem == MAP_FAILED) {
 		strm->mmap_mem = NULL;
@@ -280,7 +294,12 @@ map_file_contents(struct file_stream *strm, u64 size)
 		}
 		return -1;
 	}
+
+#ifdef HAVE_POSIX_MADVISE
+	posix_madvise(strm->mmap_mem, size, POSIX_MADV_SEQUENTIAL);
 #endif
+
+#endif /* !_WIN32 */
 	strm->mmap_size = size;
 	return 0;
 }

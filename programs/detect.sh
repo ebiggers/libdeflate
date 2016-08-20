@@ -27,6 +27,8 @@ check_function() {
 check_function clock_gettime
 check_function futimens
 check_function futimes
+check_function posix_fadvise
+check_function posix_madvise
 
 echo
 echo "#endif /* _CONFIG_H */"

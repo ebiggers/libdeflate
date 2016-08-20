@@ -88,7 +88,6 @@ extern int wmain(int argc, wchar_t **argv);
 #    define	S_ISREG(m)      (((m) & S_IFMT) == S_IFREG)
 #    define	S_ISDIR(m)      (((m) & S_IFMT) == S_IFDIR)
 #  endif
-#  define	O_NOFOLLOW	0
 
 #else /* _WIN32 */
 
@@ -111,7 +110,6 @@ extern int wmain(int argc, wchar_t **argv);
 #  define	tunlink		unlink
 #  define	tutimbuf	utimbuf
 #  define	tutime		utime
-#  define	O_BINARY	0
 
 #endif /* !_WIN32 */
 
