@@ -317,7 +317,8 @@ decompress_file(struct deflate_decompressor *decompressor, const tchar *path,
 		goto out_close_in;
 	}
 
-	ret = stat_file(&in, &stbuf, options->force || newpath == NULL);
+	ret = stat_file(&in, &stbuf, options->force || options->keep ||
+			path == NULL || newpath == NULL);
 	if (ret != 0)
 		goto out_close_in;
 
@@ -386,7 +387,8 @@ compress_file(struct deflate_compressor *compressor, const tchar *path,
 	if (ret != 0)
 		goto out_free_newpath;
 
-	ret = stat_file(&in, &stbuf, options->force || newpath == NULL);
+	ret = stat_file(&in, &stbuf, options->force || options->keep ||
+			path == NULL || newpath == NULL);
 	if (ret != 0)
 		goto out_close_in;
 
