@@ -147,61 +147,63 @@ libz_free_decompressor(void *private)
 }
 
 static size_t
-libdeflate_deflate_compress(void *private, const void *in, size_t in_nbytes,
-			    void *out, size_t out_nbytes_avail)
+deflate_compress(void *private, const void *in, size_t in_nbytes,
+		 void *out, size_t out_nbytes_avail)
 {
-	return deflate_compress(private, in, in_nbytes,
-				out, out_nbytes_avail);
+	return libdeflate_deflate_compress(private, in, in_nbytes,
+					   out, out_nbytes_avail);
 }
 
 static bool
-libdeflate_deflate_decompress(void *private, const void *in, size_t in_nbytes,
-			      void *out, size_t out_nbytes_avail)
+deflate_decompress(void *private, const void *in, size_t in_nbytes,
+		   void *out, size_t out_nbytes_avail)
 {
-	return 0 == deflate_decompress(private, in, in_nbytes,
-				       out, out_nbytes_avail, NULL);
+	return 0 == libdeflate_deflate_decompress(private, in, in_nbytes,
+						  out, out_nbytes_avail, NULL);
 }
 
 static size_t
-libdeflate_zlib_compress(void *private, const void *in, size_t in_nbytes,
-			 void *out, size_t out_nbytes_avail)
+zlib_compress(void *private, const void *in, size_t in_nbytes,
+	      void *out, size_t out_nbytes_avail)
 {
-	return zlib_compress(private, in, in_nbytes, out, out_nbytes_avail);
+	return libdeflate_zlib_compress(private, in, in_nbytes,
+					out, out_nbytes_avail);
 }
 
 static bool
-libdeflate_zlib_decompress(void *private, const void *in, size_t in_nbytes,
-			   void *out, size_t out_nbytes_avail)
+zlib_decompress(void *private, const void *in, size_t in_nbytes,
+		void *out, size_t out_nbytes_avail)
 {
-	return 0 == zlib_decompress(private, in, in_nbytes,
-				    out, out_nbytes_avail, NULL);
+	return 0 == libdeflate_zlib_decompress(private, in, in_nbytes,
+					       out, out_nbytes_avail, NULL);
 }
 
 static size_t
-libdeflate_gzip_compress(void *private, const void *in, size_t in_nbytes,
-			 void *out, size_t out_nbytes_avail)
+gzip_compress(void *private, const void *in, size_t in_nbytes,
+	      void *out, size_t out_nbytes_avail)
 {
-	return gzip_compress(private, in, in_nbytes, out, out_nbytes_avail);
+	return libdeflate_gzip_compress(private, in, in_nbytes,
+					out, out_nbytes_avail);
 }
 
 static bool
-libdeflate_gzip_decompress(void *private, const void *in, size_t in_nbytes,
-			   void *out, size_t out_nbytes_avail)
+gzip_decompress(void *private, const void *in, size_t in_nbytes,
+		void *out, size_t out_nbytes_avail)
 {
-	return 0 == gzip_decompress(private, in, in_nbytes,
-				    out, out_nbytes_avail, NULL);
+	return 0 == libdeflate_gzip_decompress(private, in, in_nbytes,
+					       out, out_nbytes_avail, NULL);
 }
 
 static void
-libdeflate_free_compressor(void *private)
+free_compressor(void *private)
 {
-	deflate_free_compressor(private);
+	libdeflate_free_compressor(private);
 }
 
 static void
-libdeflate_free_decompressor(void *private)
+free_decompressor(void *private)
 {
-	deflate_free_decompressor(private);
+	libdeflate_free_decompressor(private);
 }
 
 static int
@@ -243,16 +245,16 @@ compressor_init(struct compressor *c, int level,
 			return -1;
 		switch (wrapper) {
 		case ZLIB_WRAPPER:
-			c->compress = libdeflate_zlib_compress;
+			c->compress = zlib_compress;
 			break;
 		case GZIP_WRAPPER:
-			c->compress = libdeflate_gzip_compress;
+			c->compress = gzip_compress;
 			break;
 		default:
-			c->compress = libdeflate_deflate_compress;
+			c->compress = deflate_compress;
 			break;
 		}
-		c->free_private = libdeflate_free_compressor;
+		c->free_private = free_compressor;
 	}
 	return 0;
 }
@@ -301,16 +303,16 @@ decompressor_init(struct decompressor *d, enum wrapper wrapper, bool use_libz)
 			return -1;
 		switch (wrapper) {
 		case ZLIB_WRAPPER:
-			d->decompress = libdeflate_zlib_decompress;
+			d->decompress = zlib_decompress;
 			break;
 		case GZIP_WRAPPER:
-			d->decompress = libdeflate_gzip_decompress;
+			d->decompress = gzip_decompress;
 			break;
 		default:
-			d->decompress = libdeflate_deflate_decompress;
+			d->decompress = deflate_decompress;
 			break;
 		}
-		d->free_private = libdeflate_free_decompressor;
+		d->free_private = free_decompressor;
 	}
 	return 0;
 }

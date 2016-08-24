@@ -18,8 +18,8 @@
  * target instruction sets.
  */
 
-static enum decompress_result ATTRIBUTES
-FUNCNAME(struct deflate_decompressor * restrict d,
+static enum libdeflate_result ATTRIBUTES
+FUNCNAME(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_out_nbytes_ret)
@@ -192,7 +192,7 @@ next_block:
 
 		SAFETY_CHECK(len == (u16)~nlen);
 		if (unlikely(len > out_end - out_next))
-			return DECOMPRESS_INSUFFICIENT_SPACE;
+			return LIBDEFLATE_INSUFFICIENT_SPACE;
 		SAFETY_CHECK(len <= in_end - in_next);
 
 		memcpy(out_next, in_next, len);
@@ -253,7 +253,7 @@ next_block:
 		if (entry & HUFFDEC_LITERAL) {
 			/* Literal  */
 			if (unlikely(out_next == out_end))
-				return DECOMPRESS_INSUFFICIENT_SPACE;
+				return LIBDEFLATE_INSUFFICIENT_SPACE;
 			*out_next++ = (u8)(entry >> HUFFDEC_RESULT_SHIFT);
 			continue;
 		}
@@ -276,7 +276,7 @@ next_block:
 		STATIC_ASSERT(HUFFDEC_END_OF_BLOCK_LENGTH == 0);
 		if (unlikely((size_t)length - 1 >= out_end - out_next)) {
 			if (unlikely(length != HUFFDEC_END_OF_BLOCK_LENGTH))
-				return DECOMPRESS_INSUFFICIENT_SPACE;
+				return LIBDEFLATE_INSUFFICIENT_SPACE;
 			goto block_done;
 		}
 
@@ -383,7 +383,7 @@ block_done:
 		*actual_out_nbytes_ret = out_next - (u8 *)out;
 	} else {
 		if (out_next != out_end)
-			return DECOMPRESS_SHORT_OUTPUT;
+			return LIBDEFLATE_SHORT_OUTPUT;
 	}
-	return DECOMPRESS_SUCCESS;
+	return LIBDEFLATE_SUCCESS;
 }

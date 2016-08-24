@@ -42,7 +42,7 @@
 
 /*
  * If the expression passed to SAFETY_CHECK() evaluates to false, then the
- * decompression routine immediately returns DECOMPRESS_BAD_DATA, indicating the
+ * decompression routine immediately returns LIBDEFLATE_BAD_DATA, indicating the
  * compressed data is invalid.
  *
  * Theoretically, these checks could be disabled for specialized applications
@@ -52,7 +52,7 @@
 #  pragma message("UNSAFE DECOMPRESSION IS ENABLED. THIS MUST ONLY BE USED IF THE DECOMPRESSOR INPUT WILL ALWAYS BE TRUSTED!")
 #  define SAFETY_CHECK(expr)	(void)(expr)
 #else
-#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return DECOMPRESS_BAD_DATA
+#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return LIBDEFLATE_BAD_DATA
 #endif
 
 /*
@@ -98,7 +98,7 @@ typedef u8 len_t;
  * decompression state, but rather only some arrays that are too large to
  * comfortably allocate on the stack.
  */
-struct deflate_decompressor {
+struct libdeflate_decompressor {
 
 	/*
 	 * The arrays aren't all needed at the same time.  'precode_lens' and
@@ -194,12 +194,13 @@ typedef machine_word_t bitbuf_t;
  * implementation simpler because this removes the need to distinguish between
  * "real" overruns and overruns that occur because of our own lookahead during
  * Huffman decoding.  The disadvantage is that a "real" overrun can go
- * undetected, and deflate_decompress() may return a success status rather than
- * the expected failure status if one occurs.  However, this is irrelevant
- * because even if this specific case were to be handled "correctly", one could
- * easily come up with a different case where the compressed data would be
- * corrupted in such a way that fully retains its validity.  Users should run a
- * checksum against the uncompressed data if they wish to detect corruptions.
+ * undetected, and libdeflate_deflate_decompress() may return a success status
+ * rather than the expected failure status if one occurs.  However, this is
+ * irrelevant because even if this specific case were to be handled "correctly",
+ * one could easily come up with a different case where the compressed data
+ * would be corrupted in such a way that fully retains its validity.  Users
+ * should run a checksum against the uncompressed data if they wish to detect
+ * corruptions.
  */
 #define FILL_BITS_BYTEWISE()					\
 do {								\
@@ -712,7 +713,7 @@ build_decode_table(u32 decode_table[],
 
 /* Build the decode table for the precode.  */
 static bool
-build_precode_decode_table(struct deflate_decompressor *d)
+build_precode_decode_table(struct libdeflate_decompressor *d)
 {
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
 	STATIC_ASSERT(PRECODE_TABLEBITS == 7 && PRECODE_ENOUGH == 128);
@@ -728,7 +729,7 @@ build_precode_decode_table(struct deflate_decompressor *d)
 
 /* Build the decode table for the literal/length code.  */
 static bool
-build_litlen_decode_table(struct deflate_decompressor *d,
+build_litlen_decode_table(struct libdeflate_decompressor *d,
 			  unsigned num_litlen_syms, unsigned num_offset_syms)
 {
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
@@ -745,7 +746,7 @@ build_litlen_decode_table(struct deflate_decompressor *d,
 
 /* Build the decode table for the offset code.  */
 static bool
-build_offset_decode_table(struct deflate_decompressor *d,
+build_offset_decode_table(struct libdeflate_decompressor *d,
 			  unsigned num_litlen_syms, unsigned num_offset_syms)
 {
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
@@ -804,22 +805,22 @@ copy_word_unaligned(const void *src, void *dst)
 
 #if DISPATCH_ENABLED
 
-static enum decompress_result
-dispatch(struct deflate_decompressor * restrict d,
+static enum libdeflate_result
+dispatch(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_out_nbytes_ret);
 
-typedef enum decompress_result (*decompress_func_t)
-	(struct deflate_decompressor * restrict d,
+typedef enum libdeflate_result (*decompress_func_t)
+	(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_out_nbytes_ret);
 
 static decompress_func_t decompress_impl = dispatch;
 
-static enum decompress_result
-dispatch(struct deflate_decompressor * restrict d,
+static enum libdeflate_result
+dispatch(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_out_nbytes_ret)
@@ -844,11 +845,11 @@ dispatch(struct deflate_decompressor * restrict d,
  * calling the appropriate implementation depending on the CPU features at
  * runtime.
  */
-LIBEXPORT enum decompress_result
-deflate_decompress(struct deflate_decompressor * restrict d,
-		   const void * restrict in, size_t in_nbytes,
-		   void * restrict out, size_t out_nbytes_avail,
-		   size_t *actual_out_nbytes_ret)
+LIBEXPORT enum libdeflate_result
+libdeflate_deflate_decompress(struct libdeflate_decompressor * restrict d,
+			      const void * restrict in, size_t in_nbytes,
+			      void * restrict out, size_t out_nbytes_avail,
+			      size_t *actual_out_nbytes_ret)
 {
 #if DISPATCH_ENABLED
 	return (*decompress_impl)(d, in, in_nbytes, out, out_nbytes_avail,
@@ -860,14 +861,14 @@ deflate_decompress(struct deflate_decompressor * restrict d,
 #endif
 }
 
-LIBEXPORT struct deflate_decompressor *
-deflate_alloc_decompressor(void)
+LIBEXPORT struct libdeflate_decompressor *
+libdeflate_alloc_decompressor(void)
 {
-	return malloc(sizeof(struct deflate_decompressor));
+	return malloc(sizeof(struct libdeflate_decompressor));
 }
 
 LIBEXPORT void
-deflate_free_decompressor(struct deflate_decompressor *d)
+libdeflate_free_decompressor(struct libdeflate_decompressor *d)
 {
 	free(d);
 }

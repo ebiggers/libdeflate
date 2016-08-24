@@ -18,30 +18,30 @@
 
 #include "libdeflate.h"
 
-LIBEXPORT enum decompress_result
-gzip_decompress(struct deflate_decompressor *d,
-		const void *in, size_t in_nbytes,
-		void *out, size_t out_nbytes_avail,
-		size_t *actual_out_nbytes_ret)
+LIBEXPORT enum libdeflate_result
+libdeflate_gzip_decompress(struct libdeflate_decompressor *d,
+			   const void *in, size_t in_nbytes,
+			   void *out, size_t out_nbytes_avail,
+			   size_t *actual_out_nbytes_ret)
 {
 	const u8 *in_next = in;
 	const u8 * const in_end = in_next + in_nbytes;
 	u8 flg;
 	size_t actual_out_nbytes;
-	enum decompress_result result;
+	enum libdeflate_result result;
 
 	if (in_nbytes < GZIP_MIN_OVERHEAD)
-		return DECOMPRESS_BAD_DATA;
+		return LIBDEFLATE_BAD_DATA;
 
 	/* ID1 */
 	if (*in_next++ != GZIP_ID1)
-		return DECOMPRESS_BAD_DATA;
+		return LIBDEFLATE_BAD_DATA;
 	/* ID2 */
 	if (*in_next++ != GZIP_ID2)
-		return DECOMPRESS_BAD_DATA;
+		return LIBDEFLATE_BAD_DATA;
 	/* CM */
 	if (*in_next++ != GZIP_CM_DEFLATE)
-		return DECOMPRESS_BAD_DATA;
+		return LIBDEFLATE_BAD_DATA;
 	flg = *in_next++;
 	/* MTIME */
 	in_next += 4;
@@ -51,7 +51,7 @@ gzip_decompress(struct deflate_decompressor *d,
 	in_next += 1;
 
 	if (flg & GZIP_FRESERVED)
-		return DECOMPRESS_BAD_DATA;
+		return LIBDEFLATE_BAD_DATA;
 
 	/* Extra field */
 	if (flg & GZIP_FEXTRA) {
@@ -59,7 +59,7 @@ gzip_decompress(struct deflate_decompressor *d,
 		in_next += 2;
 
 		if (in_end - in_next < (u32)xlen + GZIP_FOOTER_SIZE)
-			return DECOMPRESS_BAD_DATA;
+			return LIBDEFLATE_BAD_DATA;
 
 		in_next += xlen;
 	}
@@ -69,7 +69,7 @@ gzip_decompress(struct deflate_decompressor *d,
 		while (*in_next++ != 0 && in_next != in_end)
 			;
 		if (in_end - in_next < GZIP_FOOTER_SIZE)
-			return DECOMPRESS_BAD_DATA;
+			return LIBDEFLATE_BAD_DATA;
 	}
 
 	/* File comment (zero terminated) */
@@ -77,22 +77,22 @@ gzip_decompress(struct deflate_decompressor *d,
 		while (*in_next++ != 0 && in_next != in_end)
 			;
 		if (in_end - in_next < GZIP_FOOTER_SIZE)
-			return DECOMPRESS_BAD_DATA;
+			return LIBDEFLATE_BAD_DATA;
 	}
 
 	/* CRC16 for gzip header */
 	if (flg & GZIP_FHCRC) {
 		in_next += 2;
 		if (in_end - in_next < GZIP_FOOTER_SIZE)
-			return DECOMPRESS_BAD_DATA;
+			return LIBDEFLATE_BAD_DATA;
 	}
 
 	/* Compressed data  */
-	result = deflate_decompress(d, in_next,
-				    in_end - GZIP_FOOTER_SIZE - in_next,
-				    out, out_nbytes_avail,
-				    actual_out_nbytes_ret);
-	if (result != DECOMPRESS_SUCCESS)
+	result = libdeflate_deflate_decompress(d, in_next,
+					in_end - GZIP_FOOTER_SIZE - in_next,
+					out, out_nbytes_avail,
+					actual_out_nbytes_ret);
+	if (result != LIBDEFLATE_SUCCESS)
 		return result;
 
 	if (actual_out_nbytes_ret)
@@ -104,12 +104,12 @@ gzip_decompress(struct deflate_decompressor *d,
 
 	/* CRC32 */
 	if (crc32_gzip(out, actual_out_nbytes) != get_unaligned_le32(in_next))
-		return DECOMPRESS_BAD_DATA;
+		return LIBDEFLATE_BAD_DATA;
 	in_next += 4;
 
 	/* ISIZE */
 	if ((u32)actual_out_nbytes != get_unaligned_le32(in_next))
-		return DECOMPRESS_BAD_DATA;
+		return LIBDEFLATE_BAD_DATA;
 
-	return DECOMPRESS_SUCCESS;
+	return LIBDEFLATE_SUCCESS;
 }

@@ -309,10 +309,10 @@ struct block_split_stats {
 };
 
 /* The main DEFLATE compressor structure  */
-struct deflate_compressor {
+struct libdeflate_compressor {
 
 	/* Pointer to the compress() implementation chosen at allocation time */
-	size_t (*impl)(struct deflate_compressor *,
+	size_t (*impl)(struct libdeflate_compressor *,
 		       const u8 *, size_t, u8 *, size_t);
 
 	/* Frequency counters for the current block  */
@@ -481,7 +481,8 @@ struct deflate_output_bitstream {
 /* Initialize the output bitstream.  'size' is assumed to be at least
  * MIN_OUTPUT_SIZE.  */
 static void
-deflate_init_output(struct deflate_output_bitstream *os, void *buffer, size_t size)
+deflate_init_output(struct deflate_output_bitstream *os,
+		    void *buffer, size_t size)
 {
 	os->bitbuf = 0;
 	os->bitcount = 0;
@@ -1126,7 +1127,7 @@ make_canonical_huffman_code(unsigned num_syms, unsigned max_codeword_len,
  * This must be called when starting a new DEFLATE block.
  */
 static void
-deflate_reset_symbol_frequencies(struct deflate_compressor *c)
+deflate_reset_symbol_frequencies(struct libdeflate_compressor *c)
 {
 	memset(&c->freqs, 0, sizeof(c->freqs));
 }
@@ -1198,7 +1199,7 @@ deflate_make_huffman_codes(const struct deflate_freqs *freqs,
 
 /* Initialize c->static_codes.  */
 static void
-deflate_init_static_codes(struct deflate_compressor *c)
+deflate_init_static_codes(struct libdeflate_compressor *c)
 {
 	unsigned i;
 
@@ -1219,7 +1220,7 @@ deflate_init_static_codes(struct deflate_compressor *c)
 
 /* Return the offset slot for the specified match offset.  */
 static forceinline unsigned
-deflate_get_offset_slot(struct deflate_compressor *c, unsigned offset)
+deflate_get_offset_slot(struct libdeflate_compressor *c, unsigned offset)
 {
 #if USE_FULL_OFFSET_SLOT_FAST
 	return c->offset_slot_fast[offset];
@@ -1329,7 +1330,7 @@ deflate_compute_precode_items(const u8 lens[restrict],
 
 /* Precompute the information needed to output Huffman codes. */
 static void
-deflate_precompute_huffman_header(struct deflate_compressor *c)
+deflate_precompute_huffman_header(struct libdeflate_compressor *c)
 {
 	/* Compute how many litlen and offset symbols are needed. */
 
@@ -1392,7 +1393,7 @@ deflate_precompute_huffman_header(struct deflate_compressor *c)
 
 /* Output the Huffman codes. */
 static void
-deflate_write_huffman_header(struct deflate_compressor *c,
+deflate_write_huffman_header(struct libdeflate_compressor *c,
 			     struct deflate_output_bitstream *os)
 {
 	unsigned i;
@@ -1564,7 +1565,7 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 static void
 deflate_write_item_list(struct deflate_output_bitstream *os,
 			const struct deflate_codes *codes,
-			struct deflate_compressor *c,
+			struct libdeflate_compressor *c,
 			u32 block_length)
 {
 	struct deflate_optimum_node *cur_node = &c->p.n.optimum_nodes[0];
@@ -1670,7 +1671,7 @@ deflate_write_uncompressed_blocks(struct deflate_output_bitstream *os,
  * uncompressed), then output it.
  */
 static void
-deflate_flush_block(struct deflate_compressor * restrict c,
+deflate_flush_block(struct libdeflate_compressor * restrict c,
 		    struct deflate_output_bitstream * restrict os,
 		    const u8 * restrict block_begin, u32 block_length,
 		    bool is_final_block, bool use_item_list)
@@ -1779,7 +1780,7 @@ deflate_flush_block(struct deflate_compressor * restrict c,
 }
 
 static forceinline void
-deflate_choose_literal(struct deflate_compressor *c, unsigned literal,
+deflate_choose_literal(struct libdeflate_compressor *c, unsigned literal,
 		       unsigned *litrunlen_p)
 {
 	c->freqs.litlen[literal]++;
@@ -1787,7 +1788,7 @@ deflate_choose_literal(struct deflate_compressor *c, unsigned literal,
 }
 
 static forceinline void
-deflate_choose_match(struct deflate_compressor *c,
+deflate_choose_match(struct libdeflate_compressor *c,
 		     unsigned length, unsigned offset,
 		     unsigned *litrunlen_p, struct deflate_sequence **next_seq_p)
 {
@@ -1939,7 +1940,7 @@ should_end_block(struct block_split_stats *stats,
  * This is the "greedy" DEFLATE compressor. It always chooses the longest match.
  */
 static size_t
-deflate_compress_greedy(struct deflate_compressor * restrict c,
+deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 			const u8 * restrict in, size_t in_nbytes,
 			u8 * restrict out, size_t out_nbytes_avail)
 {
@@ -2024,7 +2025,7 @@ deflate_compress_greedy(struct deflate_compressor * restrict c,
  * literal and continues to the next position.  If no, it outputs the match.
  */
 static size_t
-deflate_compress_lazy(struct deflate_compressor * restrict c,
+deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 		      const u8 * restrict in, size_t in_nbytes,
 		      u8 * restrict out, size_t out_nbytes_avail)
 {
@@ -2173,7 +2174,7 @@ deflate_compress_lazy(struct deflate_compressor * restrict c,
  * would be needed to output those matches and literals.
  */
 static void
-deflate_tally_item_list(struct deflate_compressor *c, u32 block_length)
+deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 {
 	struct deflate_optimum_node *cur_node = &c->p.n.optimum_nodes[0];
 	struct deflate_optimum_node *end_node = &c->p.n.optimum_nodes[block_length];
@@ -2195,7 +2196,7 @@ deflate_tally_item_list(struct deflate_compressor *c, u32 block_length)
 
 /* Set the current cost model from the codeword lengths specified in @lens.  */
 static void
-deflate_set_costs_from_codes(struct deflate_compressor *c,
+deflate_set_costs_from_codes(struct libdeflate_compressor *c,
 			     const struct deflate_lens *lens)
 {
 	unsigned i;
@@ -2258,7 +2259,7 @@ deflate_default_offset_slot_cost(unsigned offset_slot)
  * for literals.  This often improves the compression ratio slightly.
  */
 static void
-deflate_set_default_costs(struct deflate_compressor *c)
+deflate_set_default_costs(struct libdeflate_compressor *c)
 {
 	unsigned i;
 
@@ -2292,7 +2293,7 @@ deflate_adjust_cost(u32 *cost_p, u32 default_cost)
  * defaults, but don't simply set them to the defaults.
  */
 static void
-deflate_adjust_costs(struct deflate_compressor *c)
+deflate_adjust_costs(struct libdeflate_compressor *c)
 {
 	unsigned i;
 
@@ -2328,7 +2329,8 @@ deflate_adjust_costs(struct deflate_compressor *c)
  * saved.
  */
 static void
-deflate_find_min_cost_path(struct deflate_compressor *c, const u32 block_length,
+deflate_find_min_cost_path(struct libdeflate_compressor *c,
+			   const u32 block_length,
 			   const struct lz_match *cache_ptr)
 {
 	struct deflate_optimum_node *end_node = &c->p.n.optimum_nodes[block_length];
@@ -2404,7 +2406,7 @@ deflate_find_min_cost_path(struct deflate_compressor *c, const u32 block_length,
  * as the costs.
  */
 static void
-deflate_optimize_block(struct deflate_compressor *c, u32 block_length,
+deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
 		       const struct lz_match *cache_ptr, bool is_first_block)
 {
 	unsigned num_passes_remaining = c->p.n.num_optim_passes;
@@ -2453,7 +2455,7 @@ deflate_optimize_block(struct deflate_compressor *c, u32 block_length,
  *   (so iterative optimization must be used)
  */
 static size_t
-deflate_compress_near_optimal(struct deflate_compressor * restrict c,
+deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			      const u8 * restrict in, size_t in_nbytes,
 			      u8 * restrict out, size_t out_nbytes_avail)
 {
@@ -2611,7 +2613,7 @@ deflate_compress_near_optimal(struct deflate_compressor * restrict c,
 
 /* Initialize c->offset_slot_fast.  */
 static void
-deflate_init_offset_slot_fast(struct deflate_compressor *c)
+deflate_init_offset_slot_fast(struct libdeflate_compressor *c)
 {
 	unsigned offset_slot;
 	unsigned offset;
@@ -2643,18 +2645,18 @@ deflate_init_offset_slot_fast(struct deflate_compressor *c)
 	}
 }
 
-LIBEXPORT struct deflate_compressor *
-deflate_alloc_compressor(unsigned int compression_level)
+LIBEXPORT struct libdeflate_compressor *
+libdeflate_alloc_compressor(unsigned int compression_level)
 {
-	struct deflate_compressor *c;
+	struct libdeflate_compressor *c;
 	size_t size;
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	if (compression_level >= 8)
-		size = offsetof(struct deflate_compressor, p) + sizeof(c->p.n);
+		size = offsetof(struct libdeflate_compressor, p) + sizeof(c->p.n);
 	else
 #endif
-		size = offsetof(struct deflate_compressor, p) + sizeof(c->p.g);
+		size = offsetof(struct libdeflate_compressor, p) + sizeof(c->p.g);
 
 	c = aligned_malloc(MATCHFINDER_ALIGNMENT, size);
 	if (!c)
@@ -2753,9 +2755,9 @@ deflate_alloc_compressor(unsigned int compression_level)
 }
 
 LIBEXPORT size_t
-deflate_compress(struct deflate_compressor *c,
-		 const void *in, size_t in_nbytes,
-		 void *out, size_t out_nbytes_avail)
+libdeflate_deflate_compress(struct libdeflate_compressor *c,
+			    const void *in, size_t in_nbytes,
+			    void *out, size_t out_nbytes_avail)
 {
 	if (unlikely(out_nbytes_avail < MIN_OUTPUT_SIZE))
 		return 0;
@@ -2772,19 +2774,20 @@ deflate_compress(struct deflate_compressor *c,
 }
 
 LIBEXPORT void
-deflate_free_compressor(struct deflate_compressor *c)
+libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
 	aligned_free(c);
 }
 
 unsigned int
-deflate_get_compression_level(struct deflate_compressor *c)
+deflate_get_compression_level(struct libdeflate_compressor *c)
 {
 	return c->compression_level;
 }
 
 LIBEXPORT size_t
-deflate_compress_bound(struct deflate_compressor *c, size_t in_nbytes)
+libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
+				  size_t in_nbytes)
 {
 	/*
 	 * The worst case is all uncompressed blocks where one block has length

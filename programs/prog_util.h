@@ -146,8 +146,8 @@ extern int xclose(struct file_stream *strm);
 
 extern int parse_compression_level(tchar opt_char, const tchar *arg);
 
-extern struct deflate_compressor *alloc_compressor(int level);
-extern struct deflate_decompressor *alloc_decompressor(void);
+extern struct libdeflate_compressor *alloc_compressor(int level);
+extern struct libdeflate_decompressor *alloc_decompressor(void);
 
 /* tgetopt.c */
 

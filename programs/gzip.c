@@ -112,7 +112,7 @@ has_suffix(const tchar *path, const tchar *suffix)
 }
 
 static int
-do_compress(struct deflate_compressor *compressor,
+do_compress(struct libdeflate_compressor *compressor,
 	    struct file_stream *in, struct file_stream *out)
 {
 	const void *uncompressed_data = in->mmap_mem;
@@ -122,7 +122,8 @@ do_compress(struct deflate_compressor *compressor,
 	size_t max_compressed_size;
 	int ret;
 
-	max_compressed_size = gzip_compress_bound(compressor, uncompressed_size);
+	max_compressed_size = libdeflate_gzip_compress_bound(compressor,
+							     uncompressed_size);
 	compressed_data = xmalloc(max_compressed_size);
 	if (compressed_data == NULL) {
 		msg("%"TS": file is probably too large to be processed by this "
@@ -131,12 +132,13 @@ do_compress(struct deflate_compressor *compressor,
 		goto out;
 	}
 
-	actual_compressed_size =
-		gzip_compress(compressor, uncompressed_data, uncompressed_size,
-			      compressed_data, max_compressed_size);
-
+	actual_compressed_size = libdeflate_gzip_compress(compressor,
+							  uncompressed_data,
+							  uncompressed_size,
+							  compressed_data,
+							  max_compressed_size);
 	if (actual_compressed_size == 0) {
-		msg("Bug in gzip_compress_bound()!");
+		msg("Bug in libdeflate_gzip_compress_bound()!");
 		ret = -1;
 		goto out;
 	}
@@ -155,14 +157,14 @@ load_u32_gzip(const u8 *p)
 }
 
 static int
-do_decompress(struct deflate_decompressor *decompressor,
+do_decompress(struct libdeflate_decompressor *decompressor,
 	      struct file_stream *in, struct file_stream *out)
 {
 	const u8 *compressed_data = in->mmap_mem;
 	size_t compressed_size = in->mmap_size;
 	void *uncompressed_data = NULL;
 	size_t uncompressed_size;
-	enum decompress_result result;
+	enum libdeflate_result result;
 	int ret;
 
 	if (compressed_size < sizeof(u32)) {
@@ -181,17 +183,20 @@ do_decompress(struct deflate_decompressor *decompressor,
 		goto out;
 	}
 
-	result = gzip_decompress(decompressor, compressed_data, compressed_size,
-				 uncompressed_data, uncompressed_size, NULL);
+	result = libdeflate_gzip_decompress(decompressor,
+					    compressed_data,
+					    compressed_size,
+					    uncompressed_data,
+					    uncompressed_size, NULL);
 
-	if (result == DECOMPRESS_INSUFFICIENT_SPACE) {
+	if (result == LIBDEFLATE_INSUFFICIENT_SPACE) {
 		msg("%"TS": file corrupt or too large to be processed by this "
 		    "program", in->name);
 		ret = -1;
 		goto out;
 	}
 
-	if (result != DECOMPRESS_SUCCESS) {
+	if (result != LIBDEFLATE_SUCCESS) {
 		msg("%"TS": file corrupt or not in gzip format", in->name);
 		ret = -1;
 		goto out;
@@ -283,7 +288,7 @@ restore_metadata(struct file_stream *out, const tchar *newpath,
 }
 
 static int
-decompress_file(struct deflate_decompressor *decompressor, const tchar *path,
+decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 		const struct options *options)
 {
 	tchar *newpath = NULL;
@@ -354,7 +359,7 @@ out:
 }
 
 static int
-compress_file(struct deflate_compressor *compressor, const tchar *path,
+compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 	      const struct options *options)
 {
 	tchar *newpath = NULL;
@@ -507,7 +512,7 @@ tmain(int argc, tchar *argv[])
 
 	ret = 0;
 	if (options.decompress) {
-		struct deflate_decompressor *d;
+		struct libdeflate_decompressor *d;
 
 		d = alloc_decompressor();
 		if (d == NULL)
@@ -516,9 +521,9 @@ tmain(int argc, tchar *argv[])
 		for (i = 0; i < argc; i++)
 			ret |= -decompress_file(d, argv[i], &options);
 
-		deflate_free_decompressor(d);
+		libdeflate_free_decompressor(d);
 	} else {
-		struct deflate_compressor *c;
+		struct libdeflate_compressor *c;
 
 		c = alloc_compressor(options.compression_level);
 		if (c == NULL)
@@ -527,7 +532,7 @@ tmain(int argc, tchar *argv[])
 		for (i = 0; i < argc; i++)
 			ret |= -compress_file(c, argv[i], &options);
 
-		deflate_free_compressor(c);
+		libdeflate_free_compressor(c);
 	}
 
 	/*

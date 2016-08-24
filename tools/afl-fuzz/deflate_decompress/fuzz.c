@@ -6,7 +6,7 @@
 
 int main(int argc, char **argv)
 {
-	struct deflate_decompressor *d;
+	struct libdeflate_decompressor *d;
 	int ret;
 	int fd = open(argv[1], O_RDONLY);
 	struct stat stbuf;
@@ -20,9 +20,9 @@ int main(int argc, char **argv)
 
 	char out[sizeof(in) * 3];
 
-	d = deflate_alloc_decompressor();
+	d = libdeflate_alloc_decompressor();
 
-	deflate_decompress(d, in, sizeof in, out, sizeof out, NULL);
-	deflate_free_decompressor(d);
+	libdeflate_deflate_decompress(d, in, sizeof in, out, sizeof out, NULL);
+	libdeflate_free_decompressor(d);
 	return 0;
 }

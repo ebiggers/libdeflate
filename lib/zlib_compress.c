@@ -20,8 +20,9 @@
 #include "libdeflate.h"
 
 LIBEXPORT size_t
-zlib_compress(struct deflate_compressor *c, const void *in, size_t in_size,
-	      void *out, size_t out_nbytes_avail)
+libdeflate_zlib_compress(struct libdeflate_compressor *c,
+			 const void *in, size_t in_size,
+			 void *out, size_t out_nbytes_avail)
 {
 	u8 *out_next = out;
 	u16 hdr;
@@ -50,7 +51,7 @@ zlib_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 	out_next += 2;
 
 	/* Compressed data  */
-	deflate_size = deflate_compress(c, in, in_size, out_next,
+	deflate_size = libdeflate_deflate_compress(c, in, in_size, out_next,
 					out_nbytes_avail - ZLIB_MIN_OVERHEAD);
 	if (deflate_size == 0)
 		return 0;
@@ -64,7 +65,9 @@ zlib_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 }
 
 LIBEXPORT size_t
-zlib_compress_bound(struct deflate_compressor *c, size_t in_nbytes)
+libdeflate_zlib_compress_bound(struct libdeflate_compressor *c,
+			       size_t in_nbytes)
 {
-	return ZLIB_MIN_OVERHEAD + deflate_compress_bound(c, in_nbytes);
+	return ZLIB_MIN_OVERHEAD +
+	       libdeflate_deflate_compress_bound(c, in_nbytes);
 }

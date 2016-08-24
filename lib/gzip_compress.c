@@ -20,8 +20,9 @@
 #include "libdeflate.h"
 
 LIBEXPORT size_t
-gzip_compress(struct deflate_compressor *c, const void *in, size_t in_size,
-	      void *out, size_t out_nbytes_avail)
+libdeflate_gzip_compress(struct libdeflate_compressor *c,
+			 const void *in, size_t in_size,
+			 void *out, size_t out_nbytes_avail)
 {
 	u8 *out_next = out;
 	unsigned compression_level;
@@ -54,7 +55,7 @@ gzip_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 	*out_next++ = GZIP_OS_UNKNOWN;	/* OS  */
 
 	/* Compressed data  */
-	deflate_size = deflate_compress(c, in, in_size, out_next,
+	deflate_size = libdeflate_deflate_compress(c, in, in_size, out_next,
 					out_nbytes_avail - GZIP_MIN_OVERHEAD);
 	if (deflate_size == 0)
 		return 0;
@@ -72,7 +73,9 @@ gzip_compress(struct deflate_compressor *c, const void *in, size_t in_size,
 }
 
 LIBEXPORT size_t
-gzip_compress_bound(struct deflate_compressor *c, size_t in_nbytes)
+libdeflate_gzip_compress_bound(struct libdeflate_compressor *c,
+			       size_t in_nbytes)
 {
-	return GZIP_MIN_OVERHEAD + deflate_compress_bound(c, in_nbytes);
+	return GZIP_MIN_OVERHEAD +
+	       libdeflate_deflate_compress_bound(c, in_nbytes);
 }

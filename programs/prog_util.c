@@ -432,12 +432,12 @@ parse_compression_level(tchar opt_char, const tchar *arg)
 }
 
 /* Allocate a new DEFLATE compressor */
-struct deflate_compressor *
+struct libdeflate_compressor *
 alloc_compressor(int level)
 {
-	struct deflate_compressor *c;
+	struct libdeflate_compressor *c;
 
-	c = deflate_alloc_compressor(level);
+	c = libdeflate_alloc_compressor(level);
 	if (c == NULL) {
 		msg_errno("Unable to allocate compressor with "
 			  "compression level %d", level);
@@ -446,12 +446,12 @@ alloc_compressor(int level)
 }
 
 /* Allocate a new DEFLATE decompressor */
-struct deflate_decompressor *
+struct libdeflate_decompressor *
 alloc_decompressor(void)
 {
-	struct deflate_decompressor *d;
+	struct libdeflate_decompressor *d;
 
-	d = deflate_alloc_decompressor();
+	d = libdeflate_alloc_decompressor();
 	if (d == NULL)
 		msg_errno("Unable to allocate decompressor");
 
