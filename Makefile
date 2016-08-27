@@ -39,9 +39,11 @@ PIC_REQUIRED      := 1
 HARD_LINKS        := 1
 
 # Compiling for Windows with MinGW?
-ifneq ($(findstring -mingw,$(CC)),)
+ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
     ifeq ($(AR),ar)
-        AR := $(patsubst %-gcc,%-ar,$(CC))
+        ifneq ($(findstring -mingw,$(CC)),)
+            AR := $(patsubst %-gcc,%-ar,$(CC))
+        endif
     endif
     STATIC_LIB_SUFFIX := .lib
     SHARED_LIB_SUFFIX := .dll
