@@ -38,9 +38,15 @@ the Makefile for details.
 ## For Windows
 
 MinGW (GCC) is the recommended compiler to use when building binaries for
-Windows.  MinGW can be used on either Windows or Linux.  Use a command like:
+Windows.  MinGW can be used on either Windows or Linux.  On Windows, you'll need
+the compiler as well as GNU Make and basic UNIX tools such as `sh`.  This is
+most easily set up with Cygwin, but some standalone MinGW distributions for
+Windows also work.  Or, on Linux, you'll need to install the `mingw-w64-gcc` or
+similarly-named package.  Once ready, do the build using a command like:
 
     $ make CC=x86_64-w64-mingw32-gcc
+
+Some MinGW distributions for Windows may require `CC=gcc` instead.
 
 Windows binaries prebuilt with MinGW may also be downloaded from
 https://github.com/ebiggers/libdeflate/releases.
