@@ -2646,7 +2646,7 @@ deflate_init_offset_slot_fast(struct libdeflate_compressor *c)
 }
 
 LIBEXPORT struct libdeflate_compressor *
-libdeflate_alloc_compressor(unsigned int compression_level)
+libdeflate_alloc_compressor(int compression_level)
 {
 	struct libdeflate_compressor *c;
 	size_t size;
@@ -2661,8 +2661,6 @@ libdeflate_alloc_compressor(unsigned int compression_level)
 	c = aligned_malloc(MATCHFINDER_ALIGNMENT, size);
 	if (!c)
 		return NULL;
-
-	c->compression_level = compression_level;
 
 	switch (compression_level) {
 	case 1:
@@ -2747,6 +2745,8 @@ libdeflate_alloc_compressor(unsigned int compression_level)
 		aligned_free(c);
 		return NULL;
 	}
+
+	c->compression_level = compression_level;
 
 	deflate_init_offset_slot_fast(c);
 	deflate_init_static_codes(c);

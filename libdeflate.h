@@ -49,7 +49,7 @@ struct libdeflate_compressor;
  * However, different threads may use different compressors concurrently.
  */
 LIBDEFLATEAPI struct libdeflate_compressor *
-libdeflate_alloc_compressor(unsigned int compression_level);
+libdeflate_alloc_compressor(int compression_level);
 
 /*
  * libdeflate_deflate_compress() performs raw DEFLATE compression on a buffer of
