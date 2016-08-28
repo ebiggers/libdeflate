@@ -44,6 +44,9 @@ struct libdeflate_compressor;
  * Note: for compression, the sliding window size is defined at compilation time
  * to 32768, the largest size permissible in the DEFLATE format.  It cannot be
  * changed at runtime.
+ *
+ * A single compressor is not safe to use by multiple threads concurrently.
+ * However, different threads may use different compressors concurrently.
  */
 LIBDEFLATEAPI struct libdeflate_compressor *
 libdeflate_alloc_compressor(unsigned int compression_level);
@@ -147,6 +150,9 @@ struct libdeflate_decompressor;
  * This function takes no parameters, and the returned decompressor is valid for
  * decompressing data that was compressed at any compression level and with any
  * sliding window size.
+ *
+ * A single decompressor is not safe to use by multiple threads concurrently.
+ * However, different threads may use different decompressors concurrently.
  */
 LIBDEFLATEAPI struct libdeflate_decompressor *
 libdeflate_alloc_decompressor(void);
