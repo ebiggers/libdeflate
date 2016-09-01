@@ -126,6 +126,11 @@ typedef size_t machine_word_t;
 #  define COMPILER_SUPPORTS_BMI2_TARGET 0
 #endif
 
+/* Does the compiler support __attribute__((target("avx2")))? */
+#ifndef COMPILER_SUPPORTS_AVX2_TARGET
+#  define COMPILER_SUPPORTS_AVX2_TARGET 0
+#endif
+
 /* _aligned_attribute(n) - declare that the annotated variable, or variables of
  * the annotated type, are to be aligned on n-byte boundaries */
 #ifndef _aligned_attribute

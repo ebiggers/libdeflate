@@ -40,6 +40,10 @@
 	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
 	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di)))
 
+#define COMPILER_SUPPORTS_AVX2_TARGET				\
+	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
+	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pmaddwd256)))
+
 /* Newer gcc supports __BYTE_ORDER__.  Older gcc doesn't. */
 #ifdef __BYTE_ORDER__
 #  define CPU_IS_LITTLE_ENDIAN() (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
