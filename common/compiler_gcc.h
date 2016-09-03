@@ -18,12 +18,6 @@
 #  define __has_builtin(builtin)	0
 #endif
 
-#ifdef _WIN32
-#  define LIBEXPORT __declspec(dllexport)
-#else
-#  define LIBEXPORT __attribute__((visibility("default")))
-#endif
-
 #define inline			inline
 #define forceinline		inline __attribute__((always_inline))
 #define restrict		__restrict__

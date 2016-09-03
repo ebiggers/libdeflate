@@ -5,6 +5,9 @@
 #	nmake /f Makefile.msc
 #
 
+.SUFFIXES:
+.SUFFIXES: .obj .dllobj .c
+
 CC = cl
 LD = link
 AR = lib
@@ -26,6 +29,17 @@ LIB_OBJ = lib/aligned_malloc.obj	\
 	  lib/zlib_compress.obj		\
 	  lib/zlib_decompress.obj
 
+DLL_OBJ = lib/aligned_malloc.dllobj	\
+	  lib/adler32.dllobj		\
+	  lib/crc32.dllobj		\
+	  lib/deflate_compress.dllobj	\
+	  lib/deflate_decompress.dllobj	\
+	  lib/gzip_compress.dllobj	\
+	  lib/gzip_decompress.dllobj	\
+	  lib/x86_cpu_features.dllobj	\
+	  lib/zlib_compress.dllobj	\
+	  lib/zlib_decompress.dllobj
+
 PROG_COMMON_OBJ = programs/prog_util.obj \
 		  programs/tgetopt.obj \
 		  $(STATICLIB)
@@ -37,11 +51,14 @@ all: $(STATICLIB) $(SHAREDLIB) $(IMPLIB) gzip.exe gunzip.exe
 .c.obj:
 	$(CC) -c /Fo$@ $(CFLAGS) $**
 
+.c.dllobj:
+	$(CC) -c /Fo$@ $(CFLAGS) /DLIBDEFLATE_DLL $**
+
 $(STATICLIB): $(LIB_OBJ)
 	$(AR) $(ARFLAGS) -out:$@ $(LIB_OBJ)
 
-$(SHAREDLIB): $(LIB_OBJ)
-	$(LD) $(LDFLAGS) -out:$@ -dll -implib:$(IMPLIB) $(LIB_OBJ)
+$(SHAREDLIB): $(DLL_OBJ)
+	$(LD) $(LDFLAGS) -out:$@ -dll -implib:$(IMPLIB) $(DLL_OBJ)
 
 $(IMPLIB): $(SHAREDLIB)
 
@@ -53,4 +70,4 @@ gunzip.exe:gzip.exe
 
 clean:
 	-del *.dll *.exe *.exp libdeflate.lib libdeflatestatic.lib gzip.lib \
-		lib\*.obj programs\*.obj 2>nul
+		lib\*.obj lib\*.dllobj programs\*.obj 2>nul
