@@ -2,10 +2,6 @@
  * compiler_msc.h - definitions for the Microsoft C Compiler
  */
 
-#define BUILDING_LIBDEFLATE
-
-#define LIBEXPORT	__declspec(dllexport)
-
 /*
  * Old versions (e.g. VS2010) of MSC don't have the C99 header stdbool.h.
  * Beware: the below replacement isn't fully standard, since normally any value

@@ -28,6 +28,8 @@
 #ifndef COMMON_COMMON_DEFS_H
 #define COMMON_COMMON_DEFS_H
 
+#define BUILDING_LIBDEFLATE
+
 #ifdef __GNUC__
 #  include "compiler_gcc.h"
 #elif defined(_MSC_VER)

@@ -17,15 +17,22 @@ extern "C" {
 
 /* Microsoft C / Visual Studio garbage.  If you want to link to the DLL version
  * of libdeflate, then #define LIBDEFLATE_DLL.  */
-#ifdef _MSC_VER
-#  ifdef BUILDING_LIBDEFLATE
-#    define LIBDEFLATEAPI __declspec(dllexport)
-#  elif defined(LIBDEFLATE_DLL)
-#    define LIBDEFLATEAPI __declspec(dllimport)
+#if defined(LIBDEFLATE_DLL)
+#  if defined(_WIN32) || defined(__CYGWIN__)
+#    if defined(BUILDING_LIBDEFLATE)
+#      define LIBDEFLATEAPI __declspec(dllexport)
+#    else
+#      define LIBDEFLATEAPI __declspec(dllimport)
+#    endif
 #  endif
 #endif
-#ifndef LIBDEFLATEAPI
-#  define LIBDEFLATEAPI
+
+#if !defined(LIBDEFLATEAPI)
+#  if defined(__GNUC__) && __GNUC__ >= 4
+#    define LIBDEFLATEAPI __attribute__((visibility("default")))
+#  else
+#    define LIBDEFLATEAPI
+#  endif
 #endif
 
 /* ========================================================================== */
