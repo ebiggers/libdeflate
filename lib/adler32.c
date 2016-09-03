@@ -71,7 +71,18 @@
 	    we can use it until runtime */
 #endif
 
-#define NUM_IMPLS (NEED_GENERIC_IMPL + NEED_SSE2_IMPL + NEED_AVX2_IMPL)
+/* Include the NEON implementation? */
+#define NEED_NEON_IMPL 0
+#ifdef __ARM_NEON
+#  include <arm_neon.h>
+#  undef NEED_NEON_IMPL
+#  define NEED_NEON_IMPL 1
+#  undef NEED_GENERIC_IMPL
+#  define NEED_GENERIC_IMPL 0 /* generic impl not needed */
+#endif
+
+#define NUM_IMPLS (NEED_GENERIC_IMPL + NEED_SSE2_IMPL + NEED_AVX2_IMPL + \
+		   NEED_NEON_IMPL)
 
 /* Define the generic implementation if needed. */
 #if NEED_GENERIC_IMPL
@@ -139,6 +150,18 @@ static u32 adler32_generic(const void *buffer, size_t size)
 #  include "adler32_impl.h"
 #  undef FUNCNAME
 #  undef ADLER32_TARGET_AVX2
+#  undef ATTRIBUTES
+#endif
+
+/* Define the NEON implementation if needed. */
+#if NEED_NEON_IMPL
+#  define FUNCNAME adler32_neon
+#  define ADLER32_TARGET_NEON
+#  define ATTRIBUTES
+#  define DEFAULT_IMPL adler32_neon
+#  include "adler32_impl.h"
+#  undef FUNCNAME
+#  undef ADLER32_TARGET_NEON
 #  undef ATTRIBUTES
 #endif
 

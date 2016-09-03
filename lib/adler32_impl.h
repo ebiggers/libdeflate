@@ -142,6 +142,40 @@ FUNCNAME(const void *buffer, size_t size)
 
 		s1 += v_s1[0] + v_s1[1] + v_s1[2] + v_s1[3];
 		s2 += v_s2[0] + v_s2[1] + v_s2[2] + v_s2[3];
+	#elif defined(ADLER32_TARGET_NEON)
+		/* ARM NEON (Advanced SIMD) implementation */
+		const uint8x8_t multipliers_a = (uint8x8_t) { 32, 31, 30, 29, 28, 27, 26, 25 };
+		const uint8x8_t multipliers_b = (uint8x8_t) { 24, 23, 22, 21, 20, 19, 18, 17 };
+		const uint8x8_t multipliers_c = (uint8x8_t) { 16, 15, 14, 13, 12, 11, 10, 9  };
+		const uint8x8_t multipliers_d = (uint8x8_t) { 8,  7,  6,  5,  4,  3,  2,  1  };
+		uint32x4_t v_s1 = (uint32x4_t) { 0, 0, 0, 0 };
+		uint32x4_t v_s2 = (uint32x4_t) { 0, 0, 0, 0 };
+
+		do {
+			const uint8x16_t bytes1 = *(const uint8x16_t *)p;
+			const uint8x16_t bytes2 = *(const uint8x16_t *)(p + 16);
+			uint16x8_t tmp;
+
+			/* s2 update (part 1) */
+			v_s2 += vqshlq_n_u32(v_s1, 5);
+
+			/* s1 update */
+			tmp = vpaddlq_u8(bytes1);
+			tmp = vpadalq_u8(tmp, bytes2);
+			v_s1 = vpadalq_u16(v_s1, tmp);
+
+			/* s2 update (part 2) */
+			tmp = vmull_u8(vget_low_u8(bytes1), multipliers_a);
+			tmp = vmlal_u8(tmp, vget_high_u8(bytes1), multipliers_b);
+			tmp = vmlal_u8(tmp, vget_low_u8(bytes2), multipliers_c);
+			tmp = vmlal_u8(tmp, vget_high_u8(bytes2), multipliers_d);
+			v_s2 = vpadalq_u16(v_s2, tmp);
+
+			p += 32;
+		} while (p != chunk_end);
+
+		s1 += v_s1[0] + v_s1[1] + v_s1[2] + v_s1[3];
+		s2 += v_s2[0] + v_s2[1] + v_s2[2] + v_s2[3];
 	#else
 	#  error "BUG: unknown target"
 	#endif
