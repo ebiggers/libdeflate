@@ -9,5 +9,7 @@ make -j benchmark \
 	CFLAGS="--sysroot=$NDKDIR/platforms/android-12/arch-arm -march=armv7-a -fPIC -pie -mfpu=neon -mfloat-abi=softfp"
 
 adb push benchmark /data/local/tmp
-adb push $HOME/data/testdata  /data/local/tmp
+if [ -z "$(adb shell '[ -e /data/local/tmp/testdata ] && echo 1')" ]; then
+	adb push $HOME/data/testdata  /data/local/tmp
+fi
 adb shell /data/local/tmp/benchmark "$@" /data/local/tmp/testdata
