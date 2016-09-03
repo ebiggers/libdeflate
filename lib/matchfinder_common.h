@@ -36,7 +36,7 @@ typedef s16 mf_pos_t;
 #  endif
 #endif
 
-#ifdef __ARM_NEON__
+#ifdef __ARM_NEON
 #  include "matchfinder_neon.h"
 #  if MATCHFINDER_ALIGNMENT < 16
 #    undef MATCHFINDER_ALIGNMENT
@@ -66,7 +66,7 @@ matchfinder_init(mf_pos_t *data, size_t num_entries)
 		return;
 #endif
 
-#if defined(__ARM_NEON__) && defined(_aligned_attribute)
+#if defined(__ARM_NEON) && defined(_aligned_attribute)
 	if (matchfinder_init_neon(data, num_entries * sizeof(data[0])))
 		return;
 #endif
@@ -111,7 +111,7 @@ matchfinder_rebase(mf_pos_t *data, size_t num_entries)
 		return;
 #endif
 
-#if defined(__ARM_NEON__) && defined(_aligned_attribute)
+#if defined(__ARM_NEON) && defined(_aligned_attribute)
 	if (matchfinder_rebase_neon(data, num_entries * sizeof(data[0])))
 		return;
 #endif
