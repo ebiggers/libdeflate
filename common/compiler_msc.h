@@ -2,8 +2,6 @@
  * compiler_msc.h - definitions for the Microsoft C Compiler
  */
 
-#define BUILDING_LIBDEFLATE
-
 #define LIBEXPORT	__declspec(dllexport)
 
 /*

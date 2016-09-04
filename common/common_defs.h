@@ -76,7 +76,7 @@ typedef size_t machine_word_t;
 /*                         Optional compiler features                         */
 /* ========================================================================== */
 
-/* LIBEXPORT - annotate a function that is part of the library API */
+/* LIBEXPORT - export a function from a shared library */
 #ifndef LIBEXPORT
 #  define LIBEXPORT
 #endif

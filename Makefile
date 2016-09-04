@@ -33,9 +33,9 @@ override CFLAGS :=							\
 
 STATIC_LIB_SUFFIX := .a
 SHARED_LIB_SUFFIX := .so
+SHARED_LIB_CFLAGS := -fPIC
 PROG_SUFFIX       :=
 PROG_CFLAGS       :=
-PIC_REQUIRED      := 1
 HARD_LINKS        := 1
 
 # Compiling for Windows with MinGW?
@@ -47,9 +47,9 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
     endif
     STATIC_LIB_SUFFIX := .lib
     SHARED_LIB_SUFFIX := .dll
+    SHARED_LIB_CFLAGS :=
     PROG_SUFFIX       := .exe
     PROG_CFLAGS       := -static -municode
-    PIC_REQUIRED      :=
     HARD_LINKS        :=
     override CFLAGS   := $(CFLAGS) $(call cc-option,-Wno-pedantic-ms-format)
 endif
@@ -106,33 +106,28 @@ ifndef DISABLE_GZIP
     endif
 endif
 
-LIB_OBJ := $(LIB_SRC:.c=.o)
-LIB_PIC_OBJ := $(LIB_SRC:.c=.pic.o)
-ifdef PIC_REQUIRED
-    SHLIB_OBJ := $(LIB_PIC_OBJ)
-else
-    SHLIB_OBJ := $(LIB_OBJ)
-endif
+STATIC_LIB_OBJ := $(LIB_SRC:.c=.o)
+SHARED_LIB_OBJ := $(LIB_SRC:.c=.shlib.o)
 
-# Compile position dependent library object files
-$(LIB_OBJ): %.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
+# Compile static library object files
+$(STATIC_LIB_OBJ): %.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
 	$(QUIET_CC) $(CC) -o $@ -c $(LIB_CFLAGS) $<
 
-# Compile position independent library object files
-$(LIB_PIC_OBJ): %.pic.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
-	$(QUIET_CC) $(CC) -o $@ -c $(LIB_CFLAGS) -fPIC $<
-
-# Link shared library
-$(SHARED_LIB):$(SHLIB_OBJ)
-	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(LIB_CFLAGS) -shared $+
-
-ALL_TARGETS += $(SHARED_LIB)
+# Compile shared library object files
+$(SHARED_LIB_OBJ): %.shlib.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
+	$(QUIET_CC) $(CC) -o $@ -c $(LIB_CFLAGS) $(SHARED_LIB_CFLAGS) -DLIBDEFLATE_DLL $<
 
 # Create static library
-$(STATIC_LIB):$(LIB_OBJ)
+$(STATIC_LIB):$(STATIC_LIB_OBJ)
 	$(QUIET_AR) $(AR) cr $@ $+
 
 ALL_TARGETS += $(STATIC_LIB)
+
+# Create shared library
+$(SHARED_LIB):$(SHARED_LIB_OBJ)
+	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(LIB_CFLAGS) -shared $+
+
+ALL_TARGETS += $(SHARED_LIB)
 
 # Rebuild if CC or LIB_CFLAGS changed
 .lib-cflags: FORCE
@@ -213,7 +208,8 @@ help:
 
 clean:
 	rm -f *.a *.dll *.exe *.exp *.so \
-		lib/*.o lib/*.obj programs/*.o programs/*.obj \
+		lib/*.o lib/*.obj lib/*.dllobj \
+		programs/*.o programs/*.obj \
 		benchmark gzip gunzip programs/config.h \
 		libdeflate.lib libdeflatestatic.lib \
 		.lib-cflags .prog-cflags

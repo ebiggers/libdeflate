@@ -845,7 +845,7 @@ dispatch(struct libdeflate_decompressor * restrict d,
  * calling the appropriate implementation depending on the CPU features at
  * runtime.
  */
-LIBEXPORT enum libdeflate_result
+LIBDEFLATEAPI enum libdeflate_result
 libdeflate_deflate_decompress(struct libdeflate_decompressor * restrict d,
 			      const void * restrict in, size_t in_nbytes,
 			      void * restrict out, size_t out_nbytes_avail,
@@ -861,13 +861,13 @@ libdeflate_deflate_decompress(struct libdeflate_decompressor * restrict d,
 #endif
 }
 
-LIBEXPORT struct libdeflate_decompressor *
+LIBDEFLATEAPI struct libdeflate_decompressor *
 libdeflate_alloc_decompressor(void)
 {
 	return malloc(sizeof(struct libdeflate_decompressor));
 }
 
-LIBEXPORT void
+LIBDEFLATEAPI void
 libdeflate_free_decompressor(struct libdeflate_decompressor *d)
 {
 	free(d);

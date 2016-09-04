@@ -18,7 +18,7 @@
 
 #include "libdeflate.h"
 
-LIBEXPORT enum libdeflate_result
+LIBDEFLATEAPI enum libdeflate_result
 libdeflate_gzip_decompress(struct libdeflate_decompressor *d,
 			   const void *in, size_t in_nbytes,
 			   void *out, size_t out_nbytes_avail,

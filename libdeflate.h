@@ -15,12 +15,14 @@ extern "C" {
 
 #include <stddef.h>
 
-/* Microsoft C / Visual Studio garbage.  If you want to link to the DLL version
- * of libdeflate, then #define LIBDEFLATE_DLL.  */
-#ifdef _MSC_VER
+/*
+ * On Windows, if you want to link to the DLL version of libdeflate, then
+ * #define LIBDEFLATE_DLL.
+ */
+#ifdef LIBDEFLATE_DLL
 #  ifdef BUILDING_LIBDEFLATE
-#    define LIBDEFLATEAPI __declspec(dllexport)
-#  elif defined(LIBDEFLATE_DLL)
+#    define LIBDEFLATEAPI LIBEXPORT
+#  elif defined(_WIN32) || defined(__CYGWIN__)
 #    define LIBDEFLATEAPI __declspec(dllimport)
 #  endif
 #endif
