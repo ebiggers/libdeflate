@@ -121,48 +121,45 @@ static u32 adler32_generic(const void *buffer, size_t size)
 #define DEFAULT_IMPL adler32_generic
 #endif /* NEED_GENERIC_IMPL */
 
+#define TARGET_SSE2 100
+#define TARGET_AVX2 200
+#define TARGET_NEON 300
+
 /* Define the SSE2 implementation if needed. */
 #if NEED_SSE2_IMPL
-#  define FUNCNAME adler32_sse2
-#  define ADLER32_TARGET_SSE2
-#  ifdef __SSE2__
-#    define ATTRIBUTES
-#    define DEFAULT_IMPL adler32_sse2
-#  else
-#    define ATTRIBUTES __attribute__((target("sse2")))
-#  endif
+#  define FUNCNAME		adler32_sse2
+#  define TARGET		TARGET_SSE2
+#  define ALIGNMENT_REQUIRED	16
+#  define BYTES_PER_ITERATION	32
+#  define ATTRIBUTES
+#  define DEFAULT_IMPL		adler32_sse2
 #  include "adler32_impl.h"
-#  undef FUNCNAME
-#  undef ADLER32_TARGET_SSE2
-#  undef ATTRIBUTES
 #endif
 
 /* Define the AVX2 implementation if needed. */
 #if NEED_AVX2_IMPL
-#  define FUNCNAME adler32_avx2
-#  define ADLER32_TARGET_AVX2
+#  define FUNCNAME		adler32_avx2
+#  define TARGET		TARGET_AVX2
+#  define ALIGNMENT_REQUIRED	32
+#  define BYTES_PER_ITERATION	32
 #  ifdef __AVX2__
 #    define ATTRIBUTES
-#    define DEFAULT_IMPL adler32_avx2
+#    define DEFAULT_IMPL	adler32_avx2
 #  else
-#    define ATTRIBUTES __attribute__((target("avx2")))
+#    define ATTRIBUTES		__attribute__((target("avx2")))
 #  endif
 #  include "adler32_impl.h"
-#  undef FUNCNAME
-#  undef ADLER32_TARGET_AVX2
-#  undef ATTRIBUTES
 #endif
 
 /* Define the NEON implementation if needed. */
 #if NEED_NEON_IMPL
-#  define FUNCNAME adler32_neon
-#  define ADLER32_TARGET_NEON
+#  define FUNCNAME		adler32_neon
+#  define TARGET		TARGET_NEON
+#  define ALIGNMENT_REQUIRED	16
+#  define BYTES_PER_ITERATION	32
 #  define ATTRIBUTES
-#  define DEFAULT_IMPL adler32_neon
+#  define DEFAULT_IMPL		adler32_neon
 #  include "adler32_impl.h"
-#  undef FUNCNAME
-#  undef ADLER32_TARGET_NEON
-#  undef ATTRIBUTES
 #endif
 
 typedef u32 (*adler32_func_t)(const void *, size_t);

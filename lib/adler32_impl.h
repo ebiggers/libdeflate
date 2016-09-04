@@ -12,7 +12,40 @@
  * <http://creativecommons.org/publicdomain/zero/1.0/>.
  */
 
-/* Template for vectorized Adler-32 implementations */
+/*
+ * This file contains a template for vectorized Adler-32 implementations.
+ *
+ * The inner loop between reductions modulo 65521 of an unvectorized Adler-32
+ * implementation looks something like this:
+ *
+ *	do {
+ * 		s1 += *p;
+ * 		s2 += s1;
+ *	} while (++p != chunk_end);
+ *
+ * For vectorized calculation of s1, we only need to sum the input bytes.  They
+ * can be accumulated into multiple counters which are eventually summed
+ * together.
+ *
+ * For vectorized calculation of s2, the basic idea is that for each iteration
+ * that processes N bytes, we can perform the following vectorizable
+ * calculation:
+ *
+ *	s2 += N*byte_1 + (N-1)*byte_2 + (N-2)*byte_3 + ... + 1*byte_N
+ *
+ * Or, equivalently, we can sum the byte_1...byte_N for each iteration into N
+ * separate counters, then do the multiplications by N...1 just once at the end
+ * rather than once per iteration.
+ *
+ * Also, we must account for how previous bytes will affect s2 by doing the
+ * following at beginning of each iteration:
+ *
+ *	s2 += s1 * N
+ *
+ * Futhermore, like s1, "s2" can actually be multiple counters which are
+ * eventually summed together.
+ */
+
 static u32 ATTRIBUTES
 FUNCNAME(const void *buffer, size_t size)
 {
@@ -20,41 +53,50 @@ FUNCNAME(const void *buffer, size_t size)
 	u32 s2 = 0;
 	const u8 *p = buffer;
 	const u8 * const end = p + size;
-	const uintptr_t endv = (uintptr_t)end & ~31;
+	const u8 *vend;
 
-	/* Proceed until the buffer is 32-byte aligned. */
-	if (p != end && ((uintptr_t)p & 31)) {
+	/* Process a byte at a time until the required alignment is reached. */
+	if (p != end && (uintptr_t)p % ALIGNMENT_REQUIRED) {
 		do {
 			s1 += *p++;
 			s2 += s1;
-		} while (p != end && ((uintptr_t)p & 31));
+		} while (p != end && (uintptr_t)p % ALIGNMENT_REQUIRED);
 		s1 %= DIVISOR;
 		s2 %= DIVISOR;
 	}
 
-	/* While there are still 32-byte aligned vectors remaining... */
-	while ((uintptr_t)p < endv) {
+	/*
+	 * Process "chunks" of bytes using vector instructions.  Chunk sizes are
+	 * limited to MAX_BYTES_PER_CHUNK, which guarantees that s1 and s2 never
+	 * overflow before being reduced modulo DIVISOR.  For vector processing,
+	 * chunks size are also made evenly divisible by BYTES_PER_ITERATION.
+	 */
+	STATIC_ASSERT(BYTES_PER_ITERATION % ALIGNMENT_REQUIRED == 0);
+	vend = end - ((end - p) % BYTES_PER_ITERATION);
+	while (p != vend) {
+		size_t chunk_size;
+		const u8 *chunk_end;
 
-		/* Process a chunk which is guaranteed not to overflow s2. */
-		size_t chunk_size = MIN(endv - (uintptr_t)p,
-					MAX_BYTES_PER_CHUNK & ~31);
-		const u8 *chunk_end = p + chunk_size;
+		chunk_size = MIN(vend - p, MAX_BYTES_PER_CHUNK);
+	#if TARGET == TARGET_SSE2
+		/* SSE2: the 16-bit precision byte counters must not undergo
+		 * *signed* overflow, otherwise the signed multiplication at the
+		 * end will not behave as desired. */
+		chunk_size = MIN(chunk_size, BYTES_PER_ITERATION * (0x7FFF / 0xFF));
+	#elif TARGET == TARGET_NEON
+		/* NEON: the 16-bit precision counters must not undergo
+		 * *unsigned* overflow. */
+		chunk_size = MIN(chunk_size, BYTES_PER_ITERATION * (0xFFFF / 0xFF));
+	#endif
+		chunk_size -= chunk_size % BYTES_PER_ITERATION;
+
+		chunk_end = p + chunk_size;
 
 		s2 += s1 * chunk_size;
 		s2 %= DIVISOR;
 		{
-	#ifdef ADLER32_TARGET_AVX2
-		/*
-		 * AVX2 implementation.  This works like the SSE2 implementation
-		 * below, except:
-		 *
-		 * - Vectors are 32 bytes instead of 16 bytes.
-		 *
-		 * - We use "Packed Multiply and Add Unsigned Byte to Signed
-		 *   Word" (_mm256_maddubs_epi16()) to directly do the
-		 *   multiplication of the bytes with their multipliers without
-		 *   having to expand the bytes to 16-bit integers first.
-		 */
+	#if TARGET == TARGET_AVX2
+		/* AVX2 implementation */
 		const __m256i zeroes = _mm256_setzero_si256();
 		const __v32qi multipliers = (__v32qi) { 32, 31, 30, 29, 28, 27, 26, 25,
 							24, 23, 22, 21, 20, 19, 18, 17,
@@ -62,117 +104,132 @@ FUNCNAME(const void *buffer, size_t size)
 							8,  7,  6,  5,  4,  3,  2,  1 };
 		const __v16hi ones = (__v16hi)_mm256_set1_epi16(1);
 		__v8si v_s1 = (__v8si)zeroes;
+		__v8si v_s1_sums = (__v8si)zeroes;
 		__v8si v_s2 = (__v8si)zeroes;
+		STATIC_ASSERT(ALIGNMENT_REQUIRED == 32 && BYTES_PER_ITERATION == 32);
 		do {
-			__v32qi bytes = *(const __v32qi *)p;
+			__m256i bytes = *(const __m256i *)p;
 			__v16hi sums = (__v16hi)_mm256_maddubs_epi16(
-						(__m256i)bytes, (__m256i)multipliers);
-			v_s2 += (__v8si)_mm256_slli_epi32((__m256i)v_s1, 5);
-			v_s1 += (__v8si)_mm256_sad_epu8((__m256i)bytes, zeroes);
+							bytes, (__m256i)multipliers);
+			v_s1_sums += v_s1;
+			v_s1 += (__v8si)_mm256_sad_epu8(bytes, zeroes);
 			v_s2 += (__v8si)_mm256_madd_epi16((__m256i)sums, (__m256i)ones);
-			p += 32;
-		} while (p != chunk_end);
+		} while ((p += BYTES_PER_ITERATION) != chunk_end);
 
 		v_s1 = (__v8si)_mm256_hadd_epi32((__m256i)v_s1, zeroes);
 		v_s1 = (__v8si)_mm256_hadd_epi32((__m256i)v_s1, zeroes);
 		s1 += v_s1[0] + v_s1[4];
 
+		v_s2 += (__v8si)_mm256_slli_epi32((__m256i)v_s1_sums, 5);
 		v_s2 = (__v8si)_mm256_hadd_epi32((__m256i)v_s2, zeroes);
 		v_s2 = (__v8si)_mm256_hadd_epi32((__m256i)v_s2, zeroes);
 		s2 += v_s2[0] + v_s2[4];
 
-	#elif defined(ADLER32_TARGET_SSE2)
+	#elif TARGET == TARGET_SSE2
 		/* SSE2 implementation */
 		const __m128i zeroes = _mm_setzero_si128();
-		const __v8hi multipliers_a = (__v8hi) { 32, 31, 30, 29, 28, 27, 26, 25 };
-		const __v8hi multipliers_b = (__v8hi) { 24, 23, 22, 21, 20, 19, 18, 17 };
-		const __v8hi multipliers_c = (__v8hi) { 16, 15, 14, 13, 12, 11, 10, 9  };
-		const __v8hi multipliers_d = (__v8hi) { 8,  7,  6,  5,  4,  3,  2,  1  };
 
 		/* s1 counters: 32-bit, sum of bytes */
 		__v4si v_s1 = (__v4si)zeroes;
 
 		/* s2 counters: 32-bit, sum of s1 values */
 		__v4si v_s2 = (__v4si)zeroes;
-		__v4si v_s2_a = (__v4si)zeroes;
-		__v4si v_s2_b = (__v4si)zeroes;
+
+		/*
+		 * Thirty-two 16-bit counters for byte sums.  Each accumulates
+		 * the bytes that eventually need to be multiplied by a number
+		 * 32...1 for addition into s2.
+		 */
+		__v8hi v_byte_sums_a = (__v8hi)zeroes;
+		__v8hi v_byte_sums_b = (__v8hi)zeroes;
+		__v8hi v_byte_sums_c = (__v8hi)zeroes;
+		__v8hi v_byte_sums_d = (__v8hi)zeroes;
+
+		STATIC_ASSERT(ALIGNMENT_REQUIRED == 16 && BYTES_PER_ITERATION == 32);
 		do {
 			/* Load the next 32 bytes. */
-			__v16qi bytes1 = *(const __v16qi *)p;
-			__v16qi bytes2 = *(const __v16qi *)(p + 16);
-
-			/* Expand the bytes into 16-bit integers. */
-			__v8hi bytes_a = (__v8hi)_mm_unpacklo_epi8((__m128i)bytes1, zeroes);
-			__v8hi bytes_b = (__v8hi)_mm_unpackhi_epi8((__m128i)bytes1, zeroes);
-			__v8hi bytes_c = (__v8hi)_mm_unpacklo_epi8((__m128i)bytes2, zeroes);
-			__v8hi bytes_d = (__v8hi)_mm_unpackhi_epi8((__m128i)bytes2, zeroes);
+			const __m128i bytes1 = *(const __m128i *)p;
+			const __m128i bytes2 = *(const __m128i *)(p + 16);
 
 			/*
-			 * s2 update (part 1): multiply the s1 counters by 32
-			 * and add them to the s2 counters.  This accounts for
-			 * all the additions of existing s1 values into s2 which
-			 * need to happen over the 32 bytes currently being
-			 * processed.
+			 * Accumulate the previous s1 counters into the s2
+			 * counters.  Logically, this really should be
+			 * v_s2 += v_s1 * BYTES_PER_ITERATION, but we can do the
+			 * multiplication (or left shift) later.
 			 */
-			v_s2_a += (__v4si)_mm_slli_epi32((__m128i)v_s1, 5);
+			v_s2 += v_s1;
 
 			/*
 			 * s1 update: use "Packed Sum of Absolute Differences"
 			 * to add the bytes horizontally with 8 bytes per sum.
 			 * Then add the sums to the s1 counters.
 			 */
-			v_s1 += (__v4si)_mm_sad_epu8((__m128i)bytes1, zeroes);
-			v_s1 += (__v4si)_mm_sad_epu8((__m128i)bytes2, zeroes);
+			v_s1 += (__v4si)_mm_sad_epu8(bytes1, zeroes);
+			v_s1 += (__v4si)_mm_sad_epu8(bytes2, zeroes);
 
 			/*
-			 * s2 update (part 2): use "Packed Multiply and Add Word
-			 * to Doubleword" to multiply the expanded bytes by the
-			 * multipliers and sum adjacent pairs into 32-bit sums.
-			 * Then add those sums to the s2 counters.
+			 * Also accumulate the bytes into 32 separate counters
+			 * that have 16-bit precision.
 			 */
-			v_s2_a += (__v4si)_mm_madd_epi16((__m128i)bytes_a, (__m128i)multipliers_a);
-			v_s2_a += (__v4si)_mm_madd_epi16((__m128i)bytes_b, (__m128i)multipliers_b);
-			v_s2_b += (__v4si)_mm_madd_epi16((__m128i)bytes_c, (__m128i)multipliers_c);
-			v_s2_b += (__v4si)_mm_madd_epi16((__m128i)bytes_d, (__m128i)multipliers_d);
+			v_byte_sums_a += (__v8hi)_mm_unpacklo_epi8(bytes1, zeroes);
+			v_byte_sums_b += (__v8hi)_mm_unpackhi_epi8(bytes1, zeroes);
+			v_byte_sums_c += (__v8hi)_mm_unpacklo_epi8(bytes2, zeroes);
+			v_byte_sums_d += (__v8hi)_mm_unpackhi_epi8(bytes2, zeroes);
 
-			p += 32;
-		} while (p != chunk_end);
+		} while ((p += BYTES_PER_ITERATION) != chunk_end);
 
-		v_s2 += v_s2_a + v_s2_b;
+		/* Finish calculating the s2 counters. */
+		v_s2 = (__v4si)_mm_slli_epi32((__m128i)v_s2, 5);
+		v_s2 += (__v4si)_mm_madd_epi16((__m128i)v_byte_sums_a,
+					       (__m128i)(__v8hi){ 32, 31, 30, 29, 28, 27, 26, 25 });
+		v_s2 += (__v4si)_mm_madd_epi16((__m128i)v_byte_sums_b,
+					       (__m128i)(__v8hi){ 24, 23, 22, 21, 20, 19, 18, 17 });
+		v_s2 += (__v4si)_mm_madd_epi16((__m128i)v_byte_sums_c,
+					       (__m128i)(__v8hi){ 16, 15, 14, 13, 12, 11, 10, 9 });
+		v_s2 += (__v4si)_mm_madd_epi16((__m128i)v_byte_sums_d,
+					       (__m128i)(__v8hi){ 8,  7,  6,  5,  4,  3,  2,  1 });
 
+		/* Now accumulate what we computed into the real s1 and s2. */
 		s1 += v_s1[0] + v_s1[1] + v_s1[2] + v_s1[3];
 		s2 += v_s2[0] + v_s2[1] + v_s2[2] + v_s2[3];
-	#elif defined(ADLER32_TARGET_NEON)
+
+	#elif TARGET == TARGET_NEON
 		/* ARM NEON (Advanced SIMD) implementation */
-		const uint8x8_t multipliers_a = (uint8x8_t) { 32, 31, 30, 29, 28, 27, 26, 25 };
-		const uint8x8_t multipliers_b = (uint8x8_t) { 24, 23, 22, 21, 20, 19, 18, 17 };
-		const uint8x8_t multipliers_c = (uint8x8_t) { 16, 15, 14, 13, 12, 11, 10, 9  };
-		const uint8x8_t multipliers_d = (uint8x8_t) { 8,  7,  6,  5,  4,  3,  2,  1  };
 		uint32x4_t v_s1 = (uint32x4_t) { 0, 0, 0, 0 };
 		uint32x4_t v_s2 = (uint32x4_t) { 0, 0, 0, 0 };
+		uint16x8_t v_byte_sums_a = (uint16x8_t) { 0, 0, 0, 0, 0, 0, 0, 0 };
+		uint16x8_t v_byte_sums_b = (uint16x8_t) { 0, 0, 0, 0, 0, 0, 0, 0 };
+		uint16x8_t v_byte_sums_c = (uint16x8_t) { 0, 0, 0, 0, 0, 0, 0, 0 };
+		uint16x8_t v_byte_sums_d = (uint16x8_t) { 0, 0, 0, 0, 0, 0, 0, 0 };
 
+		STATIC_ASSERT(ALIGNMENT_REQUIRED == 16 && BYTES_PER_ITERATION == 32);
 		do {
 			const uint8x16_t bytes1 = *(const uint8x16_t *)p;
 			const uint8x16_t bytes2 = *(const uint8x16_t *)(p + 16);
 			uint16x8_t tmp;
 
-			/* s2 update (part 1) */
-			v_s2 += vqshlq_n_u32(v_s1, 5);
+			v_s2 += v_s1;
 
-			/* s1 update */
 			tmp = vpaddlq_u8(bytes1);
 			tmp = vpadalq_u8(tmp, bytes2);
 			v_s1 = vpadalq_u16(v_s1, tmp);
 
-			/* s2 update (part 2) */
-			tmp = vmull_u8(vget_low_u8(bytes1), multipliers_a);
-			tmp = vmlal_u8(tmp, vget_high_u8(bytes1), multipliers_b);
-			tmp = vmlal_u8(tmp, vget_low_u8(bytes2), multipliers_c);
-			tmp = vmlal_u8(tmp, vget_high_u8(bytes2), multipliers_d);
-			v_s2 = vpadalq_u16(v_s2, tmp);
+			v_byte_sums_a = vaddw_u8(v_byte_sums_a, vget_low_u8(bytes1));
+			v_byte_sums_b = vaddw_u8(v_byte_sums_b, vget_high_u8(bytes1));
+			v_byte_sums_c = vaddw_u8(v_byte_sums_c, vget_low_u8(bytes2));
+			v_byte_sums_d = vaddw_u8(v_byte_sums_d, vget_high_u8(bytes2));
 
-			p += 32;
-		} while (p != chunk_end);
+		} while ((p += BYTES_PER_ITERATION) != chunk_end);
+
+		v_s2 = vqshlq_n_u32(v_s2, 5);
+		v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_a),  (uint16x4_t) { 32, 31, 30, 29 });
+		v_s2 = vmlal_u16(v_s2, vget_high_u16(v_byte_sums_a), (uint16x4_t) { 28, 27, 26, 25 });
+		v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_b),  (uint16x4_t) { 24, 23, 22, 21 });
+		v_s2 = vmlal_u16(v_s2, vget_high_u16(v_byte_sums_b), (uint16x4_t) { 20, 19, 18, 17 });
+		v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_c),  (uint16x4_t) { 16, 15, 14, 13 });
+		v_s2 = vmlal_u16(v_s2, vget_high_u16(v_byte_sums_c), (uint16x4_t) { 12, 11, 10,  9 });
+		v_s2 = vmlal_u16(v_s2, vget_low_u16 (v_byte_sums_d), (uint16x4_t) {  8,  7,  6,  5 });
+		v_s2 = vmlal_u16(v_s2, vget_high_u16(v_byte_sums_d), (uint16x4_t) {  4,  3,  2,  1 });
 
 		s1 += v_s1[0] + v_s1[1] + v_s1[2] + v_s1[3];
 		s2 += v_s2[0] + v_s2[1] + v_s2[2] + v_s2[3];
@@ -197,3 +254,9 @@ FUNCNAME(const void *buffer, size_t size)
 
 	return (s2 << 16) | s1;
 }
+
+#undef FUNCNAME
+#undef TARGET
+#undef ALIGNMENT_REQUIRED
+#undef BYTES_PER_ITERATION
+#undef ATTRIBUTES
