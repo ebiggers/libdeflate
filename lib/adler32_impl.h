@@ -42,7 +42,7 @@
  *
  *	s2 += s1 * N
  *
- * Futhermore, like s1, "s2" can actually be multiple counters which are
+ * Furthermore, like s1, "s2" can actually be multiple counters which are
  * eventually summed together.
  */
 
@@ -72,12 +72,12 @@ FUNCNAME(const void *buffer, size_t size)
 	 * chunks size are also made evenly divisible by BYTES_PER_ITERATION.
 	 */
 	STATIC_ASSERT(BYTES_PER_ITERATION % ALIGNMENT_REQUIRED == 0);
-	vend = end - ((end - p) % BYTES_PER_ITERATION);
+	vend = end - ((size_t)(end - p) % BYTES_PER_ITERATION);
 	while (p != vend) {
 		size_t chunk_size;
 		const u8 *chunk_end;
 
-		chunk_size = MIN(vend - p, MAX_BYTES_PER_CHUNK);
+		chunk_size = MIN((size_t)(vend - p), MAX_BYTES_PER_CHUNK);
 	#if TARGET == TARGET_SSE2
 		/* SSE2: the 16-bit precision byte counters must not undergo
 		 * *signed* overflow, otherwise the signed multiplication at the
@@ -93,7 +93,6 @@ FUNCNAME(const void *buffer, size_t size)
 		chunk_end = p + chunk_size;
 
 		s2 += s1 * chunk_size;
-		s2 %= DIVISOR;
 		{
 	#if TARGET == TARGET_AVX2
 		/* AVX2 implementation */
