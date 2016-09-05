@@ -156,7 +156,7 @@ PROG_OBJ := $(PROG_COMMON_OBJ) $(PROG_SPECIFIC_OBJ)
 
 # Generate autodetected configuration header
 programs/config.h:programs/detect.sh .prog-cflags
-	$(QUIET_GEN) CC=$(CC) $< > $@
+	$(QUIET_GEN) CC="$(CC)" CFLAGS="$(CFLAGS)" $< > $@
 
 # Compile program object files
 $(PROG_OBJ): %.o: %.c $(PROG_COMMON_HEADERS) $(COMMON_HEADERS) .prog-cflags

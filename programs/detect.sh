@@ -17,7 +17,7 @@ check_function() {
 	echo "int main() { $funcname(); }" > "$tmpfile"
 	echo
 	echo "/* Is the $funcname() function available? */"
-	if $CC -x c $tmpfile -o /dev/null > /dev/null 2>&1; then
+	if $CC $CFLAGS -x c $tmpfile -o /dev/null > /dev/null 2>&1; then
 		echo "#define $macro 1"
 	else
 		echo "/* $macro is not set */"
