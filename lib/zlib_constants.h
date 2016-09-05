@@ -2,8 +2,8 @@
  * zlib_constants.h - constants for the zlib wrapper format
  */
 
-#ifndef _LIB_ZLIB_CONSTANTS_H
-#define _LIB_ZLIB_CONSTANTS_H
+#ifndef LIB_ZLIB_CONSTANTS_H
+#define LIB_ZLIB_CONSTANTS_H
 
 #define ZLIB_MIN_HEADER_SIZE	2
 #define ZLIB_FOOTER_SIZE	4
@@ -18,4 +18,4 @@
 #define ZLIB_DEFAULT_COMPRESSION	2
 #define ZLIB_SLOWEST_COMPRESSION	3
 
-#endif /* _LIB_ZLIB_CONSTANTS_H */
+#endif /* LIB_ZLIB_CONSTANTS_H */

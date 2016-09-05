@@ -2,8 +2,8 @@
  * matchfinder_common.h - common code for Lempel-Ziv matchfinding
  */
 
-#ifndef _LIB_MATCHFINDER_COMMON_H
-#define _LIB_MATCHFINDER_COMMON_H
+#ifndef LIB_MATCHFINDER_COMMON_H
+#define LIB_MATCHFINDER_COMMON_H
 
 #include "lib_common.h"
 #include "unaligned.h"
@@ -202,4 +202,4 @@ word_differs:
 	return len;
 }
 
-#endif /* _LIB_MATCHFINDER_COMMON_H */
+#endif /* LIB_MATCHFINDER_COMMON_H */

@@ -2,8 +2,8 @@
  * x86_cpu_features.h - feature detection for x86 processors
  */
 
-#ifndef _LIB_X86_CPU_FEATURES_H
-#define _LIB_X86_CPU_FEATURES_H
+#ifndef LIB_X86_CPU_FEATURES_H
+#define LIB_X86_CPU_FEATURES_H
 
 #include "lib_common.h"
 
@@ -44,4 +44,4 @@ x86_have_cpu_feature(u32 feature)
 
 #endif /* X86_CPU_FEATURES_ENABLED */
 
-#endif /* _LIB_X86_CPU_FEATURES_H */
+#endif /* LIB_X86_CPU_FEATURES_H */

@@ -5,8 +5,8 @@ if [ -z "$CC" ]; then
 fi
 
 echo "/* THIS FILE WAS AUTOMATICALLY GENERATED.  DO NOT EDIT. */"
-echo "#ifndef _CONFIG_H"
-echo "#define _CONFIG_H"
+echo "#ifndef CONFIG_H"
+echo "#define CONFIG_H"
 
 tmpfile="$(mktemp -t libdeflate_config.XXXXXXXX)"
 trap "rm -f \"$tmpfile\"" EXIT
@@ -31,4 +31,4 @@ check_function posix_fadvise
 check_function posix_madvise
 
 echo
-echo "#endif /* _CONFIG_H */"
+echo "#endif /* CONFIG_H */"

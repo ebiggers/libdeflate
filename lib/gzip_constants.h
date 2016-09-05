@@ -2,8 +2,8 @@
  * gzip_constants.h - constants for the gzip wrapper format
  */
 
-#ifndef _LIB_GZIP_CONSTANTS_H
-#define _LIB_GZIP_CONSTANTS_H
+#ifndef LIB_GZIP_CONSTANTS_H
+#define LIB_GZIP_CONSTANTS_H
 
 #define GZIP_MIN_HEADER_SIZE	10
 #define GZIP_FOOTER_SIZE	8
@@ -42,4 +42,4 @@
 #define GZIP_OS_RISCOS		13
 #define GZIP_OS_UNKNOWN		255
 
-#endif /* _LIB_GZIP_CONSTANTS_H */
+#endif /* LIB_GZIP_CONSTANTS_H */

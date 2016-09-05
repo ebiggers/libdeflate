@@ -2,8 +2,8 @@
  * lib_common.h - internal header included by all library code
  */
 
-#ifndef _LIB_LIB_COMMON_H
-#define _LIB_LIB_COMMON_H
+#ifndef LIB_LIB_COMMON_H
+#define LIB_LIB_COMMON_H
 
 #define BUILDING_LIBDEFLATE
 
@@ -29,4 +29,4 @@
 #define _x86_cpu_features		SYM_FIXUP(_x86_cpu_features)
 #define x86_setup_cpu_features		SYM_FIXUP(x86_setup_cpu_features)
 
-#endif /* _LIB_LIB_COMMON_H */
+#endif /* LIB_LIB_COMMON_H */
