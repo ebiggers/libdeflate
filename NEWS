@@ -1,3 +1,14 @@
+Version 0.4:
+	The Adler-32 checksum algorithm has been optimized with vector
+	instructions for x86_64 (SSE2 and AVX2) and ARM (NEON).  This speeds up
+	zlib compression and decompression.
+
+	To avoid naming collisions, functions and definitions in libdeflate's
+	API have been renamed to be prefixed with "libdeflate_" or
+	"LIBDEFLATE_".  Programs using the old API will need to be updated.
+
+	Various bug fixes and other improvements.
+
 Version 0.3:
 	Some bug fixes and other minor changes.
 
