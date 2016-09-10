@@ -100,6 +100,9 @@ x86_setup_cpu_features(void)
 	if (IS_SET(features_2, 0))
 		features |= X86_CPU_FEATURE_SSE3;
 
+	if (IS_SET(features_2, 1))
+		features |= X86_CPU_FEATURE_PCLMULQDQ;
+
 	if (IS_SET(features_2, 9))
 		features |= X86_CPU_FEATURE_SSSE3;
 
@@ -141,6 +144,8 @@ out:
 		printf("SSE2 ");
 	if (features & X86_CPU_FEATURE_SSE3)
 		printf("SSE3 ");
+	if (features & X86_CPU_FEATURE_PCLMULQDQ)
+		printf("PCLMULQDQ ");
 	if (features & X86_CPU_FEATURE_SSSE3)
 		printf("SSSE3 ");
 	if (features & X86_CPU_FEATURE_SSE4_1)
