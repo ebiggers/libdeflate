@@ -40,9 +40,13 @@
 	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
 	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di)))
 
+/*
+ * Note: AVX2 support was added in gcc 4.7, but AVX2 intrinsics don't work in
+ * __attribute__((target("avx2"))) functions until gcc 4.9.
+ */
 #define COMPILER_SUPPORTS_AVX2_TARGET				\
 	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
-	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pmaddwd256)))
+	 (GCC_PREREQ(4, 9) || __has_builtin(__builtin_ia32_pmaddwd256)))
 
 /* Newer gcc supports __BYTE_ORDER__.  Older gcc doesn't. */
 #ifdef __BYTE_ORDER__
