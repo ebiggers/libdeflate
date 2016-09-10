@@ -204,8 +204,13 @@ FUNCNAME(const void *buffer, size_t size)
 					       (__m128i)(__v8hi){ 8,  7,  6,  5,  4,  3,  2,  1 });
 
 		/* Now accumulate what we computed into the real s1 and s2. */
-		s1 += v_s1[0] + v_s1[1] + v_s1[2] + v_s1[3];
-		s2 += v_s2[0] + v_s2[1] + v_s2[2] + v_s2[3];
+		v_s1 += (__v4si)_mm_shuffle_epi32((__m128i)v_s1, 0x31);
+		v_s1 += (__v4si)_mm_shuffle_epi32((__m128i)v_s1, 0x02);
+		s1 += _mm_cvtsi128_si32((__m128i)v_s1);
+
+		v_s2 += (__v4si)_mm_shuffle_epi32((__m128i)v_s2, 0x31);
+		v_s2 += (__v4si)_mm_shuffle_epi32((__m128i)v_s2, 0x02);
+		s2 += _mm_cvtsi128_si32((__m128i)v_s2);
 
 	#elif TARGET == TARGET_NEON
 		/* ARM NEON (Advanced SIMD) implementation */
