@@ -156,10 +156,15 @@ compression format.
 
 # License
 
-The library portion of libdeflate has been released into the public domain.
-There is NO WARRANTY, to the extent permitted by law.  See the CC0 Public Domain
-Dedication in the COPYING.LIB file for details.
+libdeflate is [MIT-licensed](COPYING).
 
-The non-library portions of the project, such as the gzip program, may be
-modified and/or redistributed under the terms of the MIT license.  There is NO
-WARRANTY, to the extent permitted by law.  See the COPYING file for details.
+Additional notes (informational only):
+
+- I am not aware of any patents covering libdeflate.
+
+- Old versions of libdeflate were public domain; I only started copyrighting
+  changes in newer versions.  Portions of the source code that have not been
+  changed since being released in a public domain version can theoretically
+  still be used as public domain if you want to.  But for practical purposes, it
+  probably would be easier to just take the MIT license option, which is nearly
+  the same anyway.

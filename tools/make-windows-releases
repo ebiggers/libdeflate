@@ -10,7 +10,7 @@ for arch in 'i686' 'x86_64'; do
 	mkdir $dir
 	cp libdeflate.dll libdeflate.lib libdeflate.h *.exe $dir
 	${arch}-w64-mingw32-strip ${dir}/libdeflate.dll ${dir}/*.exe
-	for file in COPYING COPYING.LIB NEWS; do
+	for file in COPYING NEWS; do
 		sed < $file > ${dir}/${file}.txt -e 's/$/\r/g'
 	done
 	for file in README.md; do
