@@ -257,23 +257,23 @@ restore_timestamps(struct file_stream *out, const tchar *newpath,
 		   const struct stat *stbuf)
 {
 	int ret;
-#if defined(HAVE_FUTIMENS)
+#if defined(HAVE_FUTIMENS) && defined(HAVE_STAT_NANOSECOND_PRECISION)
 	struct timespec times[2] = {
 		stbuf->st_atim, stbuf->st_mtim,
 	};
 	ret = futimens(out->fd, times);
-#elif defined(HAVE_FUTIMES)
+#elif defined(HAVE_FUTIMES) && defined(HAVE_STAT_NANOSECOND_PRECISION)
 	struct timeval times[2] = {
 		{ stbuf->st_atim.tv_sec, stbuf->st_atim.tv_nsec / 1000, },
 		{ stbuf->st_mtim.tv_sec, stbuf->st_mtim.tv_nsec / 1000, },
 	};
 	ret = futimes(out->fd, times);
-#else /* HAVE_FUTIMES */
+#else
 	struct tutimbuf times = {
 		stbuf->st_atime, stbuf->st_mtime,
 	};
 	ret = tutime(newpath, &times);
-#endif /* !HAVE_FUTIMES */
+#endif
 	if (ret != 0)
 		msg_errno("%"TS": unable to preserve timestamps", out->name);
 }
