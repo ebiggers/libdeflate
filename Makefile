@@ -72,7 +72,7 @@ endif
 ##############################################################################
 
 COMMON_HEADERS := $(wildcard common/*.h)
-ALL_TARGETS :=
+DEFAULT_TARGETS :=
 
 #### Library
 
@@ -121,13 +121,13 @@ $(SHARED_LIB_OBJ): %.shlib.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
 $(STATIC_LIB):$(STATIC_LIB_OBJ)
 	$(QUIET_AR) $(AR) cr $@ $+
 
-ALL_TARGETS += $(STATIC_LIB)
+DEFAULT_TARGETS += $(STATIC_LIB)
 
 # Create shared library
 $(SHARED_LIB):$(SHARED_LIB_OBJ)
 	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(LIB_CFLAGS) -shared $+
 
-ALL_TARGETS += $(SHARED_LIB)
+DEFAULT_TARGETS += $(SHARED_LIB)
 
 # Rebuild if CC or LIB_CFLAGS changed
 .lib-cflags: FORCE
@@ -147,12 +147,18 @@ PROG_CFLAGS += $(CFLAGS)		\
 	       -DHAVE_CONFIG_H
 
 PROG_COMMON_HEADERS := programs/prog_util.h programs/config.h
-PROG_COMMON_SRC := programs/prog_util.c programs/tgetopt.c
-PROG_SPECIFIC_SRC := programs/gzip.c programs/benchmark.c
+PROG_COMMON_SRC     := programs/prog_util.c programs/tgetopt.c
+NONTEST_PROGRAM_SRC := programs/gzip.c
+TEST_PROGRAM_SRC    := programs/benchmark.c
 
-PROG_COMMON_OBJ := $(PROG_COMMON_SRC:.c=.o)
-PROG_SPECIFIC_OBJ := $(PROG_SPECIFIC_SRC:.c=.o)
-PROG_OBJ := $(PROG_COMMON_OBJ) $(PROG_SPECIFIC_OBJ)
+NONTEST_PROGRAMS := $(NONTEST_PROGRAM_SRC:programs/%.c=%$(PROG_SUFFIX))
+DEFAULT_TARGETS  += $(NONTEST_PROGRAMS)
+TEST_PROGRAMS    := $(TEST_PROGRAM_SRC:programs/%.c=%$(PROG_SUFFIX))
+
+PROG_COMMON_OBJ     := $(PROG_COMMON_SRC:%.c=%.o)
+NONTEST_PROGRAM_OBJ := $(NONTEST_PROGRAM_SRC:%.c=%.o)
+TEST_PROGRAM_OBJ    := $(TEST_PROGRAM_SRC:%.c=%.o)
+PROG_OBJ := $(PROG_COMMON_OBJ) $(NONTEST_PROGRAM_OBJ) $(TEST_PROGRAM_OBJ)
 
 # Generate autodetected configuration header
 programs/config.h:programs/detect.sh .prog-cflags
@@ -162,18 +168,16 @@ programs/config.h:programs/detect.sh .prog-cflags
 $(PROG_OBJ): %.o: %.c $(PROG_COMMON_HEADERS) $(COMMON_HEADERS) .prog-cflags
 	$(QUIET_CC) $(CC) -o $@ -c $(PROG_CFLAGS) $<
 
-# Link benchmark program
-benchmark$(PROG_SUFFIX):programs/benchmark.o $(PROG_COMMON_OBJ) $(STATIC_LIB)
-	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(PROG_CFLAGS) $+ -lz
+# Link the programs.
+#
+# Note: the test programs are not compiled by default.  One reason is that the
+# test programs must be linked with zlib for doing comparisons.
 
-# 'benchmark' is not compiled by default because of the zlib link requirement.
-#ALL_TARGETS += benchmark$(PROG_SUFFIX)
-
-# Link gzip program
-gzip$(PROG_SUFFIX):programs/gzip.o $(PROG_COMMON_OBJ) $(STATIC_LIB)
+$(NONTEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) $(STATIC_LIB)
 	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(PROG_CFLAGS) $+
 
-ALL_TARGETS += gzip$(PROG_SUFFIX)
+$(TEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) $(STATIC_LIB)
+	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(PROG_CFLAGS) $+ -lz
 
 ifdef HARD_LINKS
 # Hard link gunzip to gzip
@@ -185,7 +189,7 @@ gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
 	$(QUIET_CP) cp -f $< $@
 endif
 
-ALL_TARGETS += gunzip$(PROG_SUFFIX)
+DEFAULT_TARGETS += gunzip$(PROG_SUFFIX)
 
 # Rebuild if CC or PROG_CFLAGS changed
 .prog-cflags: FORCE
@@ -197,12 +201,14 @@ ALL_TARGETS += gunzip$(PROG_SUFFIX)
 
 ##############################################################################
 
-all:$(ALL_TARGETS)
+all:$(DEFAULT_TARGETS)
+
+test_programs:$(TEST_PROGRAMS)
 
 help:
 	@echo "Available targets:"
 	@echo "------------------"
-	@for target in $(ALL_TARGETS) benchmark$(PROG_SUFFIX); do \
+	@for target in $(DEFAULT_TARGETS) $(TEST_PROGRAMS); do \
 		echo -e "$$target";		\
 	done
 
@@ -210,7 +216,7 @@ clean:
 	rm -f *.a *.dll *.exe *.exp *.so \
 		lib/*.o lib/*.obj lib/*.dllobj \
 		programs/*.o programs/*.obj \
-		benchmark gzip gunzip programs/config.h \
+		$(DEFAULT_TARGETS) $(TEST_PROGRAMS) programs/config.h \
 		libdeflate.lib libdeflatestatic.lib \
 		.lib-cflags .prog-cflags
 
@@ -219,6 +225,6 @@ realclean: clean
 
 FORCE:
 
-.PHONY: all help clean realclean
+.PHONY: all test_programs help clean realclean
 
 .DEFAULT_GOAL = all
