@@ -121,6 +121,11 @@ typedef size_t machine_word_t;
 #  define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE 0
 #endif
 
+/* Does the compiler support __attribute__((target("pclmul")))? */
+#ifndef COMPILER_SUPPORTS_PCLMUL_TARGET
+#  define COMPILER_SUPPORTS_PCLMUL_TARGET 0
+#endif
+
 /* Does the compiler support __attribute__((target("bmi2")))? */
 #ifndef COMPILER_SUPPORTS_BMI2_TARGET
 #  define COMPILER_SUPPORTS_BMI2_TARGET 0

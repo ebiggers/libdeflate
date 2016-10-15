@@ -36,14 +36,31 @@
 #define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE		\
 	(GCC_PREREQ(4, 4) || __has_attribute(target))
 
+/*
+ * Support for the following instruction set extensions was introduced by the
+ * following gcc versions:
+ *
+ *	PCLMUL	4.4
+ *	BMI2	4.7
+ *	AVX2	4.7
+ *
+ * However, target-specific intrinsics don't work in __attribute__((target(..)))
+ * functions until gcc 4.9.  Currently we need this for PCLMUL and AVX2 but not
+ * BMI2.  Hence the particular version checks below.
+ *
+ * Note: clang does not have this problem and also supports __has_builtin() for
+ * testing for whether an intrinsic is available without having to check the
+ * compiler version.
+ */
+
+#define COMPILER_SUPPORTS_PCLMUL_TARGET				\
+	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
+	 (GCC_PREREQ(4, 9) || __has_builtin(__builtin_ia32_pclmulqdq128)))
+
 #define COMPILER_SUPPORTS_BMI2_TARGET				\
 	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
 	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di)))
 
-/*
- * Note: AVX2 support was added in gcc 4.7, but AVX2 intrinsics don't work in
- * __attribute__((target("avx2"))) functions until gcc 4.9.
- */
 #define COMPILER_SUPPORTS_AVX2_TARGET				\
 	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
 	 (GCC_PREREQ(4, 9) || __has_builtin(__builtin_ia32_pmaddwd256)))
