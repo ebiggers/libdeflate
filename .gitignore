@@ -12,6 +12,7 @@
 /benchmark
 /gzip
 /gunzip
+/run_tests.log
 /test_checksums
 tags
 cscope*

@@ -1,33 +1,26 @@
 #!/bin/bash
-#
-# android_test.sh
-#
-# Build and run the libdeflate benchmark program on Android
-#
 
-set -e
+set -eu
 
-FILE="$HOME/data/testdata"
 ARCH="arm32"
 COMPILER="gcc"
 NDKDIR="/opt/android-ndk"
-DATADIR="/data/local/tmp"
+DISABLE_NEON=
 
 usage() {
 	cat << EOF
-Usage: $0 [OPTION]... -- [BENCHMARK_ARG]...
-Build and run the libdeflate benchmark program on Android
+Usage: $0 [OPTION]... -- [BENCHMARK_PROGRAM_ARG]...
+Build the libdeflate test programs for Android
 
-  --file=FILE          Input data file (default: $FILE)
   --arch=ARCH          Architecture: arm32|arm64 (default: $ARCH)
   --compiler=COMPILER  Compiler: gcc|clang (default: $COMPILER)
   --ndkdir=NDKDIR      Android NDK directory (default: $NDKDIR)
-  --datadir=DATADIR    Data directory on Android (default: $DATADIR)
+  --disable-neon       Disable NEON instructions
 EOF
 }
 
 if ! options=$(getopt -o '' \
-	-l 'file:,arch:,compiler:,ndkdir:,datadir:,help' -- "$@"); then
+	-l 'arch:,compiler:,ndkdir:,disable-neon,help' -- "$@"); then
 	usage
 	exit 1
 fi
@@ -36,10 +29,6 @@ eval set -- "$options"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
-	--file)
-		FILE="$2"
-		shift
-		;;
 	--arch)
 		ARCH="$2"
 		shift
@@ -52,9 +41,8 @@ while [ $# -gt 0 ]; do
 		NDKDIR="$2"
 		shift
 		;;
-	--datadir)
-		DATADIR="$2"
-		shift
+	--disable-neon)
+		DISABLE_NEON=1
 		;;
 	--help)
 		usage
@@ -78,7 +66,11 @@ case "$ARCH" in
 arm|arm32|aarch32)
 	GCC_TOOLCHAIN="arm-linux-androideabi-4.9"
 	CLANG_TARGET="armv7-none-linux-androideabi"
-	CFLAGS+=" -march=armv7-a -mfpu=neon -mfloat-abi=softfp"
+	if [ -n "$DISABLE_NEON" ]; then
+		CFLAGS+=" -march=armv6"
+	else
+		CFLAGS+=" -march=armv7-a -mfpu=neon -mfloat-abi=softfp"
+	fi
 	CFLAGS+=" --sysroot=\"$NDKDIR/platforms/android-12/arch-arm\""
 	;;
 arm64|aarch64)
@@ -108,11 +100,5 @@ clang)
 	exit 1
 esac
 
-make -j$(grep -c processor /proc/cpuinfo) benchmark CC="$CC" CFLAGS="$CFLAGS"
-adb push benchmark "$DATADIR"
-
-FILENAME="$(basename "$FILE")"
-if [ -z "$(adb shell "[ -e \"$DATADIR/$FILENAME\" ] && echo 1")" ]; then
-	adb push "$FILE" "$DATADIR/$FILENAME"
-fi
-adb shell "$DATADIR/benchmark" "$@" "$DATADIR/$FILENAME"
+make -j$(grep -c processor /proc/cpuinfo) test_programs \
+	CC="$CC" CFLAGS="$CFLAGS"
