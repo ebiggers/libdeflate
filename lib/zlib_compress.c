@@ -27,7 +27,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "adler32.h"
 #include "deflate_compress.h"
 #include "unaligned.h"
 #include "zlib_constants.h"
@@ -73,7 +72,7 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 	out_next += deflate_size;
 
 	/* ADLER32  */
-	put_unaligned_be32(adler32(in, in_size), out_next);
+	put_unaligned_be32(libdeflate_adler32(1, in, in_size), out_next);
 	out_next += 4;
 
 	return out_next - (u8 *)out;

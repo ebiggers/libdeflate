@@ -62,10 +62,10 @@
  */
 
 static u32 ATTRIBUTES
-FUNCNAME(const void *buffer, size_t size)
+FUNCNAME(u32 adler, const void *buffer, size_t size)
 {
-	u32 s1 = 1;
-	u32 s2 = 0;
+	u32 s1 = adler & 0xFFFF;
+	u32 s2 = adler >> 16;
 	const u8 *p = buffer;
 	const u8 * const end = p + size;
 	const u8 *vend;

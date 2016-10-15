@@ -5,6 +5,11 @@
 #ifndef LIB_LIB_COMMON_H
 #define LIB_LIB_COMMON_H
 
+#ifdef LIBDEFLATE_H
+#  error "lib_common.h must always be included before libdeflate.h"
+   /* because BUILDING_LIBDEFLATE must be set first */
+#endif
+
 #define BUILDING_LIBDEFLATE
 
 #include "common_defs.h"
@@ -21,10 +26,8 @@
  * shared library, since these symbols are not exported.
  */
 #define SYM_FIXUP(sym)			_libdeflate_##sym
-#define adler32				SYM_FIXUP(adler32)
 #define aligned_malloc			SYM_FIXUP(aligned_malloc)
 #define aligned_free			SYM_FIXUP(aligned_free)
-#define crc32_gzip			SYM_FIXUP(crc32_gzip)
 #define deflate_get_compression_level	SYM_FIXUP(deflate_get_compression_level)
 #define _x86_cpu_features		SYM_FIXUP(_x86_cpu_features)
 #define x86_setup_cpu_features		SYM_FIXUP(x86_setup_cpu_features)

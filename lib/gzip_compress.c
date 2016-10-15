@@ -27,7 +27,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "crc32.h"
 #include "deflate_compress.h"
 #include "gzip_constants.h"
 #include "unaligned.h"
@@ -77,7 +76,7 @@ libdeflate_gzip_compress(struct libdeflate_compressor *c,
 	out_next += deflate_size;
 
 	/* CRC32 */
-	put_unaligned_le32(crc32_gzip(in, in_size), out_next);
+	put_unaligned_le32(libdeflate_crc32(0, in, in_size), out_next);
 	out_next += 4;
 
 	/* ISIZE */

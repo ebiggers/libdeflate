@@ -27,7 +27,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "adler32.h"
 #include "unaligned.h"
 #include "zlib_constants.h"
 
@@ -84,7 +83,8 @@ libdeflate_zlib_decompress(struct libdeflate_decompressor *d,
 	in_next = in_end - ZLIB_FOOTER_SIZE;
 
 	/* ADLER32  */
-	if (adler32(out, actual_out_nbytes) != get_unaligned_be32(in_next))
+	if (libdeflate_adler32(1, out, actual_out_nbytes) !=
+	    get_unaligned_be32(in_next))
 		return LIBDEFLATE_BAD_DATA;
 
 	return LIBDEFLATE_SUCCESS;

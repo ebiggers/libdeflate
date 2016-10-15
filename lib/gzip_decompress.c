@@ -27,7 +27,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "crc32.h"
 #include "gzip_constants.h"
 #include "unaligned.h"
 
@@ -118,7 +117,8 @@ libdeflate_gzip_decompress(struct libdeflate_decompressor *d,
 	in_next = in_end - GZIP_FOOTER_SIZE;
 
 	/* CRC32 */
-	if (crc32_gzip(out, actual_out_nbytes) != get_unaligned_le32(in_next))
+	if (libdeflate_crc32(0, out, actual_out_nbytes) !=
+	    get_unaligned_le32(in_next))
 		return LIBDEFLATE_BAD_DATA;
 	in_next += 4;
 

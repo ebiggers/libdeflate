@@ -27,8 +27,9 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "adler32.h"
 #include "x86_cpu_features.h"
+
+#include "libdeflate.h"
 
 /* The Adler-32 divisor, or "base", value. */
 #define DIVISOR 65521
@@ -101,10 +102,10 @@
 
 /* Define the generic implementation if needed. */
 #if NEED_GENERIC_IMPL
-static u32 adler32_generic(const void *buffer, size_t size)
+static u32 adler32_generic(u32 adler, const void *buffer, size_t size)
 {
-	u32 s1 = 1;
-	u32 s2 = 0;
+	u32 s1 = adler & 0xFFFF;
+	u32 s2 = adler >> 16;
 	const u8 *p = buffer;
 	const u8 * const end = p + size;
 
@@ -177,7 +178,7 @@ static u32 adler32_generic(const void *buffer, size_t size)
 #  include "adler32_impl.h"
 #endif
 
-typedef u32 (*adler32_func_t)(const void *, size_t);
+typedef u32 (*adler32_func_t)(u32, const void *, size_t);
 
 /*
  * If multiple implementations are available, then dispatch among them based on
@@ -186,11 +187,11 @@ typedef u32 (*adler32_func_t)(const void *, size_t);
 #if NUM_IMPLS == 1
 #  define adler32_impl DEFAULT_IMPL
 #else
-static u32 dispatch(const void *, size_t);
+static u32 dispatch(u32, const void *, size_t);
 
 static adler32_func_t adler32_impl = dispatch;
 
-static u32 dispatch(const void *buffer, size_t size)
+static u32 dispatch(u32 adler, const void *buffer, size_t size)
 {
 	adler32_func_t f = DEFAULT_IMPL;
 #if NEED_AVX2_IMPL && !defined(__AVX2__)
@@ -198,11 +199,14 @@ static u32 dispatch(const void *buffer, size_t size)
 		f = adler32_avx2;
 #endif
 	adler32_impl = f;
-	return adler32_impl(buffer, size);
+	return adler32_impl(adler, buffer, size);
 }
 #endif /* NUM_IMPLS != 1 */
 
-u32 adler32(const void *buffer, size_t size)
+LIBDEFLATEAPI u32
+libdeflate_adler32(u32 adler, const void *buffer, size_t size)
 {
-	return adler32_impl(buffer, size);
+	if (buffer == NULL) /* return initial value */
+		return 1;
+	return adler32_impl(adler, buffer, size);
 }

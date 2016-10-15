@@ -171,8 +171,9 @@
  * more quickly via "folding".  See crc32_pclmul() for an example.
  */
 
-#include "crc32.h"
 #include "x86_cpu_features.h"
+
+#include "libdeflate.h"
 
 /* Select the implementations to compile in. */
 
@@ -577,8 +578,10 @@ static u32 dispatch(u32 remainder, const u8 *buffer, size_t nbytes)
 }
 #endif /* NUM_IMPLS != 1 */
 
-u32
-crc32_gzip(const void *buffer, size_t nbytes)
+LIBDEFLATEAPI u32
+libdeflate_crc32(u32 remainder, const void *buffer, size_t nbytes)
 {
-	return ~crc32_impl(~0, buffer, nbytes);
+	if (buffer == NULL) /* return initial value */
+		return 0;
+	return ~crc32_impl(~remainder, buffer, nbytes);
 }
