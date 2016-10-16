@@ -222,7 +222,7 @@ clean:
 		.lib-cflags .prog-cflags
 
 realclean: clean
-	rm -f tags cscope*
+	rm -f tags cscope* run_tests.log
 
 FORCE:
 
