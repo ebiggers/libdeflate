@@ -196,7 +196,7 @@ static_analysis_tests() {
 		log_skip "clang static analyzer (scan-build) not found"
 		return 0
 	fi
-	run_cmd scan-build --status-bugs make -j$NPROC
+	run_cmd scan-build --status-bugs make -j$NPROC all test_programs
 }
 
 ###############################################################################
