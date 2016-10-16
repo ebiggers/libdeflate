@@ -1,3 +1,14 @@
+Version 0.5:
+	The CRC-32 checksum algorithm has been optimized with carryless
+	multiplication instructions for x86_64 (PCLMUL).  This speeds up gzip
+	compression and decompression.
+
+	Build fixes for certain platforms and compilers.
+
+	Added more test programs and scripts.
+
+	libdeflate is now entirely MIT-licensed.
+
 Version 0.4:
 	The Adler-32 checksum algorithm has been optimized with vector
 	instructions for x86_64 (SSE2 and AVX2) and ARM (NEON).  This speeds up
