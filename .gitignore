@@ -10,6 +10,7 @@
 /.prog-cflags
 /programs/config.h
 /benchmark
+/checksum
 /gzip
 /gunzip
 /run_tests.log
