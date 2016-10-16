@@ -102,16 +102,16 @@ xmalloc(size_t size)
 }
 
 /*
- * Retrieve the current time in nanoseconds since a start time which is fixed
- * for the duration of program execution but is otherwise unspecified
+ * Return the number of timer ticks that have elapsed since some unspecified
+ * point fixed at the start of program execution
  */
 u64
-current_time(void)
+timer_ticks(void)
 {
 #ifdef _WIN32
-	FILETIME ft;
-	GetSystemTimeAsFileTime(&ft);
-	return 100 * (((u64)ft.dwHighDateTime << 32) | ft.dwLowDateTime);
+	LARGE_INTEGER count;
+	QueryPerformanceCounter(&count);
+	return count.QuadPart;
 #elif defined(HAVE_CLOCK_GETTIME)
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -119,8 +119,41 @@ current_time(void)
 #else
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
-	return (1000000000 * (u64)tv.tv_sec) + (1000 * (u64)tv.tv_usec);
+	return (1000000 * (u64)tv.tv_sec) + tv.tv_usec;
 #endif
+}
+
+/*
+ * Return the number of timer ticks per second
+ */
+static u64
+timer_frequency(void)
+{
+#ifdef _WIN32
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	return freq.QuadPart;
+#elif defined(HAVE_CLOCK_GETTIME)
+	return 1000000000;
+#else
+	return 1000000;
+#endif
+}
+
+/*
+ * Convert a number of elapsed timer ticks to milliseconds
+ */
+u64 timer_ticks_to_ms(u64 ticks)
+{
+	return ticks * 1000 / timer_frequency();
+}
+
+/*
+ * Convert a byte count and a number of elapsed timer ticks to MB/s
+ */
+u64 timer_MB_per_s(u64 bytes, u64 ticks)
+{
+	return bytes * timer_frequency() / ticks / 1000000;
 }
 
 /*

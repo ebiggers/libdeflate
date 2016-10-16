@@ -352,26 +352,26 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 		total_uncompressed_size += original_size;
 
 		/* Compress the chunk of data. */
-		start_time = current_time();
+		start_time = timer_ticks();
 		compressed_size = do_compress(compressor,
 					      original_buf,
 					      original_size,
 					      compressed_buf,
 					      original_size - 1);
-		total_compress_time += current_time() - start_time;
+		total_compress_time += timer_ticks() - start_time;
 
 		if (compressed_size) {
 			/* Successfully compressed the chunk of data. */
 
 			/* Decompress the data we just compressed and compare
 			 * the result with the original. */
-			start_time = current_time();
+			start_time = timer_ticks();
 			result = do_decompress(decompressor,
 					       compressed_buf,
 					       compressed_size,
 					       decompressed_buf,
 					       original_size);
-			total_decompress_time += current_time() - start_time;
+			total_decompress_time += timer_ticks() - start_time;
 
 			if (!result) {
 				msg("%"TS": failed to decompress data",
@@ -414,11 +414,11 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 	       (unsigned int)(total_compressed_size * 100000 /
 				total_uncompressed_size % 1000));
 	printf("\tCompression time: %"PRIu64" ms (%"PRIu64" MB/s)\n",
-	       total_compress_time / 1000000,
-	       1000 * total_uncompressed_size / total_compress_time);
+	       timer_ticks_to_ms(total_compress_time),
+	       timer_MB_per_s(total_uncompressed_size, total_compress_time));
 	printf("\tDecompression time: %"PRIu64" ms (%"PRIu64" MB/s)\n",
-	       total_decompress_time / 1000000,
-	       1000 * total_uncompressed_size / total_decompress_time);
+	       timer_ticks_to_ms(total_decompress_time),
+	       timer_MB_per_s(total_uncompressed_size, total_decompress_time));
 
 	return 0;
 }

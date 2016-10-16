@@ -79,9 +79,9 @@ checksum_stream(struct file_stream *in, cksum_fn_t cksum, u32 *sum,
 			break;
 
 		size += ret;
-		start_time = current_time();
+		start_time = timer_ticks();
 		*sum = cksum(*sum, buf, ret);
-		elapsed += current_time() - start_time;
+		elapsed += timer_ticks() - start_time;
 	}
 
 	if (elapsed == 0)
@@ -178,8 +178,8 @@ tmain(int argc, tchar *argv[])
 			if (do_timing) {
 				printf("%08"PRIx32"\t%"TS"\t"
 				       "%"PRIu64" ms\t%"PRIu64" MB/s\n",
-				       sum, in.name, elapsed / 1000000,
-				       1000 * size / elapsed);
+				       sum, in.name, timer_ticks_to_ms(elapsed),
+				       timer_MB_per_s(size, elapsed));
 			} else {
 				printf("%08"PRIx32"\t%"TS"\t\n", sum, in.name);
 			}

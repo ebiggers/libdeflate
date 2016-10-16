@@ -120,7 +120,9 @@ extern void _printf(1, 2) msg_errno(const char *fmt, ...);
 
 extern void *xmalloc(size_t size);
 
-extern u64 current_time(void);
+extern u64 timer_ticks(void);
+extern u64 timer_ticks_to_ms(u64 ticks);
+extern u64 timer_MB_per_s(u64 bytes, u64 ticks);
 
 extern const tchar *get_filename(const tchar *path);
 
