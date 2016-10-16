@@ -11,9 +11,26 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-TESTGROUPS="$@"
-if [ ${#TESTGROUPS} -eq 0 ]; then
-	TESTGROUPS=(all)
+TESTGROUPS=(all)
+
+set_test_groups() {
+	TESTGROUPS=("$@")
+	local have_exclusion=0
+	local have_all=0
+	for group in "${TESTGROUPS[@]}"; do
+		if [[ $group == -* ]]; then
+			have_exclusion=1
+		elif [[ $group == all ]]; then
+			have_all=1
+		fi
+	done
+	if (( have_exclusion && !have_all )); then
+		TESTGROUPS=(all "${TESTGROUPS[@]}")
+	fi
+}
+
+if [ $# -gt 0 ]; then
+	set_test_groups "$@"
 fi
 
 SMOKEDATA="${SMOKEDATA:=$HOME/data/smokedata}"
@@ -36,7 +53,7 @@ rm -f run_tests.log
 exec >  >(tee -ia run_tests.log)
 exec 2> >(tee -ia run_tests.log >&2)
 
-TESTS_SKIPPED=
+TESTS_SKIPPED=0
 log_skip() {
 	log "[WARNING, TEST SKIPPED]: $@"
 	TESTS_SKIPPED=1
@@ -51,25 +68,25 @@ run_cmd() {
 	"$@" > /dev/null
 }
 
-test_group_enabled() {
-	local status=1 group
+test_group_included() {
+	local included=0 group
 	for group in "${TESTGROUPS[@]}"; do
-		if [ $group = $1 ]; then
-			status=0 # explicitly included
+		if [ "$group" = "$1" ]; then
+			included=1 # explicitly included
 			break
 		fi
-		if [ $group = -$1 ]; then
-			status=1 # explicitly excluded
+		if [ "$group" = "-$1" ]; then
+			included=0 # explicitly excluded
 			break
 		fi
-		if [ $group = all ]; then # implicitly included
-			status=0
+		if [ "$group" = "all" ]; then # implicitly included
+			included=1
 		fi
 	done
-	if [ $status -eq 0 ]; then
+	if (( included )); then
 		log "Starting test group: $1"
 	fi
-	return $status
+	(( included ))
 }
 
 ###############################################################################
@@ -81,7 +98,7 @@ native_build_and_test() {
 }
 
 native_tests() {
-	test_group_enabled native || return 0
+	test_group_included native || return 0
 	local compiler cflags compilers=(gcc clang)
 	shopt -s nullglob
 	compilers+=(/usr/bin/gcc-[0-9]*)
@@ -126,7 +143,7 @@ android_build_and_test() {
 android_tests() {
 	local compiler
 
-	test_group_enabled android || return 0
+	test_group_included android || return 0
 	if [ ! -e $NDKDIR ]; then
 		log_skip "Android NDK was not found in NDKDIR=$NDKDIR!" \
 		         "If you want to run the Android tests, set the" \
@@ -159,7 +176,7 @@ android_tests() {
 ###############################################################################
 
 mips_tests() {
-	test_group_enabled mips || return 0
+	test_group_included mips || return 0
 	if ! ping -c 1 dd-wrt > /dev/null; then
 		log_skip "Can't run MIPS tests: dd-wrt system not available"
 		return 0
@@ -174,7 +191,7 @@ mips_tests() {
 windows_tests() {
 	local arch
 
-	test_group_enabled windows || return 0
+	test_group_included windows || return 0
 
 	# Windows: currently compiled but not run
 	for arch in i686 x86_64; do
@@ -191,7 +208,7 @@ windows_tests() {
 ###############################################################################
 
 static_analysis_tests() {
-	test_group_enabled static_analysis || return 0
+	test_group_included static_analysis || return 0
 	if ! type -P scan-build > /dev/null; then
 		log_skip "clang static analyzer (scan-build) not found"
 		return 0
@@ -212,7 +229,7 @@ mips_tests
 windows_tests
 static_analysis_tests
 
-if [ -n "$TESTS_SKIPPED" ]; then
+if (( TESTS_SKIPPED )); then
 	log "No tests failed, but some tests were skipped.  See above."
 else
 	log "All tests passed!"
