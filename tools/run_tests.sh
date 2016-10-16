@@ -164,9 +164,9 @@ android_tests() {
 		return 0
 	fi
 
-	if (( $(adb devices | wc -l) < 3)); then
+	if ! adb devices | grep -q 'device$'; then
 		log_skip "No Android device is currently attached"
-		return 0;
+		return 0
 	fi
 
 	for compiler in gcc clang; do
