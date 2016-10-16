@@ -47,6 +47,9 @@ FILES=("$SMOKEDATA" ./tools/exec_tests.sh benchmark test_checksums)
 EXEC_TESTS_CMD="WRAPPER= SMOKEDATA=\"$(basename $SMOKEDATA)\" sh exec_tests.sh"
 NPROC=$(grep -c processor /proc/cpuinfo)
 
+TMPFILE="$(mktemp)"
+trap "rm -f \"$TMPFILE\"" EXIT
+
 ###############################################################################
 
 rm -f run_tests.log
@@ -136,8 +139,12 @@ android_build_and_test() {
 
 	# Note: adb shell always returns 0, even if the shell command fails...
 	log "adb shell \"cd /data/local/tmp && $EXEC_TESTS_CMD\""
-	adb shell "cd /data/local/tmp && $EXEC_TESTS_CMD" | \
-		grep -q "exec_tests finished successfully"
+	adb shell "cd /data/local/tmp && $EXEC_TESTS_CMD" > "$TMPFILE"
+	if ! grep -q "exec_tests finished successfully" "$TMPFILE"; then
+		log "Android test failure!  adb shell output:"
+		cat "$TMPFILE"
+		return 1
+	fi
 }
 
 android_tests() {
