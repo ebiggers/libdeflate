@@ -456,7 +456,7 @@ tmain(int argc, tchar *argv[])
 		case '9':
 			level = parse_compression_level(opt_char, toptarg);
 			if (level == 0)
-				return -1;
+				return 1;
 			break;
 		case 'g':
 			wrapper = GZIP_WRAPPER;

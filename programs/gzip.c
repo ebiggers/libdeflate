@@ -466,7 +466,7 @@ tmain(int argc, tchar *argv[])
 			options.compression_level =
 				parse_compression_level(opt_char, toptarg);
 			if (options.compression_level == 0)
-				return -1;
+				return 1;
 			break;
 		case 'c':
 			options.to_stdout = true;

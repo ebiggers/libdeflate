@@ -151,7 +151,7 @@ tmain(int argc, tchar *argv[])
 
 	buf = xmalloc(bufsize);
 	if (buf == NULL)
-		return -1;
+		return 1;
 
 	if (argc == 0) {
 		argv = default_file_list;
@@ -193,5 +193,5 @@ tmain(int argc, tchar *argv[])
 	ret = 0;
 out:
 	free(buf);
-	return ret;
+	return -ret;
 }
