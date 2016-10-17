@@ -361,39 +361,6 @@ xread(struct file_stream *strm, void *buf, size_t count)
 	return orig_count - count;
 }
 
-/* Skip over 'count' bytes from a file, returning 0 on success or -1 on error */
-int
-skip_bytes(struct file_stream *strm, size_t count)
-{
-	size_t bufsize;
-	char *buffer;
-	ssize_t ret;
-
-	if (count == 0)
-		return 0;
-
-	bufsize = MIN(count, 4096);
-	buffer = xmalloc(bufsize);
-	if (buffer == NULL)
-		return -1;
-	do {
-		size_t n = MIN(count, bufsize);
-		ret = xread(strm, buffer, n);
-		if (ret < 0)
-			goto out;
-		if (ret != n) {
-			msg("%"TS": unexpected end-of-file", strm->name);
-			ret = -1;
-			goto out;
-		}
-		count -= ret;
-	} while (count != 0);
-	ret = 0;
-out:
-	free(buffer);
-	return ret;
-}
-
 /* Write to a file, returning 0 if all bytes were written or -1 on error */
 int
 full_write(struct file_stream *strm, const void *buf, size_t count)

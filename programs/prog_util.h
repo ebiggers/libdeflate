@@ -141,7 +141,6 @@ extern int xopen_for_write(const tchar *path, bool force,
 extern int map_file_contents(struct file_stream *strm, u64 size);
 
 extern ssize_t xread(struct file_stream *strm, void *buf, size_t count);
-extern int skip_bytes(struct file_stream *strm, size_t count);
 extern int full_write(struct file_stream *strm, const void *buf, size_t count);
 
 extern int xclose(struct file_stream *strm);
