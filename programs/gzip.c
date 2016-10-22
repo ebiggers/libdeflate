@@ -88,8 +88,12 @@ is_gunzip(void)
 {
 	if (tstrxcmp(program_invocation_name, T("gunzip")) == 0)
 		return true;
+	if (tstrxcmp(program_invocation_name, T("libdeflate-gunzip")) == 0)
+		return true;
 #ifdef _WIN32
 	if (tstrxcmp(program_invocation_name, T("gunzip.exe")) == 0)
+		return true;
+	if (tstrxcmp(program_invocation_name, T("libdeflate-gunzip.exe")) == 0)
 		return true;
 #endif
 	return false;
