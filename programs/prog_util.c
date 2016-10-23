@@ -42,11 +42,17 @@
 #ifndef O_BINARY
 #  define O_BINARY 0
 #endif
+#ifndef O_SEQUENTIAL
+#  define O_SEQUENTIAL 0
+#endif
 #ifndef O_NOFOLLOW
 #  define O_NOFOLLOW 0
 #endif
-#ifndef O_SEQUENTIAL
-#  define O_SEQUENTIAL 0
+#ifndef O_NONBLOCK
+#  define O_NONBLOCK 0
+#endif
+#ifndef O_NOCTTY
+#  define O_NOCTTY 0
 #endif
 
 /* The invocation name of the program (filename component only) */
@@ -216,7 +222,7 @@ xopen_for_read(const tchar *path, bool symlink_ok, struct file_stream *strm)
 	if (strm->name == NULL)
 		return -1;
 
-	strm->fd = topen(path, O_RDONLY | O_BINARY |
+	strm->fd = topen(path, O_RDONLY | O_BINARY | O_NONBLOCK | O_NOCTTY |
 			 (symlink_ok ? 0 : O_NOFOLLOW) | O_SEQUENTIAL);
 	if (strm->fd < 0) {
 		msg_errno("Can't open %"TS" for reading", strm->name);
@@ -361,6 +367,8 @@ xread(struct file_stream *strm, void *buf, size_t count)
 		if (res == 0)
 			break;
 		if (res < 0) {
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
 			msg_errno("Error reading from %"TS, strm->name);
 			return -1;
 		}
