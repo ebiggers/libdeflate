@@ -27,6 +27,7 @@
 
 #include "prog_util.h"
 
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #ifdef _WIN32
@@ -118,6 +119,21 @@ static bool
 has_suffix(const tchar *path, const tchar *suffix)
 {
 	return get_suffix(path, suffix) != NULL;
+}
+
+static tchar *
+append_suffix(const tchar *path, const tchar *suffix)
+{
+	size_t path_len = tstrlen(path);
+	size_t suffix_len = tstrlen(suffix);
+	tchar *suffixed_path;
+
+	suffixed_path = xmalloc((path_len + suffix_len + 1) * sizeof(tchar));
+	if (suffixed_path == NULL)
+		return NULL;
+	tmemcpy(suffixed_path, path, path_len);
+	tmemcpy(&suffixed_path[path_len], suffix, suffix_len + 1);
+	return suffixed_path;
 }
 
 static int
@@ -300,6 +316,7 @@ static int
 decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 		const struct options *options)
 {
+	tchar *oldpath = (tchar *)path;
 	tchar *newpath = NULL;
 	struct file_stream in;
 	struct file_stream out;
@@ -307,22 +324,46 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	int ret;
 	int ret2;
 
-	if (path != NULL && !options->to_stdout) {
+	if (path != NULL) {
 		const tchar *suffix = get_suffix(path, options->suffix);
 		if (suffix == NULL) {
-			msg("\"%"TS"\" does not end with the %"TS" suffix -- "
-			    "skipping", path, options->suffix);
-			ret = -2;
-			goto out;
+			/*
+			 * Input file is unsuffixed.  If the file doesn't exist,
+			 * then try it suffixed.  Otherwise, if we're not
+			 * writing to stdout, skip the file with warning status.
+			 * Otherwise, go ahead and try to open the file anyway
+			 * (which will very likely fail).
+			 */
+			if (tstat(path, &stbuf) != 0 && errno == ENOENT) {
+				oldpath = append_suffix(path, options->suffix);
+				if (oldpath == NULL)
+					return -1;
+				if (!options->to_stdout)
+					newpath = (tchar *)path;
+			} else if (!options->to_stdout) {
+				msg("\"%"TS"\" does not end with the %"TS" "
+				    "suffix -- skipping",
+				    path, options->suffix);
+				return -2;
+			}
+		} else if (!options->to_stdout) {
+			/*
+			 * Input file is suffixed, and we're not writing to
+			 * stdout.  Strip the suffix to get the path to the
+			 * output file.
+			 */
+			newpath = xmalloc((suffix - oldpath + 1) *
+					  sizeof(tchar));
+			if (newpath == NULL)
+				return -1;
+			tmemcpy(newpath, oldpath, suffix - oldpath);
+			newpath[suffix - oldpath] = '\0';
 		}
-		newpath = xmalloc((suffix - path + 1) * sizeof(tchar));
-		tmemcpy(newpath, path, suffix - path);
-		newpath[suffix - path] = '\0';
 	}
 
-	ret = xopen_for_read(path, &in);
+	ret = xopen_for_read(oldpath, &in);
 	if (ret != 0)
-		goto out_free_newpath;
+		goto out_free_paths;
 
 	if (!options->force && isatty(in.fd)) {
 		msg("Refusing to read compressed data from terminal.  "
@@ -332,7 +373,7 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	}
 
 	ret = stat_file(&in, &stbuf, options->force || options->keep ||
-			path == NULL || newpath == NULL);
+			oldpath == NULL || newpath == NULL);
 	if (ret != 0)
 		goto out_close_in;
 
@@ -348,7 +389,7 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	if (ret != 0)
 		goto out_close_out;
 
-	if (path != NULL && newpath != NULL)
+	if (oldpath != NULL && newpath != NULL)
 		restore_metadata(&out, newpath, &stbuf);
 	ret = 0;
 out_close_out:
@@ -359,11 +400,13 @@ out_close_out:
 		tunlink(newpath);
 out_close_in:
 	xclose(&in);
-	if (ret == 0 && path != NULL && newpath != NULL && !options->keep)
-		tunlink(path);
-out_free_newpath:
-	free(newpath);
-out:
+	if (ret == 0 && oldpath != NULL && newpath != NULL && !options->keep)
+		tunlink(oldpath);
+out_free_paths:
+	if (newpath != path)
+		free(newpath);
+	if (oldpath != path)
+		free(oldpath);
 	return ret;
 }
 
@@ -379,20 +422,14 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 	int ret2;
 
 	if (path != NULL && !options->to_stdout) {
-		size_t path_nchars, suffix_nchars;
-
 		if (!options->force && has_suffix(path, options->suffix)) {
 			msg("%"TS": already has %"TS" suffix -- skipping",
 			    path, options->suffix);
 			return 0;
 		}
-		path_nchars = tstrlen(path);
-		suffix_nchars = tstrlen(options->suffix);
-		newpath = xmalloc((path_nchars + suffix_nchars + 1) *
-				  sizeof(tchar));
-		tmemcpy(newpath, path, path_nchars);
-		tmemcpy(&newpath[path_nchars], options->suffix,
-			suffix_nchars + 1);
+		newpath = append_suffix(path, options->suffix);
+		if (newpath == NULL)
+			return -1;
 	}
 
 	ret = xopen_for_read(path, &in);
