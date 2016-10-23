@@ -74,8 +74,8 @@ extern int wmain(int argc, wchar_t **argv);
 #  define	tstrtoul	wcstoul
 #  define	tstrxcmp	wcsicmp
 #  define	tunlink		_wunlink
-#  define	tutimbuf	_utimbuf
-#  define	tutime		_wutime
+#  define	tutimbuf	__utimbuf64
+#  define	tutime		_wutime64
 #  ifdef _MSC_VER
      /* Standard file descriptors?  What are those? */
 #    define	STDIN_FILENO	0
