@@ -8,7 +8,7 @@
 # exclude specific test groups.
 #
 
-set -eu
+set -eu -o pipefail
 cd "$(dirname "$0")/.."
 
 TESTGROUPS=(all)
@@ -46,6 +46,8 @@ NDKDIR="${NDKDIR:=/opt/android-ndk}"
 FILES=("$SMOKEDATA" ./tools/exec_tests.sh benchmark test_checksums)
 EXEC_TESTS_CMD="WRAPPER= SMOKEDATA=\"$(basename $SMOKEDATA)\" sh exec_tests.sh"
 NPROC=$(grep -c processor /proc/cpuinfo)
+VALGRIND="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all"
+SANITIZE_CFLAGS="-fsanitize=undefined -fno-sanitize-recover=undefined,integer"
 
 TMPFILE="$(mktemp)"
 trap "rm -f \"$TMPFILE\"" EXIT
@@ -121,10 +123,10 @@ native_tests() {
 	done
 
 	log "Running tests with Valgrind"
-	WRAPPER="valgrind --error-exitcode=100 --quiet" native_build_and_test
+	WRAPPER="$VALGRIND" native_build_and_test
 
 	log "Running tests with undefined behavior sanitizer"
-	WRAPPER= native_build_and_test CC=clang CFLAGS="-fsanitize=undefined"
+	WRAPPER= native_build_and_test CC=clang CFLAGS="$SANITIZE_CFLAGS"
 }
 
 ###############################################################################
@@ -225,6 +227,32 @@ static_analysis_tests() {
 
 ###############################################################################
 
+gzip_tests() {
+	test_group_included gzip || return 0
+
+	local gzip gunzip
+	run_cmd make -j$NPROC gzip gunzip
+	for gzip in "$PWD/gzip" /usr/bin/gzip; do
+		for gunzip in "$PWD/gunzip" /usr/bin/gunzip; do
+			log "Running gzip program tests with GZIP=$gzip," \
+				"GUNZIP=$gunzip"
+			GZIP="$gzip" GUNZIP="$gunzip" SMOKEDATA="$SMOKEDATA" \
+				./tools/gzip_tests.sh
+		done
+	done
+
+	log "Running gzip program tests with Valgrind"
+	GZIP="$VALGRIND $PWD/gzip" GUNZIP="$VALGRIND $PWD/gunzip" \
+		SMOKEDATA="$SMOKEDATA" ./tools/gzip_tests.sh
+
+	log "Running gzip program tests with undefined behavior sanitizer"
+	run_cmd make -j$NPROC CC=clang CFLAGS="$SANITIZE_CFLAGS" gzip gunzip
+	GZIP="$PWD/gzip" GUNZIP="$PWD/gunzip" \
+		SMOKEDATA="$SMOKEDATA" ./tools/gzip_tests.sh
+}
+
+###############################################################################
+
 log "Starting libdeflate tests"
 log "	TESTGROUPS=(${TESTGROUPS[@]})"
 log "	SMOKEDATA=$SMOKEDATA"
@@ -235,6 +263,7 @@ android_tests
 mips_tests
 windows_tests
 static_analysis_tests
+gzip_tests
 
 if (( TESTS_SKIPPED )); then
 	log "No tests failed, but some tests were skipped.  See above."
