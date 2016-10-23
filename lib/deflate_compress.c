@@ -2787,6 +2787,8 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	if (unlikely(in_nbytes < 16)) {
 		struct deflate_output_bitstream os;
 		deflate_init_output(&os, out, out_nbytes_avail);
+		if (in_nbytes == 0)
+			in = &os; /* Avoid passing NULL to memcpy() */
 		deflate_write_uncompressed_block(&os, in, in_nbytes, true);
 		return deflate_flush_output(&os);
 	}
