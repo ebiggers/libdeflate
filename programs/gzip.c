@@ -47,7 +47,7 @@ struct options {
 	const tchar *suffix;
 };
 
-static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhkS:V");
+static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhknS:V");
 
 static void
 show_usage(FILE *fp)
@@ -529,6 +529,14 @@ tmain(int argc, tchar *argv[])
 			return 0;
 		case 'k':
 			options.keep = true;
+			break;
+		case 'n':
+			/*
+			 * -n means don't save or restore the original filename
+			 *  in the gzip header.  Currently this implementation
+			 *  already behaves this way by default, so accept the
+			 *  option as a no-op.
+			 */
 			break;
 		case 'S':
 			options.suffix = toptarg;
