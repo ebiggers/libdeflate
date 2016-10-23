@@ -196,7 +196,7 @@ quote_path(const tchar *path)
 
 /* Open a file for reading, or set up standard input for reading */
 int
-xopen_for_read(const tchar *path, struct file_stream *strm)
+xopen_for_read(const tchar *path, bool symlink_ok, struct file_stream *strm)
 {
 	strm->mmap_mem = NULL;
 
@@ -216,7 +216,8 @@ xopen_for_read(const tchar *path, struct file_stream *strm)
 	if (strm->name == NULL)
 		return -1;
 
-	strm->fd = topen(path, O_RDONLY | O_BINARY | O_NOFOLLOW | O_SEQUENTIAL);
+	strm->fd = topen(path, O_RDONLY | O_BINARY |
+			 (symlink_ok ? 0 : O_NOFOLLOW) | O_SEQUENTIAL);
 	if (strm->fd < 0) {
 		msg_errno("Can't open %"TS" for reading", strm->name);
 		free(strm->name);

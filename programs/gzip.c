@@ -361,7 +361,8 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 		}
 	}
 
-	ret = xopen_for_read(oldpath, &in);
+	ret = xopen_for_read(oldpath, options->force || options->to_stdout,
+			     &in);
 	if (ret != 0)
 		goto out_free_paths;
 
@@ -432,7 +433,7 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 			return -1;
 	}
 
-	ret = xopen_for_read(path, &in);
+	ret = xopen_for_read(path, options->force || options->to_stdout, &in);
 	if (ret != 0)
 		goto out_free_newpath;
 

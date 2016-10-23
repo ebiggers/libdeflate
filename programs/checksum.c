@@ -168,7 +168,7 @@ tmain(int argc, tchar *argv[])
 		u64 size = 0;
 		u64 elapsed = 0;
 
-		ret = xopen_for_read(argv[i], &in);
+		ret = xopen_for_read(argv[i], true, &in);
 		if (ret != 0)
 			goto out;
 

@@ -532,7 +532,7 @@ tmain(int argc, tchar *argv[])
 	for (i = 0; i < argc; i++) {
 		struct file_stream in;
 
-		ret = xopen_for_read(argv[i], &in);
+		ret = xopen_for_read(argv[i], true, &in);
 		if (ret != 0)
 			goto out2;
 

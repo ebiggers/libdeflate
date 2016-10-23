@@ -136,7 +136,8 @@ struct file_stream {
 	size_t mmap_size;
 };
 
-extern int xopen_for_read(const tchar *path, struct file_stream *strm);
+extern int xopen_for_read(const tchar *path, bool symlink_ok,
+			  struct file_stream *strm);
 extern int xopen_for_write(const tchar *path, bool force,
 			   struct file_stream *strm);
 extern int map_file_contents(struct file_stream *strm, u64 size);
