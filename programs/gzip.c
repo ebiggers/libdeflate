@@ -64,7 +64,7 @@ show_usage(FILE *fp)
 "  -f        overwrite existing output files\n"
 "  -h        print this help\n"
 "  -k        don't delete input files\n"
-"  -S SUF    use suffix .SUF instead of .gz\n"
+"  -S SUF    use suffix SUF instead of .gz\n"
 "  -V        show version and legal information\n",
 	program_invocation_name);
 }
@@ -102,10 +102,15 @@ is_gunzip(void)
 static const tchar *
 get_suffix(const tchar *path, const tchar *suffix)
 {
-	const tchar *dot = tstrrchr(get_filename(path), '.');
+	size_t path_len = tstrlen(path);
+	size_t suffix_len = tstrlen(suffix);
+	const tchar *p;
 
-	if (dot != NULL && tstrxcmp(dot + 1, suffix) == 0)
-		return dot;
+	if (path_len <= suffix_len)
+		return NULL;
+	p = &path[path_len - suffix_len];
+	if (tstrxcmp(p, suffix) == 0)
+		return p;
 	return NULL;
 }
 
@@ -305,7 +310,7 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	if (path != NULL && !options->to_stdout) {
 		const tchar *suffix = get_suffix(path, options->suffix);
 		if (suffix == NULL) {
-			msg("\"%"TS"\" does not end with the .%"TS" suffix -- "
+			msg("\"%"TS"\" does not end with the %"TS" suffix -- "
 			    "skipping", path, options->suffix);
 			ret = -2;
 			goto out;
@@ -377,18 +382,17 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 		size_t path_nchars, suffix_nchars;
 
 		if (!options->force && has_suffix(path, options->suffix)) {
-			msg("%"TS": already has .%"TS" suffix -- skipping",
+			msg("%"TS": already has %"TS" suffix -- skipping",
 			    path, options->suffix);
 			ret = -2;
 			goto out;
 		}
 		path_nchars = tstrlen(path);
 		suffix_nchars = tstrlen(options->suffix);
-		newpath = xmalloc((path_nchars + 1 + suffix_nchars + 1) *
-					sizeof(tchar));
+		newpath = xmalloc((path_nchars + suffix_nchars + 1) *
+				  sizeof(tchar));
 		tmemcpy(newpath, path, path_nchars);
-		newpath[path_nchars] = '.';
-		tmemcpy(&newpath[path_nchars + 1], options->suffix,
+		tmemcpy(&newpath[path_nchars], options->suffix,
 			suffix_nchars + 1);
 	}
 
@@ -454,7 +458,7 @@ tmain(int argc, tchar *argv[])
 	options.force = false;
 	options.keep = false;
 	options.compression_level = 6;
-	options.suffix = T("gz");
+	options.suffix = T(".gz");
 
 	while ((opt_char = tgetopt(argc, argv, optstring)) != -1) {
 		switch (opt_char) {
