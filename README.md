@@ -18,7 +18,7 @@ libdeflate itself is a library, but the following command-line programs which
 use this library are also provided:
 
 * gzip (or gunzip), a program which mostly behaves like the standard equivalent,
-  except that it does not yet support reading from standard input and does not
+  except that it does not yet have good streaming support and therefore does not
   yet support very large files
 * benchmark, a program for benchmarking in-memory compression and decompression
 

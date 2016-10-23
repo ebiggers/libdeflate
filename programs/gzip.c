@@ -382,6 +382,7 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	if (ret != 0)
 		goto out_close_in;
 
+	/* TODO: need a streaming-friendly solution */
 	ret = map_file_contents(&in, stbuf.st_size);
 	if (ret != 0)
 		goto out_close_out;
@@ -453,8 +454,9 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 		goto out_close_out;
 	}
 
+	/* TODO: need a streaming-friendly solution */
 	ret = map_file_contents(&in, stbuf.st_size);
-	if (ret)
+	if (ret != 0)
 		goto out_close_out;
 
 	ret = do_compress(compressor, &in, &out);
@@ -482,6 +484,7 @@ out_free_newpath:
 int
 tmain(int argc, tchar *argv[])
 {
+	tchar *default_file_list[] = { NULL };
 	struct options options;
 	int opt_char;
 	int i;
@@ -547,15 +550,12 @@ tmain(int argc, tchar *argv[])
 	argc -= toptind;
 
 	if (argc == 0) {
-		show_usage(stderr);
-		return 1;
-	}
-	for (i = 0; i < argc; i++) {
-		if (argv[i][0] == '-' && argv[i][1] == '\0') {
-			msg("This implementation of gzip does not yet "
-			    "support reading from standard input.");
-			return 1;
-		}
+		argv = default_file_list;
+		argc = ARRAY_LEN(default_file_list);
+	} else {
+		for (i = 0; i < argc; i++)
+			if (argv[i][0] == '-' && argv[i][1] == '\0')
+				argv[i] = NULL;
 	}
 
 	ret = 0;

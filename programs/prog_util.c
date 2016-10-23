@@ -204,6 +204,7 @@ quote_path(const tchar *path)
 int
 xopen_for_read(const tchar *path, bool symlink_ok, struct file_stream *strm)
 {
+	strm->mmap_token = NULL;
 	strm->mmap_mem = NULL;
 
 	if (path == NULL) {
@@ -243,6 +244,7 @@ xopen_for_write(const tchar *path, bool overwrite, struct file_stream *strm)
 {
 	int ret = -1;
 
+	strm->mmap_token = NULL;
 	strm->mmap_mem = NULL;
 
 	if (path == NULL) {
@@ -297,14 +299,56 @@ err:
 	return ret;
 }
 
+/* Read the full contents of a file into memory */
+static int
+read_full_contents(struct file_stream *strm)
+{
+	size_t filled = 0;
+	size_t capacity = 4096;
+	char *buf;
+	int ret;
+
+	buf = xmalloc(capacity);
+	if (buf == NULL)
+		return -1;
+	do {
+		if (filled == capacity) {
+			char *newbuf;
+
+			if (capacity == SIZE_MAX)
+				goto oom;
+			capacity += MIN(SIZE_MAX - capacity, capacity);
+			newbuf = realloc(buf, capacity);
+			if (newbuf == NULL)
+				goto oom;
+			buf = newbuf;
+		}
+		ret = xread(strm, &buf[filled], capacity - filled);
+		if (ret < 0)
+			goto err;
+		filled += ret;
+	} while (ret != 0);
+
+	strm->mmap_mem = buf;
+	strm->mmap_size = filled;
+	return 0;
+
+err:
+	free(buf);
+	return ret;
+oom:
+	msg("Out of memory!  %"TS" is too large to be processed by "
+	    "this program as currently implemented.", strm->name);
+	ret = -1;
+	goto err;
+}
+
 /* Map the contents of a file into memory */
 int
 map_file_contents(struct file_stream *strm, u64 size)
 {
-	if (size == 0) {
-		strm->mmap_size = 0;
-		return 0;
-	}
+	if (size == 0) /* mmap isn't supported on empty files */
+		return read_full_contents(strm);
 
 	if (size > SIZE_MAX) {
 		msg("%"TS" is too large to be processed by this program",
@@ -316,8 +360,11 @@ map_file_contents(struct file_stream *strm, u64 size)
 				(HANDLE)(intptr_t)_get_osfhandle(strm->fd),
 				NULL, PAGE_READONLY, 0, 0, NULL);
 	if (strm->mmap_token == NULL) {
+		DWORD err = GetLastError();
+		if (err == ERROR_BAD_EXE_FORMAT) /* mmap unsupported */
+			return read_full_contents(strm);
 		msg("Unable create file mapping for %"TS": Windows error %u",
-		    strm->name, (unsigned int)GetLastError());
+		    strm->name, (unsigned int)err);
 		return -1;
 	}
 
@@ -333,6 +380,8 @@ map_file_contents(struct file_stream *strm, u64 size)
 	strm->mmap_mem = mmap(NULL, size, PROT_READ, MAP_SHARED, strm->fd, 0);
 	if (strm->mmap_mem == MAP_FAILED) {
 		strm->mmap_mem = NULL;
+		if (errno == ENODEV) /* mmap isn't supported on this file */
+			return read_full_contents(strm);
 		if (errno == ENOMEM) {
 			msg("%"TS" is too large to be processed by this "
 			    "program", strm->name);
@@ -346,6 +395,7 @@ map_file_contents(struct file_stream *strm, u64 size)
 #ifdef HAVE_POSIX_MADVISE
 	posix_madvise(strm->mmap_mem, size, POSIX_MADV_SEQUENTIAL);
 #endif
+	strm->mmap_token = strm; /* anything that's not NULL */
 
 #endif /* !_WIN32 */
 	strm->mmap_size = size;
@@ -401,23 +451,27 @@ int
 xclose(struct file_stream *strm)
 {
 	int ret = 0;
-	if (strm->fd >= 0 && !strm->is_standard_stream) {
+
+	if (!strm->is_standard_stream) {
 		if (close(strm->fd) != 0) {
 			msg_errno("Error closing %"TS, strm->name);
 			ret = -1;
 		}
 		free(strm->name);
-
-		if (strm->mmap_mem != NULL) {
-#ifdef _WIN32
-			UnmapViewOfFile(strm->mmap_mem);
-			CloseHandle((HANDLE)strm->mmap_token);
-#else
-			munmap(strm->mmap_mem, strm->mmap_size);
-#endif
-			strm->mmap_mem = NULL;
-		}
 	}
+
+	if (strm->mmap_token != NULL) {
+#ifdef _WIN32
+		UnmapViewOfFile(strm->mmap_mem);
+		CloseHandle((HANDLE)strm->mmap_token);
+#else
+		munmap(strm->mmap_mem, strm->mmap_size);
+#endif
+		strm->mmap_token = NULL;
+	} else {
+		free(strm->mmap_mem);
+	}
+	strm->mmap_mem = NULL;
 	strm->fd = -1;
 	strm->name = NULL;
 	return ret;
