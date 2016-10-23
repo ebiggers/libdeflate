@@ -491,6 +491,10 @@ tmain(int argc, tchar *argv[])
 			break;
 		case 'S':
 			options.suffix = toptarg;
+			if (options.suffix[0] == T('\0')) {
+				msg("invalid suffix");
+				return 1;
+			}
 			break;
 		case 'V':
 			show_version();
