@@ -384,8 +384,7 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 		if (!options->force && has_suffix(path, options->suffix)) {
 			msg("%"TS": already has %"TS" suffix -- skipping",
 			    path, options->suffix);
-			ret = -2;
-			goto out;
+			return 0;
 		}
 		path_nchars = tstrlen(path);
 		suffix_nchars = tstrlen(options->suffix);
@@ -439,7 +438,6 @@ out_close_in:
 		tunlink(path);
 out_free_newpath:
 	free(newpath);
-out:
 	return ret;
 }
 
