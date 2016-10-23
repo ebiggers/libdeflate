@@ -76,15 +76,13 @@ extern int wmain(int argc, wchar_t **argv);
 #  define	tunlink		_wunlink
 #  define	tutimbuf	__utimbuf64
 #  define	tutime		_wutime64
+#  define	tstat		_wstat64
+#  define	tfstat		_fstat64
+#  define	stat_t		struct _stat64
 #  ifdef _MSC_VER
-     /* Standard file descriptors?  What are those? */
 #    define	STDIN_FILENO	0
 #    define	STDOUT_FILENO	1
 #    define	STDERR_FILENO	2
-
-     /* Fix the broken stat-related definitions. */
-#    define	fstat		_fstat
-#    define	stat		_stat
 #    define	S_ISREG(m)      (((m) & S_IFMT) == S_IFREG)
 #    define	S_ISDIR(m)      (((m) & S_IFMT) == S_IFDIR)
 #  endif
@@ -110,6 +108,9 @@ extern int wmain(int argc, wchar_t **argv);
 #  define	tunlink		unlink
 #  define	tutimbuf	utimbuf
 #  define	tutime		utime
+#  define	tstat		stat
+#  define	tfstat		fstat
+#  define	stat_t		struct stat
 
 #endif /* !_WIN32 */
 

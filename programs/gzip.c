@@ -218,9 +218,9 @@ out:
 }
 
 static int
-stat_file(struct file_stream *in, struct stat *stbuf, bool allow_hard_links)
+stat_file(struct file_stream *in, stat_t *stbuf, bool allow_hard_links)
 {
-	if (fstat(in->fd, stbuf) != 0) {
+	if (tfstat(in->fd, stbuf) != 0) {
 		msg("%"TS": unable to stat file", in->name);
 		return -1;
 	}
@@ -242,7 +242,7 @@ stat_file(struct file_stream *in, struct stat *stbuf, bool allow_hard_links)
 }
 
 static void
-restore_mode(struct file_stream *out, const struct stat *stbuf)
+restore_mode(struct file_stream *out, const stat_t *stbuf)
 {
 #ifndef _WIN32
 	if (fchmod(out->fd, stbuf->st_mode) != 0)
@@ -251,7 +251,7 @@ restore_mode(struct file_stream *out, const struct stat *stbuf)
 }
 
 static void
-restore_owner_and_group(struct file_stream *out, const struct stat *stbuf)
+restore_owner_and_group(struct file_stream *out, const stat_t *stbuf)
 {
 #ifndef _WIN32
 	if (fchown(out->fd, stbuf->st_uid, stbuf->st_gid) != 0) {
@@ -263,7 +263,7 @@ restore_owner_and_group(struct file_stream *out, const struct stat *stbuf)
 
 static void
 restore_timestamps(struct file_stream *out, const tchar *newpath,
-		   const struct stat *stbuf)
+		   const stat_t *stbuf)
 {
 	int ret;
 #if defined(HAVE_FUTIMENS) && defined(HAVE_STAT_NANOSECOND_PRECISION)
@@ -289,7 +289,7 @@ restore_timestamps(struct file_stream *out, const tchar *newpath,
 
 static void
 restore_metadata(struct file_stream *out, const tchar *newpath,
-		 const struct stat *stbuf)
+		 const stat_t *stbuf)
 {
 	restore_mode(out, stbuf);
 	restore_owner_and_group(out, stbuf);
@@ -303,7 +303,7 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	tchar *newpath = NULL;
 	struct file_stream in;
 	struct file_stream out;
-	struct stat stbuf;
+	stat_t stbuf;
 	int ret;
 	int ret2;
 
@@ -374,7 +374,7 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 	tchar *newpath = NULL;
 	struct file_stream in;
 	struct file_stream out;
-	struct stat stbuf;
+	stat_t stbuf;
 	int ret;
 	int ret2;
 
