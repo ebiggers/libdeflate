@@ -291,6 +291,11 @@ err:
 int
 map_file_contents(struct file_stream *strm, u64 size)
 {
+	if (size == 0) {
+		strm->mmap_size = 0;
+		return 0;
+	}
+
 	if (size > SIZE_MAX) {
 		msg("%"TS" is too large to be processed by this program",
 		    strm->name);
