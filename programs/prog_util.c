@@ -234,6 +234,8 @@ xopen_for_read(const tchar *path, struct file_stream *strm)
 int
 xopen_for_write(const tchar *path, bool overwrite, struct file_stream *strm)
 {
+	int ret = -1;
+
 	strm->mmap_mem = NULL;
 
 	if (path == NULL) {
@@ -263,6 +265,7 @@ retry:
 			if (!isatty(STDERR_FILENO) || !isatty(STDIN_FILENO)) {
 				msg("%"TS" already exists; use -f to overwrite",
 				    strm->name);
+				ret = -2; /* warning only */
 				goto err;
 			}
 			fprintf(stderr, "%"TS": %"TS" already exists; "
@@ -284,7 +287,7 @@ retry:
 
 err:
 	free(strm->name);
-	return -1;
+	return ret;
 }
 
 /* Map the contents of a file into memory */
