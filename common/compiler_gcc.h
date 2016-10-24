@@ -41,12 +41,13 @@
  * following gcc versions:
  *
  *	PCLMUL	4.4
+ *	AVX	4.6
  *	BMI2	4.7
  *	AVX2	4.7
  *
  * However, target-specific intrinsics don't work in __attribute__((target(..)))
  * functions until gcc 4.9.  Currently we need this for PCLMUL and AVX2 but not
- * BMI2.  Hence the particular version checks below.
+ * AVX and BMI2.  Hence the particular version checks below.
  *
  * Note: clang does not have this problem and also supports __has_builtin() for
  * testing for whether an intrinsic is available without having to check the
@@ -56,6 +57,10 @@
 #define COMPILER_SUPPORTS_PCLMUL_TARGET				\
 	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
 	 (GCC_PREREQ(4, 9) || __has_builtin(__builtin_ia32_pclmulqdq128)))
+
+#define COMPILER_SUPPORTS_AVX_TARGET				\
+	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\
+	 (GCC_PREREQ(4, 6) || __has_builtin(__builtin_ia32_maxps256)))
 
 #define COMPILER_SUPPORTS_BMI2_TARGET				\
 	(COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE &&		\

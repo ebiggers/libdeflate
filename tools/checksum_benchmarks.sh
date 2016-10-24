@@ -46,6 +46,9 @@ EOF
 (
 if grep -q '\<pclmulqdq\>' /proc/cpuinfo; then
 	make checksum > /dev/null
+	do_benchmark "CRC-32 (libdeflate, PCLMUL/AVX)"
+	sed -i '/^\#if NEED_PCLMUL_IMPL && !defined(__AVX__)/,/^\#endif$/d' lib/crc32.c
+	make checksum > /dev/null
 	do_benchmark "CRC-32 (libdeflate, PCLMUL)"
 fi
 sed -i '/^#if defined(__PCLMUL__)/,/^\#endif$/d' lib/crc32.c
