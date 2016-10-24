@@ -195,7 +195,7 @@ static u32 dispatch(u32 adler, const void *buffer, size_t size)
 {
 	adler32_func_t f = DEFAULT_IMPL;
 #if NEED_AVX2_IMPL && !defined(__AVX2__)
-	if (x86_have_cpu_feature(X86_CPU_FEATURE_AVX2))
+	if (x86_have_cpu_features(X86_CPU_FEATURE_AVX2))
 		f = adler32_avx2;
 #endif
 	adler32_impl = f;

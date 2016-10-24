@@ -570,7 +570,7 @@ static u32 dispatch(u32 remainder, const u8 *buffer, size_t nbytes)
 {
 	crc32_func_t f = DEFAULT_IMPL;
 #if NEED_PCLMUL_IMPL && !defined(__PCLMUL__)
-	if (x86_have_cpu_feature(X86_CPU_FEATURE_PCLMULQDQ))
+	if (x86_have_cpu_features(X86_CPU_FEATURE_PCLMULQDQ))
 		f = crc32_pclmul;
 #endif
 	crc32_impl = f;

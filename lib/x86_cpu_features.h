@@ -34,13 +34,13 @@ extern u32 _x86_cpu_features;
 extern void
 x86_setup_cpu_features(void);
 
-/* Does the processor have the specified feature?  */
+/* Does the processor have the specified feature(s)?  */
 static inline bool
-x86_have_cpu_feature(u32 feature)
+x86_have_cpu_features(u32 features)
 {
 	if (_x86_cpu_features == 0)
 		x86_setup_cpu_features();
-	return _x86_cpu_features & feature;
+	return (_x86_cpu_features & features) == features;
 }
 
 #endif /* X86_CPU_FEATURES_ENABLED */

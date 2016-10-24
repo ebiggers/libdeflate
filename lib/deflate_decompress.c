@@ -842,7 +842,7 @@ dispatch(struct libdeflate_decompressor * restrict d,
 {
 	decompress_func_t f = deflate_decompress_default;
 #if X86_CPU_FEATURES_ENABLED
-	if (x86_have_cpu_feature(X86_CPU_FEATURE_BMI2))
+	if (x86_have_cpu_features(X86_CPU_FEATURE_BMI2))
 		f = deflate_decompress_bmi2;
 #endif
 	decompress_impl = f;
