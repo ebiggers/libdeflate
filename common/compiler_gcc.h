@@ -3,10 +3,9 @@
  * handles clang and the Intel C Compiler.
  */
 
-#define GCC_PREREQ(major, minor)					\
-	(!defined(__clang__) && !defined(__INTEL_COMPILER) &&		\
-	 (__GNUC__ > (major) ||						\
-	  (__GNUC__ == (major) && __GNUC_MINOR__ >= (minor))))
+#define GCC_PREREQ(major, minor)		\
+	(__GNUC__ > (major) ||			\
+	 (__GNUC__ == (major) && __GNUC_MINOR__ >= (minor)))
 
 #ifndef __has_attribute
 #  define __has_attribute(attribute)	0
