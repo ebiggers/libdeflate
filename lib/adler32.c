@@ -74,7 +74,8 @@
 /* Include the AVX2 implementation? */
 #define NEED_AVX2_IMPL 0
 #if defined(__AVX2__) || \
-	(X86_CPU_FEATURES_ENABLED && COMPILER_SUPPORTS_AVX2_TARGET)
+	(X86_CPU_FEATURES_ENABLED && COMPILER_SUPPORTS_AVX2_TARGET && \
+	 COMPILER_SUPPORTS_TARGET_INTRINSICS)
 #  include <immintrin.h>
 #  undef NEED_AVX2_IMPL
 #  define NEED_AVX2_IMPL 1
