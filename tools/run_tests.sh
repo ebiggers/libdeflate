@@ -104,10 +104,12 @@ native_build_and_test() {
 
 native_tests() {
 	test_group_included native || return 0
-	local compiler cflags compilers=(gcc clang)
+	local compiler cflags compilers=(gcc)
 	shopt -s nullglob
 	compilers+=(/usr/bin/gcc-[0-9]*)
+	compilers+=(/usr/bin/clang-[0-9]*)
 	compilers+=(/opt/gcc*/bin/gcc)
+	compilers+=(/opt/clang*/bin/clang)
 	shopt -u nullglob
 	for compiler in ${compilers[@]}; do
 		for cflags in "" "-march=native" "-m32"; do
