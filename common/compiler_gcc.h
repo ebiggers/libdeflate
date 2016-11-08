@@ -1,11 +1,18 @@
 /*
- * compiler_gcc.h - definitions for the GNU C Compiler.  Currently this also
- * handles clang and the Intel C Compiler.
+ * compiler_gcc.h - definitions for the GNU C Compiler.  This also handles clang
+ * and the Intel C Compiler (icc).
+ *
+ * TODO: icc is not well tested, so some things are currently disabled even
+ * though they maybe can be enabled on some icc versions.
  */
 
-#define GCC_PREREQ(major, minor)		\
+#if !defined(__clang__) && !defined(__INTEL_COMPILER)
+#  define GCC_PREREQ(major, minor)		\
 	(__GNUC__ > (major) ||			\
 	 (__GNUC__ == (major) && __GNUC_MINOR__ >= (minor)))
+#else
+#  define GCC_PREREQ(major, minor)	0
+#endif
 
 /* Note: only check the clang version when absolutely necessary!
  * "Vendors" such as Apple can use different version numbers. */
