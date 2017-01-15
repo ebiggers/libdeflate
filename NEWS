@@ -1,3 +1,12 @@
+Version 0.7:
+	Fixed a very rare bug that caused data to be compressed incorrectly.
+	The bug affected compression levels 7 and below since libdeflate v0.2.
+	Although there have been no user reports of the bug, and I believe it
+	would have been highly unlikely to encounter on realistic data, it could
+	occur on data specially crafted to reproduce it.
+
+	Fixed a compilation error when building with clang 3.7.
+
 Version 0.6:
 	Various improvements to the gzip program's behavior.
 
