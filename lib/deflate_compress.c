@@ -246,10 +246,19 @@ struct deflate_costs {
  */
 struct deflate_sequence {
 
-	/* The number of literals in the run.  This may be 0.  The literals are
-	 * not stored explicitly in this structure; instead, they are read
-	 * directly from the uncompressed data.  */
-	u16 litrunlen;
+	/* Bits 0..22: the number of literals in this run.  This may be 0 and
+	 * can be at most about SOFT_MAX_BLOCK_LENGTH.  The literals are not
+	 * stored explicitly in this structure; instead, they are read directly
+	 * from the uncompressed data.
+	 *
+	 * Bits 23..31: the length of the match which follows the literals, or 0
+	 * if this literal run was the last in the block, so there is no match
+	 * which follows it.  */
+	u32 litrunlen_and_length;
+
+	/* If 'length' doesn't indicate end-of-block, then this is the offset of
+	 * the match which follows the literals.  */
+	u16 offset;
 
 	/* If 'length' doesn't indicate end-of-block, then this is the offset
 	 * symbol of the match which follows the literals.  */
@@ -258,15 +267,6 @@ struct deflate_sequence {
 	/* If 'length' doesn't indicate end-of-block, then this is the length
 	 * slot of the match which follows the literals.  */
 	u8 length_slot;
-
-	/* The length of the match which follows the literals, or 0 if this this
-	 * sequence's literal run was the last literal run in the block, so
-	 * there is no match that follows it.  */
-	u16 length;
-
-	/* If 'length' doesn't indicate end-of-block, then this is the offset of
-	 * the match which follows the literals.  */
-	u16 offset;
 };
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
@@ -1459,8 +1459,8 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 	const struct deflate_sequence *seq = sequences;
 
 	for (;;) {
-		unsigned litrunlen = seq->litrunlen;
-		unsigned length;
+		u32 litrunlen = seq->litrunlen_and_length & 0x7FFFFF;
+		unsigned length = seq->litrunlen_and_length >> 23;
 		unsigned length_slot;
 		unsigned litlen_symbol;
 		unsigned offset_symbol;
@@ -1526,9 +1526,6 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 			} while (--litrunlen);
 		#endif
 		}
-
-
-		length = seq->length;
 
 		if (length == 0)
 			return;
@@ -1802,7 +1799,7 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 
 static forceinline void
 deflate_choose_literal(struct libdeflate_compressor *c, unsigned literal,
-		       unsigned *litrunlen_p)
+		       u32 *litrunlen_p)
 {
 	c->freqs.litlen[literal]++;
 	++*litrunlen_p;
@@ -1811,9 +1808,8 @@ deflate_choose_literal(struct libdeflate_compressor *c, unsigned literal,
 static forceinline void
 deflate_choose_match(struct libdeflate_compressor *c,
 		     unsigned length, unsigned offset,
-		     unsigned *litrunlen_p, struct deflate_sequence **next_seq_p)
+		     u32 *litrunlen_p, struct deflate_sequence **next_seq_p)
 {
-	unsigned litrunlen = *litrunlen_p;
 	struct deflate_sequence *seq = *next_seq_p;
 	unsigned length_slot = deflate_length_slot[length];
 	unsigned offset_slot = deflate_get_offset_slot(c, offset);
@@ -1821,8 +1817,7 @@ deflate_choose_match(struct libdeflate_compressor *c,
 	c->freqs.litlen[257 + length_slot]++;
 	c->freqs.offset[offset_slot]++;
 
-	seq->litrunlen = litrunlen;
-	seq->length = length;
+	seq->litrunlen_and_length = ((u32)length << 23) | *litrunlen_p;
 	seq->offset = offset;
 	seq->length_slot = length_slot;
 	seq->offset_symbol = offset_slot;
@@ -1832,10 +1827,9 @@ deflate_choose_match(struct libdeflate_compressor *c,
 }
 
 static forceinline void
-deflate_finish_sequence(struct deflate_sequence *seq, unsigned litrunlen)
+deflate_finish_sequence(struct deflate_sequence *seq, u32 litrunlen)
 {
-	seq->litrunlen = litrunlen;
-	seq->length = 0;
+	seq->litrunlen_and_length = litrunlen; /* length = 0 */
 }
 
 /******************************************************************************/
