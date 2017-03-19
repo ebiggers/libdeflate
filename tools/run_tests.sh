@@ -133,12 +133,8 @@ native_tests() {
 
 ###############################################################################
 
-android_build() {
-	run_cmd ./tools/android_build.sh --ndkdir="$NDKDIR" "$@"
-}
-
 android_build_and_test() {
-	android_build "$@"
+	run_cmd ./tools/android_build.sh --ndkdir="$NDKDIR" "$@"
 	run_cmd adb push "${FILES[@]}" /data/local/tmp/
 
 	# Note: adb shell always returns 0, even if the shell command fails...
@@ -179,8 +175,7 @@ android_tests() {
 		android_build_and_test --arch=arm --compiler=$compiler \
 				       --disable-neon
 
-		# arm64: currently compiled but not run
-		android_build --arch=arm64 --compiler=$compiler
+		android_build_and_test --arch=arm64 --compiler=$compiler
 	done
 }
 
