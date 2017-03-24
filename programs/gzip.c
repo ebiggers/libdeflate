@@ -38,6 +38,16 @@
 #  include <utime.h>
 #endif
 
+
+#ifdef __APPLE__
+#ifndef st_mtim
+#define st_mtim st_mtimespec
+#endif
+#ifndef st_atim
+#define st_atim st_atimespec
+#endif
+#endif
+
 struct options {
 	bool to_stdout;
 	bool decompress;
