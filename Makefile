@@ -141,9 +141,9 @@ DEFAULT_TARGETS += $(SHARED_LIB)
 
 #### Programs
 
-PROG_CFLAGS += $(CFLAGS)		\
-	       -D_DEFAULT_SOURCE	\
-	       -D_FILE_OFFSET_BITS=64	\
+PROG_CFLAGS += $(CFLAGS)		 \
+	       -D_POSIX_C_SOURCE=200809L \
+	       -D_FILE_OFFSET_BITS=64	 \
 	       -DHAVE_CONFIG_H
 
 PROG_COMMON_HEADERS := programs/prog_util.h programs/config.h
