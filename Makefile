@@ -40,11 +40,6 @@ HARD_LINKS        := 1
 
 # Compiling for Windows with MinGW?
 ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
-    ifeq ($(AR),ar)
-        ifneq ($(findstring -mingw,$(CC)),)
-            AR := $(patsubst %-gcc,%-ar,$(CC))
-        endif
-    endif
     STATIC_LIB_SUFFIX := .lib
     SHARED_LIB_SUFFIX := .dll
     SHARED_LIB_CFLAGS :=
@@ -52,6 +47,15 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
     PROG_CFLAGS       := -static -municode
     HARD_LINKS        :=
     override CFLAGS   := $(CFLAGS) $(call cc-option,-Wno-pedantic-ms-format)
+
+    # If AR was not already overridden, then derive it from $(CC).
+    # Note that CC may take different forms, e.g. "cc", "gcc",
+    # "x86_64-w64-mingw32-gcc", or "x86_64-w64-mingw32-gcc-6.3.1".
+    # On Windows it may also have a .exe extension.
+    ifeq ($(AR),ar)
+        AR := $(shell echo $(CC) | \
+                sed -E 's/g?cc(-?[0-9]+(\.[0-9]+)*)?(\.exe)?$$/ar\3/')
+    endif
 endif
 
 ##############################################################################
