@@ -491,10 +491,19 @@ struct deflate_output_bitstream {
 	u8 *end;
 };
 
-#define MIN_OUTPUT_SIZE	(UNALIGNED_ACCESS_IS_FAST ? sizeof(bitbuf_t) : 1)
+/*
+ * OUTPUT_END_PADDING is the size, in bytes, of the extra space that must be
+ * present following os->end, in order to not overrun the buffer when generating
+ * output.  When UNALIGNED_ACCESS_IS_FAST, we need at least sizeof(bitbuf_t)
+ * bytes for put_unaligned_leword().  Otherwise we need only 1 byte.  However,
+ * to make the compression algorithm produce the same result on all CPU
+ * architectures (which is sometimes desirable), we have to unconditionally use
+ * the maximum for any CPU, which is sizeof(bitbuf_t) == 8.
+ */
+#define OUTPUT_END_PADDING	8
 
 /* Initialize the output bitstream.  'size' is assumed to be at least
- * MIN_OUTPUT_SIZE.  */
+ * OUTPUT_END_PADDING.  */
 static void
 deflate_init_output(struct deflate_output_bitstream *os,
 		    void *buffer, size_t size)
@@ -503,7 +512,7 @@ deflate_init_output(struct deflate_output_bitstream *os,
 	os->bitcount = 0;
 	os->begin = buffer;
 	os->next = os->begin;
-	os->end = os->begin + size - MIN_OUTPUT_SIZE;
+	os->end = os->begin + size - OUTPUT_END_PADDING;
 }
 
 /* Add some bits to the bitbuffer variable of the output bitstream.  The caller
@@ -2774,7 +2783,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 			    const void *in, size_t in_nbytes,
 			    void *out, size_t out_nbytes_avail)
 {
-	if (unlikely(out_nbytes_avail < MIN_OUTPUT_SIZE))
+	if (unlikely(out_nbytes_avail < OUTPUT_END_PADDING))
 		return 0;
 
 	/* For extremely small inputs just use a single uncompressed block. */
@@ -2813,5 +2822,5 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 	 * and alignment to a byte boundary; 2 for LEN; and 2 for NLEN.
 	 */
 	size_t max_num_blocks = MAX(DIV_ROUND_UP(in_nbytes, MIN_BLOCK_LENGTH), 1);
-	return (5 * max_num_blocks) + in_nbytes + 1 + MIN_OUTPUT_SIZE;
+	return (5 * max_num_blocks) + in_nbytes + 1 + OUTPUT_END_PADDING;
 }
