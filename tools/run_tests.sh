@@ -94,6 +94,27 @@ test_group_included() {
 	(( included ))
 }
 
+have_valgrind() {
+	if ! type -P valgrind > /dev/null; then
+		log_skip "valgrind not found; can't run tests with valgrind"
+		return 1
+	fi
+}
+
+have_ubsan() {
+	if ! type -P clang > /dev/null; then
+		log_skip "clang not found; can't run tests with UBSAN"
+		return 1
+	fi
+}
+
+have_python() {
+	if ! type -P python3 > /dev/null; then
+		log_skip "Python not found"
+		return 1
+	fi
+}
+
 ###############################################################################
 
 native_build_and_test() {
@@ -104,15 +125,21 @@ native_build_and_test() {
 
 native_tests() {
 	test_group_included native || return 0
-	local compiler cflags compilers=(gcc)
+	local compiler compilers_to_try=(gcc)
+	local cflags cflags_to_try=("")
 	shopt -s nullglob
-	compilers+=(/usr/bin/gcc-[0-9]*)
-	compilers+=(/usr/bin/clang-[0-9]*)
-	compilers+=(/opt/gcc*/bin/gcc)
-	compilers+=(/opt/clang*/bin/clang)
+	compilers_to_try+=(/usr/bin/gcc-[0-9]*)
+	compilers_to_try+=(/usr/bin/clang-[0-9]*)
+	compilers_to_try+=(/opt/gcc*/bin/gcc)
+	compilers_to_try+=(/opt/clang*/bin/clang)
 	shopt -u nullglob
-	for compiler in ${compilers[@]}; do
-		for cflags in "" "-march=native" "-m32"; do
+
+	if [ "$(uname -m)" = "x86_64" ]; then
+		cflags_to_try+=("-march=native")
+		cflags_to_try+=("-m32")
+	fi
+	for compiler in ${compilers_to_try[@]}; do
+		for cflags in "${cflags_to_try[@]}"; do
 			if [ "$compiler" = "/usr/bin/gcc-4.8" -a \
 			     "$cflags" = "-m32" ]; then
 				continue
@@ -124,11 +151,15 @@ native_tests() {
 		done
 	done
 
-	log "Running tests with Valgrind"
-	WRAPPER="$VALGRIND" native_build_and_test
+	if have_valgrind; then
+		log "Running tests with Valgrind"
+		WRAPPER="$VALGRIND" native_build_and_test
+	fi
 
-	log "Running tests with undefined behavior sanitizer"
-	WRAPPER= native_build_and_test CC=clang CFLAGS="$SANITIZE_CFLAGS"
+	if have_ubsan; then
+		log "Running tests with undefined behavior sanitizer"
+		WRAPPER= native_build_and_test CC=clang CFLAGS="$SANITIZE_CFLAGS"
+	fi
 }
 
 ###############################################################################
@@ -183,6 +214,10 @@ android_tests() {
 
 mips_tests() {
 	test_group_included mips || return 0
+	if [ "$(hostname)" != "zzz" ] || [ "$(uname -m)" != "x86_64" ]; then
+		log_skip "MIPS tests are not supported on this host"
+		return 0
+	fi
 	if ! ping -c 1 dd-wrt > /dev/null; then
 		log_skip "Can't run MIPS tests: dd-wrt system not available"
 		return 0
@@ -229,8 +264,8 @@ gzip_tests() {
 
 	local gzip gunzip
 	run_cmd make -j$NPROC gzip gunzip
-	for gzip in "$PWD/gzip" /usr/bin/gzip; do
-		for gunzip in "$PWD/gunzip" /usr/bin/gunzip; do
+	for gzip in "$PWD/gzip" /bin/gzip; do
+		for gunzip in "$PWD/gunzip" /bin/gunzip; do
 			log "Running gzip program tests with GZIP=$gzip," \
 				"GUNZIP=$gunzip"
 			GZIP="$gzip" GUNZIP="$gunzip" SMOKEDATA="$SMOKEDATA" \
@@ -238,14 +273,18 @@ gzip_tests() {
 		done
 	done
 
-	log "Running gzip program tests with Valgrind"
-	GZIP="$VALGRIND $PWD/gzip" GUNZIP="$VALGRIND $PWD/gunzip" \
-		SMOKEDATA="$SMOKEDATA" ./tools/gzip_tests.sh
+	if have_valgrind; then
+		log "Running gzip program tests with Valgrind"
+		GZIP="$VALGRIND $PWD/gzip" GUNZIP="$VALGRIND $PWD/gunzip" \
+			SMOKEDATA="$SMOKEDATA" ./tools/gzip_tests.sh
+	fi
 
-	log "Running gzip program tests with undefined behavior sanitizer"
-	run_cmd make -j$NPROC CC=clang CFLAGS="$SANITIZE_CFLAGS" gzip gunzip
-	GZIP="$PWD/gzip" GUNZIP="$PWD/gunzip" \
-		SMOKEDATA="$SMOKEDATA" ./tools/gzip_tests.sh
+	if have_ubsan; then
+		log "Running gzip program tests with undefined behavior sanitizer"
+		run_cmd make -j$NPROC CC=clang CFLAGS="$SANITIZE_CFLAGS" gzip gunzip
+		GZIP="$PWD/gzip" GUNZIP="$PWD/gunzip" \
+			SMOKEDATA="$SMOKEDATA" ./tools/gzip_tests.sh
+	fi
 }
 
 ###############################################################################
@@ -265,17 +304,19 @@ edge_case_tests() {
 	# Note: on random data, this situation is extremely unlikely if the
 	# compressor uses all matches it finds, since random data will on
 	# average have a 3-byte match every (256**3)/32768 = 512 bytes.
-	python3 > "$TMPFILE" << EOF
+	if have_python; then
+		python3 > "$TMPFILE" << EOF
 import sys
 for i in range(2):
     for stride in range(1,251):
         b = bytes(stride*multiple % 251 for multiple in range(251))
         sys.stdout.buffer.write(b)
 EOF
-	run_cmd make -j$NPROC benchmark
-	run_cmd ./benchmark -3 "$TMPFILE"
-	run_cmd ./benchmark -6 "$TMPFILE"
-	run_cmd ./benchmark -12 "$TMPFILE"
+		run_cmd make -j$NPROC benchmark
+		run_cmd ./benchmark -3 "$TMPFILE"
+		run_cmd ./benchmark -6 "$TMPFILE"
+		run_cmd ./benchmark -12 "$TMPFILE"
+	fi
 }
 
 ###############################################################################

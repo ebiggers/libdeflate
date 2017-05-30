@@ -144,7 +144,7 @@ gunzip -kfd file.gz
 
 
 begin_test 'Compression levels'
-if [ "$GZIP" = /usr/bin/gzip ]; then
+if [ "$GZIP" = /bin/gzip ]; then
 	assert_error '\<invalid option\>' gzip -10
 	max_level=9
 else
