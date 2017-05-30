@@ -153,8 +153,7 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 	const u8 *in_next = in_base + cur_pos;
 	u32 depth_remaining = max_search_depth;
 	const s32 cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
-	u32 next_seq4;
-	u32 next_seq3;
+	u32 next_hashseq;
 	u32 hash3;
 	u32 hash4;
 	s32 cur_node;
@@ -170,14 +169,13 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 	STATIC_ASSERT(BT_MATCHFINDER_HASH3_WAYS >= 1 &&
 		      BT_MATCHFINDER_HASH3_WAYS <= 2);
 
-	next_seq4 = load_u32_unaligned(in_next + 1);
-	next_seq3 = loaded_u32_to_u24(next_seq4);
+	next_hashseq = get_unaligned_le32(in_next + 1);
 
 	hash3 = next_hashes[0];
 	hash4 = next_hashes[1];
 
-	next_hashes[0] = lz_hash(next_seq3, BT_MATCHFINDER_HASH3_ORDER);
-	next_hashes[1] = lz_hash(next_seq4, BT_MATCHFINDER_HASH4_ORDER);
+	next_hashes[0] = lz_hash(next_hashseq & 0xFFFFFF, BT_MATCHFINDER_HASH3_ORDER);
+	next_hashes[1] = lz_hash(next_hashseq, BT_MATCHFINDER_HASH4_ORDER);
 	prefetchw(&mf->hash3_tab[next_hashes[0]]);
 	prefetchw(&mf->hash4_tab[next_hashes[1]]);
 
