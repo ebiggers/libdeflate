@@ -225,6 +225,22 @@ mips_tests() {
 	run_cmd ./tools/mips_build.sh
 	run_cmd scp "${FILES[@]}" root@dd-wrt:
 	run_cmd ssh root@dd-wrt "$EXEC_TESTS_CMD"
+
+	log "Checking that compression on big endian CPU produces same output"
+	run_cmd scp gzip root@dd-wrt:
+	run_cmd ssh root@dd-wrt \
+		"rm -f big*.gz;
+		 ./gzip -c -6 $(basename $SMOKEDATA) > big6.gz;
+		 ./gzip -c -10 $(basename $SMOKEDATA) > big10.gz"
+	run_cmd scp root@dd-wrt:big*.gz .
+	make -j$NPROC gzip > /dev/null
+	./gzip -c -6 "$SMOKEDATA" > little6.gz
+	./gzip -c -10 "$SMOKEDATA" > little10.gz
+	if ! cmp big6.gz little6.gz || ! cmp big10.gz little10.gz; then
+		echo 1>&2 "Compressed data differed on big endian vs. little endian!"
+		return 1
+	fi
+	rm big*.gz little*.gz
 }
 
 ###############################################################################
