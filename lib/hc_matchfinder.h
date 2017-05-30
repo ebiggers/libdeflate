@@ -194,7 +194,7 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 	const u8 *best_matchptr = in_next;
 	mf_pos_t cur_node3, cur_node4;
 	u32 hash3, hash4;
-	u32 next_seq3, next_seq4;
+	u32 next_hashseq;
 	u32 seq4;
 	const u8 *matchptr;
 	u32 len;
@@ -232,10 +232,9 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 	mf->next_tab[cur_pos] = cur_node4;
 
 	/* Compute the next hash codes.  */
-	next_seq4 = load_u32_unaligned(in_next + 1);
-	next_seq3 = loaded_u32_to_u24(next_seq4);
-	next_hashes[0] = lz_hash(next_seq3, HC_MATCHFINDER_HASH3_ORDER);
-	next_hashes[1] = lz_hash(next_seq4, HC_MATCHFINDER_HASH4_ORDER);
+	next_hashseq = get_unaligned_le32(in_next + 1);
+	next_hashes[0] = lz_hash(next_hashseq & 0xFFFFFF, HC_MATCHFINDER_HASH3_ORDER);
+	next_hashes[1] = lz_hash(next_hashseq, HC_MATCHFINDER_HASH4_ORDER);
 	prefetchw(&mf->hash3_tab[next_hashes[0]]);
 	prefetchw(&mf->hash4_tab[next_hashes[1]]);
 
@@ -370,7 +369,7 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 {
 	u32 cur_pos;
 	u32 hash3, hash4;
-	u32 next_seq3, next_seq4;
+	u32 next_hashseq;
 	u32 remaining = count;
 
 	if (unlikely(count + 5 > in_end - in_next))
@@ -389,10 +388,9 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 		mf->next_tab[cur_pos] = mf->hash4_tab[hash4];
 		mf->hash4_tab[hash4] = cur_pos;
 
-		next_seq4 = load_u32_unaligned(++in_next);
-		next_seq3 = loaded_u32_to_u24(next_seq4);
-		hash3 = lz_hash(next_seq3, HC_MATCHFINDER_HASH3_ORDER);
-		hash4 = lz_hash(next_seq4, HC_MATCHFINDER_HASH4_ORDER);
+		next_hashseq = get_unaligned_le32(++in_next);
+		hash3 = lz_hash(next_hashseq & 0xFFFFFF, HC_MATCHFINDER_HASH3_ORDER);
+		hash4 = lz_hash(next_hashseq, HC_MATCHFINDER_HASH4_ORDER);
 		cur_pos++;
 	} while (--remaining);
 
