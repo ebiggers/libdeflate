@@ -11,7 +11,7 @@ matchfinder_init_avx2(mf_pos_t *data, size_t size)
 	__m256i v, *p;
 	size_t n;
 
-	if (size % sizeof(__m256i) * 4)
+	if (size % (sizeof(__m256i) * 4) != 0)
 		return false;
 
 	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
@@ -34,7 +34,7 @@ matchfinder_rebase_avx2(mf_pos_t *data, size_t size)
 	__m256i v, *p;
 	size_t n;
 
-	if ((size % sizeof(__m256i) * 4 != 0))
+	if (size % (sizeof(__m256i) * 4) != 0)
 		return false;
 
 	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
