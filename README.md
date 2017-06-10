@@ -37,25 +37,99 @@ the Makefile for details.
 
 ## For Windows
 
-MinGW (GCC) is the recommended compiler to use when building binaries for
-Windows.  MinGW can be used on either Windows or Linux.  On Windows, you'll need
-the compiler as well as GNU Make and basic UNIX tools such as `sh`.  This is
-most easily set up with Cygwin, but some standalone MinGW distributions for
-Windows also work.  Or, on Linux, you'll need to install the `mingw-w64-gcc` or
-similarly-named package.  Once ready, do the build using a command like:
+Prebuilt Windows binaries can be downloaded from
+https://github.com/ebiggers/libdeflate/releases.  But if you need to build the
+binaries yourself, MinGW (gcc) is the recommended compiler to use.  If you're
+performing the build *on* Windows (as opposed to cross-compiling for Windows on
+Linux, for example), you'll need to follow the directions in **one** of the two
+sections below to set up a minimal UNIX-compatible environment using either
+Cygwin or MSYS2, then do the build.  (Other MinGW distributions may not work, as
+they often omit basic UNIX tools such as `sh`.)
 
-    $ make CC=x86_64-w64-mingw32-gcc
+Alternatively, libdeflate may be built using the Visual Studio toolchain by
+running `nmake /f Makefile.msc`.  However, while this is supported in the sense
+that it will produce working binaries, it is not recommended because the
+binaries built with MinGW will be significantly faster.
 
-Some MinGW distributions for Windows may require `CC=gcc` instead.
-
-Windows binaries prebuilt with MinGW may also be downloaded from
-https://github.com/ebiggers/libdeflate/releases.
-
-Alternatively, a separate Makefile, `Makefile.msc`, is provided for the tools
-that come with Visual Studio, for those who strongly prefer that toolchain.
-
-As usual, 64-bit binaries are faster than 32-bit binaries and should be
+Also note that 64-bit binaries are faster than 32-bit binaries and should be
 preferred whenever possible.
+
+### Using Cygwin
+
+Run the Cygwin installer, available from https://cygwin.com/setup-x86_64.exe.
+When you get to the package selection screen, choose the following additional
+packages from category "Devel":
+
+- git
+- make
+- mingw64-i686-binutils
+- mingw64-i686-gcc-g++
+- mingw64-x86_64-binutils
+- mingw64-x86_64-gcc-g++
+
+(You may skip the mingw64-i686 packages if you don't need to build 32-bit
+binaries.)
+
+After the installation finishes, open a Cygwin terminal.  Then download
+libdeflate's source code (if you haven't already) and `cd` into its directory:
+
+    git clone https://github.com/ebiggers/libdeflate
+    cd libdeflate
+
+(Note that it's not required to use `git`; an alternative is to extract a .zip
+or .tar.gz archive of the source code downloaded from the releases page.
+Also, in case you need to find it in the file browser, note that your home
+directory in Cygwin is usually located at `C:\cygwin64\home\<your username>`.)
+
+Then, to build 64-bit binaries:
+
+    make CC=x86_64-w64-mingw32-gcc
+
+or to build 32-bit binaries:
+
+    make CC=i686-w64-mingw32-gcc
+
+### Using MSYS2
+
+Run the MSYS2 installer, available from http://www.msys2.org/.  After
+installing, open an MSYS2 shell and run:
+
+    pacman -Syu
+
+Say `y`, then when it's finished, close the shell window and open a new one.
+Then run the same command again:
+
+    pacman -Syu
+
+Then, install the packages needed to build libdeflate:
+
+    pacman -S git \
+              make \
+              mingw-w64-i686-binutils \
+              mingw-w64-i686-gcc \
+              mingw-w64-x86_64-binutils \
+              mingw-w64-x86_64-gcc
+
+(You may skip the mingw-w64-i686 packages if you don't need to build 32-bit
+binaries.)
+
+Then download libdeflate's source code (if you haven't already):
+
+    git clone https://github.com/ebiggers/libdeflate
+
+(Note that it's not required to use `git`; an alternative is to extract a .zip
+or .tar.gz archive of the source code downloaded from the releases page.
+Also, in case you need to find it in the file browser, note that your home
+directory in MSYS2 is usually located at `C:\msys64\home\<your username>`.)
+
+Then, to build 64-bit binaries, open "MSYS2 MinGW 64-bit" from the Start menu
+and run the following commands:
+
+    cd libdeflate
+    make clean
+    make
+
+Or to build 32-bit binaries, do the same but use "MSYS2 MinGW 32-bit" instead.
 
 # API
 
