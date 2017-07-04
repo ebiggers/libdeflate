@@ -79,8 +79,8 @@ static inline uint64_t barrett_reduction(uint64x2_t data, const uint64x2_t p_q)
     return vgetq_lane_u32((uint32x4_t)veorq_u64(tmp, data), 1);
 }
 
-static u32 ATTRIBUTES
-FUNCNAME_ALIGNED(u32 remainder, const unsigned char *p, size_t length)
+static u32
+crc32_pmull_aligned(u32 remainder, const unsigned char *p, size_t length)
 {
     uint64x2_t *p_data = (uint64x2_t *)p;
     uint64_t remain_len = length, crc = remainder;
@@ -139,8 +139,8 @@ FUNCNAME_ALIGNED(u32 remainder, const unsigned char *p, size_t length)
  * of crc32_slice8() because only a few bytes need to be processed, so a smaller
  * table is preferable.
  */
-static u32 ATTRIBUTES
-FUNCNAME(u32 remainder, const u8 *buffer, size_t nbytes)
+static u32
+crc32_pmull(u32 remainder, const u8 *buffer, size_t nbytes)
 {
 	if ((uintptr_t)buffer & 15) {
 		size_t n = MIN(nbytes, -(uintptr_t)buffer & 15);
@@ -150,13 +150,9 @@ FUNCNAME(u32 remainder, const u8 *buffer, size_t nbytes)
 	}
 
 	if (nbytes >= 64) {
-		remainder = FUNCNAME_ALIGNED(remainder, buffer, nbytes&(~63UL));
+		remainder = crc32_pmull_aligned(remainder, buffer, nbytes&(~63UL));
 		buffer += nbytes & (~63UL);
 		nbytes &= 63UL;
 	}
 	return crc32_slice1(remainder, buffer, nbytes);
 }
-
-#undef FUNCNAME
-#undef FUNCNAME_ALIGNED
-#undef ATTRIBUTES

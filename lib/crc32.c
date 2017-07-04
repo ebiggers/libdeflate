@@ -375,7 +375,8 @@ static u32 dispatch(u32 remainder, const u8 *buffer, size_t nbytes)
 		f = crc32_pclmul_avx;
 #endif
 #if NEED_ARM_PMULL_IMPL
-        f = crc32_pmull;
+	if (arm_have_cpu_features(ARM_CPU_FEATURE_PMULL))
+		f = crc32_pmull;
 #endif
 	crc32_impl = f;
 	return crc32_impl(remainder, buffer, nbytes);
