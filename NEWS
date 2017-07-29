@@ -1,3 +1,10 @@
+Version 0.8:
+	Build fixes for certain platforms and compilers.
+
+	libdeflate now produces the same output on all CPU architectures.
+
+	Improved documentation for building libdeflate on Windows.
+
 Version 0.7:
 	Fixed a very rare bug that caused data to be compressed incorrectly.
 	The bug affected compression levels 7 and below since libdeflate v0.2.
