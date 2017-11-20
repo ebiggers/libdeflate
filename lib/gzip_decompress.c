@@ -33,14 +33,16 @@
 #include "libdeflate.h"
 
 LIBDEFLATEAPI enum libdeflate_result
-libdeflate_gzip_decompress(struct libdeflate_decompressor *d,
-			   const void *in, size_t in_nbytes,
-			   void *out, size_t out_nbytes_avail,
-			   size_t *actual_out_nbytes_ret)
+libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *d,
+			      const void *in, size_t in_nbytes,
+			      void *out, size_t out_nbytes_avail,
+			      size_t *actual_in_nbytes_ret,
+			      size_t *actual_out_nbytes_ret)
 {
 	const u8 *in_next = in;
 	const u8 * const in_end = in_next + in_nbytes;
 	u8 flg;
+	size_t actual_in_nbytes;
 	size_t actual_out_nbytes;
 	enum libdeflate_result result;
 
@@ -102,9 +104,10 @@ libdeflate_gzip_decompress(struct libdeflate_decompressor *d,
 	}
 
 	/* Compressed data  */
-	result = libdeflate_deflate_decompress(d, in_next,
+	result = libdeflate_deflate_decompress_ex(d, in_next,
 					in_end - GZIP_FOOTER_SIZE - in_next,
 					out, out_nbytes_avail,
+					&actual_in_nbytes,
 					actual_out_nbytes_ret);
 	if (result != LIBDEFLATE_SUCCESS)
 		return result;
@@ -114,7 +117,7 @@ libdeflate_gzip_decompress(struct libdeflate_decompressor *d,
 	else
 		actual_out_nbytes = out_nbytes_avail;
 
-	in_next = in_end - GZIP_FOOTER_SIZE;
+	in_next += actual_in_nbytes;
 
 	/* CRC32 */
 	if (libdeflate_crc32(0, out, actual_out_nbytes) !=
@@ -125,6 +128,21 @@ libdeflate_gzip_decompress(struct libdeflate_decompressor *d,
 	/* ISIZE */
 	if ((u32)actual_out_nbytes != get_unaligned_le32(in_next))
 		return LIBDEFLATE_BAD_DATA;
+	in_next += 4;
+
+	if (actual_in_nbytes_ret)
+		*actual_in_nbytes_ret = in_next - (u8 *)in;
 
 	return LIBDEFLATE_SUCCESS;
+}
+
+LIBDEFLATEAPI enum libdeflate_result
+libdeflate_gzip_decompress(struct libdeflate_decompressor *d,
+			   const void *in, size_t in_nbytes,
+			   void *out, size_t out_nbytes_avail,
+			   size_t *actual_out_nbytes_ret)
+{
+	return libdeflate_gzip_decompress_ex(d, in, in_nbytes,
+					     out, out_nbytes_avail,
+					     NULL, actual_out_nbytes_ret);
 }

@@ -189,8 +189,10 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 	size_t compressed_size = in->mmap_size;
 	void *uncompressed_data = NULL;
 	size_t uncompressed_size;
+	size_t actual_in_nbytes;
+	size_t actual_out_nbytes;
 	enum libdeflate_result result;
-	int ret;
+	int ret = 0;
 
 	if (compressed_size < sizeof(u32)) {
 	       msg("%"TS": not in gzip format", in->name);
@@ -200,34 +202,61 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 
 	uncompressed_size = load_u32_gzip(&compressed_data[compressed_size - 4]);
 
-	uncompressed_data = xmalloc(uncompressed_size);
-	if (uncompressed_data == NULL) {
-		msg("%"TS": file is probably too large to be processed by this "
-		    "program", in->name);
-		ret = -1;
-		goto out;
-	}
+	do {
+		if (uncompressed_data == NULL) {
+			uncompressed_data = xmalloc(uncompressed_size);
+			if (uncompressed_data == NULL) {
+				msg("%"TS": file is probably too large to be "
+				    "processed by this program", in->name);
+				ret = -1;
+				goto out;
+			}
+		}
 
-	result = libdeflate_gzip_decompress(decompressor,
-					    compressed_data,
-					    compressed_size,
-					    uncompressed_data,
-					    uncompressed_size, NULL);
+		result = libdeflate_gzip_decompress_ex(decompressor,
+						       compressed_data,
+						       compressed_size,
+						       uncompressed_data,
+						       uncompressed_size,
+						       &actual_in_nbytes,
+						       &actual_out_nbytes);
 
-	if (result == LIBDEFLATE_INSUFFICIENT_SPACE) {
-		msg("%"TS": file corrupt or too large to be processed by this "
-		    "program", in->name);
-		ret = -1;
-		goto out;
-	}
+		if (result == LIBDEFLATE_INSUFFICIENT_SPACE) {
+			if (uncompressed_size * 2 <= uncompressed_size) {
+				msg("%"TS": file corrupt or too large to be "
+				    "processed by this program", in->name);
+				ret = -1;
+				goto out;
+			}
+			uncompressed_size *= 2;
+			free(uncompressed_data);
+			uncompressed_data = NULL;
+			continue;
+		}
 
-	if (result != LIBDEFLATE_SUCCESS) {
-		msg("%"TS": file corrupt or not in gzip format", in->name);
-		ret = -1;
-		goto out;
-	}
+		if (result != LIBDEFLATE_SUCCESS) {
+			msg("%"TS": file corrupt or not in gzip format",
+			    in->name);
+			ret = -1;
+			goto out;
+		}
 
-	ret = full_write(out, uncompressed_data, uncompressed_size);
+		if (actual_in_nbytes == 0 ||
+		    actual_in_nbytes > compressed_size ||
+		    actual_out_nbytes > uncompressed_size) {
+			msg("Bug in libdeflate_gzip_decompress_ex()!");
+			ret = -1;
+			goto out;
+		}
+
+		ret = full_write(out, uncompressed_data, actual_out_nbytes);
+		if (ret != 0)
+			goto out;
+
+		compressed_data += actual_in_nbytes;
+		compressed_size -= actual_in_nbytes;
+
+	} while (compressed_size != 0);
 out:
 	free(uncompressed_data);
 	return ret;

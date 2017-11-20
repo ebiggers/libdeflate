@@ -37,7 +37,7 @@ static enum libdeflate_result ATTRIBUTES
 FUNCNAME(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
-	 size_t *actual_out_nbytes_ret)
+	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret)
 {
 	u8 *out_next = out;
 	u8 * const out_end = out_next + out_nbytes_avail;
@@ -394,6 +394,14 @@ block_done:
 
 	/* That was the last block.  */
 
+	/* Discard any readahead bits and check for excessive overread */
+	ALIGN_INPUT();
+
+	/* Optionally return the actual number of bytes read */
+	if (actual_in_nbytes_ret)
+		*actual_in_nbytes_ret = in_next - (u8 *)in;
+
+	/* Optionally return the actual number of bytes written */
 	if (actual_out_nbytes_ret) {
 		*actual_out_nbytes_ret = out_next - (u8 *)out;
 	} else {

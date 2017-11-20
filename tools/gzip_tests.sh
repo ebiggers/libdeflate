@@ -392,6 +392,23 @@ gunzip file.gz
 [ "$(stat -c '%a;%x;%y' file)" = "$orig_stat" ]
 
 
+begin_test 'Decompressing multi-member gzip file'
+cat file file > orig
+gzip -c file > file.gz
+gzip -c file >> file.gz
+gunzip -f file.gz
+cmp file orig
+
+
+begin_test 'Decompressing multi-member gzip file (final member smaller)'
+echo 'hello world' > 2
+cat file 2 > orig
+gzip -c file > file.gz
+gzip -c 2 >> file.gz
+gunzip -f file.gz
+cmp file orig
+
+
 begin_test 'Help option'
 gzip -h 2>&1 | grep -q 'Usage'
 gunzip -h 2>&1 | grep -q 'Usage'
