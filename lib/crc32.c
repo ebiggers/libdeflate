@@ -214,7 +214,20 @@
 #  define NEED_PCLMUL_AVX_IMPL 1
 #endif
 
-#define NUM_IMPLS (NEED_GENERIC_IMPL + NEED_PCLMUL_IMPL + NEED_PCLMUL_AVX_IMPL)
+#define NEED_ARM_PMULL_IMPL 0
+#if defined(__ARM_FEATURE_CRYPTO)
+#  include <arm_neon.h>
+#  undef NEED_ARM_PMULL_IMPL
+#  define NEED_ARM_PMULL_IMPL 1
+#  ifdef __ARM_FEATURE_CRYPTO /* compiling for CRYPTO extension */
+#    undef NEED_GENERIC_IMPL
+#    define NEED_GENERIC_IMPL 0 /* generic impl not needed */
+#    undef DEFAULT_IMPL
+#    define DEFAULT_IMPL crc32_pmull
+#  endif
+#endif
+
+#define NUM_IMPLS (NEED_GENERIC_IMPL + NEED_PCLMUL_IMPL + NEED_PCLMUL_AVX_IMPL + NEED_ARM_PMULL_IMPL)
 
 /* Define the CRC-32 table */
 #if NEED_GENERIC_IMPL
@@ -329,6 +342,13 @@ crc32_slice8(u32 remainder, const u8 *buffer, size_t nbytes)
 #  include "crc32_impl.h"
 #endif
 
+#if NEED_ARM_PMULL_IMPL
+#  define FUNCNAME		crc32_pmull
+#  define FUNCNAME_ALIGNED	crc32_pmull_aligned
+#  define ATTRIBUTES
+#  include "crc32_arm.h"
+#endif
+
 typedef u32 (*crc32_func_t)(u32, const u8 *, size_t);
 
 /*
@@ -353,6 +373,10 @@ static u32 dispatch(u32 remainder, const u8 *buffer, size_t nbytes)
 	if (x86_have_cpu_features(X86_CPU_FEATURE_PCLMULQDQ |
 				  X86_CPU_FEATURE_AVX))
 		f = crc32_pclmul_avx;
+#endif
+#if NEED_ARM_PMULL_IMPL
+	if (arm_have_cpu_features(ARM_CPU_FEATURE_PMULL))
+		f = crc32_pmull;
 #endif
 	crc32_impl = f;
 	return crc32_impl(remainder, buffer, nbytes);

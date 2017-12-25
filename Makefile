@@ -58,6 +58,14 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
     endif
 endif
 
+ifneq (,$(filter aarch% arm%,$(shell $(CC) -dumpmachine 2>/dev/null)))
+    ifneq (,$(filter aarch64% arm64%,$(shell $(CC) -dumpmachine 2>/dev/null)))
+    override CFLAGS   := $(CFLAGS) -march=armv8-a+crypto
+    else
+    override CFLAGS   := $(CFLAGS) -mfpu=crypto-neon-fp-armv8
+    endif
+endif
+
 ##############################################################################
 
 #### Quiet make is enabled by default.  Define V=1 to disable.
@@ -87,7 +95,8 @@ LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
 
 LIB_HEADERS := $(wildcard lib/*.h)
 
-LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c lib/x86_cpu_features.c
+LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c
+LIB_SRC += lib/x86_cpu_features.c lib/arm_cpu_features.c
 
 DECOMPRESSION_ONLY :=
 ifndef DECOMPRESSION_ONLY
