@@ -133,6 +133,9 @@ typedef size_t machine_word_t;
  * Which targets are supported with the 'target' function attribute and have
  * intrinsics that work within 'target'-ed functions?
  */
+#ifndef COMPILER_SUPPORTS_SSE2_TARGET_INTRINSICS
+#  define COMPILER_SUPPORTS_SSE2_TARGET_INTRINSICS 0
+#endif
 #ifndef COMPILER_SUPPORTS_PCLMUL_TARGET_INTRINSICS
 #  define COMPILER_SUPPORTS_PCLMUL_TARGET_INTRINSICS 0
 #endif

@@ -81,7 +81,10 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 #endif /* AVX2 implementation */
 
 /* SSE2 implementation */
-#if !defined(DEFAULT_IMPL) && defined(__SSE2__)
+#undef DISPATCH_SSE2
+#if !defined(DEFAULT_IMPL) &&	\
+	(defined(__SSE2__) || (X86_CPU_FEATURES_ENABLED &&	\
+			       COMPILER_SUPPORTS_SSE2_TARGET_INTRINSICS))
 #  define FUNCNAME		adler32_sse2
 #  define FUNCNAME_CHUNK	adler32_sse2_chunk
 #  define IMPL_ALIGNMENT	16
@@ -92,8 +95,14 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
  * would behave incorrectly.
  */
 #  define IMPL_MAX_CHUNK_SIZE	(32 * (0x7FFF / 0xFF))
-#  define ATTRIBUTES
-#  define DEFAULT_IMPL		adler32_sse2
+#  ifdef __SSE2__
+#    define ATTRIBUTES
+#    define DEFAULT_IMPL	adler32_sse2
+#  else
+#    define ATTRIBUTES		__attribute__((target("sse2")))
+#    define DISPATCH		1
+#    define DISPATCH_SSE2	1
+#  endif
 #  include <emmintrin.h>
 static forceinline ATTRIBUTES void
 adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
@@ -179,6 +188,10 @@ arch_select_adler32_func(void)
 #ifdef DISPATCH_AVX2
 	if (features & X86_CPU_FEATURE_AVX2)
 		return adler32_avx2;
+#endif
+#ifdef DISPATCH_SSE2
+	if (features & X86_CPU_FEATURE_SSE2)
+		return adler32_sse2;
 #endif
 	return NULL;
 }
