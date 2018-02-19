@@ -5,6 +5,7 @@
  * results as their zlib equivalents.
  */
 
+#include <stdlib.h>
 #include <time.h>
 #include <zlib.h>
 
@@ -47,9 +48,14 @@ select_initial_crc(void)
 static u32
 select_initial_adler(void)
 {
+	u32 lo, hi;
+
 	if (rand() & 1)
 		return 1;
-	return ((u32)(rand() % 65521) << 16) | (rand() % 65521);
+
+	lo = (rand() % 4 == 0 ? 65520 : rand() % 65521);
+	hi = (rand() % 4 == 0 ? 65520 : rand() % 65521);
+	return (hi << 16) | lo;
 }
 
 static void
@@ -64,10 +70,10 @@ test_initial_values(cksum_fn_t cksum, u32 expected)
 }
 
 static void
-test_multipart(const u8 *buffer, unsigned size, const char *name,
+test_multipart(const u8 *buffer, size_t size, const char *name,
 	       cksum_fn_t cksum, u32 v, u32 expected)
 {
-	unsigned division = (size != 0) ? rand() % size : 0;
+	size_t division = rand() % (size + 1);
 	v = cksum(v, buffer, division);
 	v = cksum(v, buffer + division, size - division);
 	if (v != expected) {
@@ -77,7 +83,7 @@ test_multipart(const u8 *buffer, unsigned size, const char *name,
 }
 
 static void
-test_checksums(const void *buffer, unsigned size, const char *name,
+test_checksums(const void *buffer, size_t size, const char *name,
 	       cksum_fn_t cksum1, cksum_fn_t cksum2, u32 initial_value)
 {
 	u32 v1 = cksum1(initial_value, buffer, size);
@@ -86,9 +92,11 @@ test_checksums(const void *buffer, unsigned size, const char *name,
 	if (v1 != v2) {
 		fprintf(stderr, "%s checksum mismatch\n", name);
 		fprintf(stderr, "initial_value=0x%08"PRIx32", buffer=%p, "
-			"contents ", initial_value, buffer);
-		for (unsigned i = 0; i < size; i++)
+			"size=%zu, buffer=", initial_value, buffer, size);
+		for (size_t i = 0; i < MIN(size, 256); i++)
 			fprintf(stderr, "%02x", ((const u8 *)buffer)[i]);
+		if (size > 256)
+			fprintf(stderr, "...");
 		fprintf(stderr, "\n");
 		ASSERT(0);
 	}
@@ -99,10 +107,38 @@ test_checksums(const void *buffer, unsigned size, const char *name,
 	}
 }
 
+static void
+test_crc32(const void *buffer, size_t size, u32 initial_value)
+{
+	test_checksums(buffer, size, "CRC-32",
+		       libdeflate_crc32, zlib_crc32, initial_value);
+}
+
+static void
+test_adler32(const void *buffer, size_t size, u32 initial_value)
+{
+	test_checksums(buffer, size, "Adler-32",
+		       libdeflate_adler32, zlib_adler32, initial_value);
+}
+
+static void test_random_buffers(u8 *buffer, size_t limit, u32 num_iter)
+{
+	for (u32 i = 0; i < num_iter; i++) {
+		size_t start = rand() % limit;
+		size_t len = rand() % (limit - start);
+
+		for (size_t j = start; j < start + len; j++)
+			buffer[j] = rand();
+
+		test_adler32(&buffer[start], len, select_initial_adler());
+		test_crc32(&buffer[start], len, select_initial_crc());
+	}
+}
+
 int
 tmain(int argc, tchar *argv[])
 {
-	u8 buffer[256];
+	u8 *buffer = malloc(32768);
 
 	rng_seed = time(NULL);
 	srand(rng_seed);
@@ -112,24 +148,35 @@ tmain(int argc, tchar *argv[])
 	test_initial_values(libdeflate_crc32, 0);
 	test_initial_values(zlib_crc32, 0);
 
-	for (uint32_t i = 0; i < 50000; i++) {
-		/* test different buffer sizes and alignments */
-		int start = rand() % sizeof(buffer);
-		int len = rand() % (sizeof(buffer) - start);
+	/* Test different buffer sizes and alignments */
+	test_random_buffers(buffer, 256, 5000);
+	test_random_buffers(buffer, 1024, 500);
+	test_random_buffers(buffer, 32768, 50);
 
-		for (int i = start; i < start + len; i++)
-			buffer[i] = rand();
+	/*
+	 * Test Adler-32 overflow cases.  For example, given all 0xFF bytes and
+	 * the highest possible initial (s1, s2) of (65520, 65520), then s2 if
+	 * stored as a 32-bit unsigned integer will overflow if > 5552 bytes are
+	 * processed.  Implementations must make sure to reduce s2 modulo 65521
+	 * before that point.  Also, some implementations make use of 16-bit
+	 * counters which can overflow earlier.
+	 */
+	memset(buffer, 0xFF, 32768);
+	for (u32 i = 0; i < 20; i++) {
+		u32 initial_value;
 
-		test_checksums(&buffer[start], len, "Adler-32",
-			       libdeflate_adler32, zlib_adler32,
-			       select_initial_adler());
+		if (i == 0)
+			initial_value = ((u32)65520 << 16) | 65520;
+		else
+			initial_value = select_initial_adler();
 
-		test_checksums(&buffer[start], len, "CRC-32",
-			       libdeflate_crc32, zlib_crc32,
-			       select_initial_crc());
+		test_adler32(buffer, 5553, initial_value);
+		test_adler32(buffer, rand() % 32769, initial_value);
+		buffer[rand() % 32768] = 0xFE;
 	}
 
 	printf("Adler-32 and CRC-32 checksum tests passed!\n");
 
+	free(buffer);
 	return 0;
 }
