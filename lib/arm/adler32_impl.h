@@ -25,16 +25,31 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "cpu_features.h"
+
 /* NEON implementation */
-#if !defined(DEFAULT_IMPL) && defined(__ARM_NEON)
+#undef DISPATCH_NEON
+#if !defined(DEFAULT_IMPL) &&	\
+	(defined(__ARM_NEON) || (ARM_CPU_FEATURES_ENABLED &&	\
+				 COMPILER_SUPPORTS_NEON_TARGET_INTRINSICS))
 #  define FUNCNAME		adler32_neon
 #  define FUNCNAME_CHUNK	adler32_neon_chunk
 #  define IMPL_ALIGNMENT	16
 #  define IMPL_SEGMENT_SIZE	32
 /* Prevent unsigned overflow of the 16-bit precision byte counters */
 #  define IMPL_MAX_CHUNK_SIZE	(32 * (0xFFFF / 0xFF))
-#  define ATTRIBUTES
-#  define DEFAULT_IMPL		adler32_neon
+#  ifdef __ARM_NEON
+#    define ATTRIBUTES
+#    define DEFAULT_IMPL	adler32_neon
+#  else
+#    ifdef __arm__
+#      define ATTRIBUTES	__attribute__((target("fpu=neon")))
+#    else
+#      define ATTRIBUTES	__attribute__((target("+simd")))
+#    endif
+#    define DISPATCH		1
+#    define DISPATCH_NEON	1
+#  endif
 #  include <arm_neon.h>
 static forceinline ATTRIBUTES void
 adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
@@ -89,3 +104,17 @@ adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 }
 #  include "../adler32_vec_template.h"
 #endif /* NEON implementation */
+
+#ifdef DISPATCH
+static inline adler32_func_t
+arch_select_adler32_func(void)
+{
+	u32 features = get_cpu_features();
+
+#ifdef DISPATCH_NEON
+	if (features & ARM_CPU_FEATURE_NEON)
+		return adler32_neon;
+#endif
+	return NULL;
+}
+#endif /* DISPATCH */
