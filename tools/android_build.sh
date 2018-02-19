@@ -65,7 +65,7 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-CFLAGS="-fPIC -pie"
+CFLAGS="-fPIC"
 
 case "$ARCH" in
 arm|arm32|aarch32)
@@ -99,7 +99,6 @@ esac
 case "$COMPILER" in
 gcc)
 	CC="\"$NDKDIR/toolchains/$GCC_TOOLCHAIN/prebuilt/linux-x86_64/bin/${GCC_TOOLCHAIN%-*}-gcc\""
-	CFLAGS+=" -pie"
 	;;
 clang)
 	CC="\"$NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/clang\""
@@ -113,4 +112,4 @@ clang)
 esac
 
 make -j$(grep -c processor /proc/cpuinfo) test_programs \
-	CC="$CC" CFLAGS="$CFLAGS"
+	CC="$CC" CFLAGS="$CFLAGS" LDFLAGS="-pie"
