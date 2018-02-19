@@ -201,12 +201,12 @@ android_tests() {
 	fi
 
 	for compiler in gcc clang; do
-		android_build_and_test --arch=arm --compiler=$compiler
-
-		android_build_and_test --arch=arm --compiler=$compiler \
-				       --disable-neon
-
-		android_build_and_test --arch=arm64 --compiler=$compiler
+		for flags in "" "--enable-neon" "--enable-crypto"; do
+			for arch in arm32 arm64; do
+				android_build_and_test --arch=$arch \
+					--compiler=$compiler $flags
+			done
+		done
 	done
 }
 
