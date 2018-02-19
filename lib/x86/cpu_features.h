@@ -7,7 +7,8 @@
 
 #include "../lib_common.h"
 
-#if defined(__x86_64__) && COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
+#if (defined(__i386__) || defined(__x86_64__)) && \
+	COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
 #  define X86_CPU_FEATURES_ENABLED 1
 #else
 #  define X86_CPU_FEATURES_ENABLED 0
