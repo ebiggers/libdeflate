@@ -164,6 +164,13 @@ native_tests() {
 
 ###############################################################################
 
+checksum_benchmarks() {
+	test_group_included checksum_benchmarks || return 0
+	./tools/checksum_benchmarks.sh
+}
+
+###############################################################################
+
 android_build_and_test() {
 	run_cmd ./tools/android_build.sh --ndkdir="$NDKDIR" "$@"
 	run_cmd adb push "${FILES[@]}" /data/local/tmp/
@@ -343,6 +350,7 @@ log "	SMOKEDATA=$SMOKEDATA"
 log "	NDKDIR=$NDKDIR"
 
 native_tests
+checksum_benchmarks
 android_tests
 mips_tests
 windows_tests
