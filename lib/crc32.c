@@ -180,7 +180,9 @@ typedef u32 (*crc32_func_t)(u32, const u8 *, size_t);
 #undef CRC32_SLICE8
 #undef DEFAULT_IMPL
 #undef DISPATCH
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(__arm__) || defined(__aarch64__)
+#  include "arm/crc32_impl.h"
+#elif defined(__i386__) || defined(__x86_64__)
 #  include "x86/crc32_impl.h"
 #endif
 

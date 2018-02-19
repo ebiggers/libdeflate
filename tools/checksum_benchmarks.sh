@@ -107,6 +107,12 @@ i386|x86_64)
 		disable_impl "PCLMUL" "-mno-pclmul"
 	fi
 	;;
+arm*|aarch*)
+	if have_cpu_feature pmull; then
+		do_benchmark "PMULL"
+		disable_impl "PMULL" ""
+	fi
+	;;
 esac
 do_benchmark "generic"
 do_benchmark "zlib"
