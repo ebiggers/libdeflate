@@ -1,7 +1,5 @@
 /*
- * x86_cpu_features.c - feature detection for x86 processors
- *
- * Originally public domain; changes after 2016-09-07 are copyrighted.
+ * x86/cpu_features.c - feature detection for x86 processors
  *
  * Copyright 2016 Eric Biggers
  *
@@ -27,11 +25,11 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "x86_cpu_features.h"
+#include "cpu_features.h"
 
 #if X86_CPU_FEATURES_ENABLED
 
-u32 _x86_cpu_features = 0;
+u32 _cpu_features = 0;
 
 /* With old GCC versions we have to manually save and restore the x86_32 PIC
  * register (ebx).  See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47602  */
@@ -67,9 +65,8 @@ read_xcr(u32 index)
 
 #define IS_SET(reg, bit) ((reg) & ((u32)1 << (bit)))
 
-/* Initialize _x86_cpu_features with bits for interesting processor features. */
-void
-x86_setup_cpu_features(void)
+/* Initialize _cpu_features with bits for interesting processor features. */
+void setup_cpu_features(void)
 {
 	u32 features = 0;
 	u32 dummy1, dummy2, dummy3, dummy4;
@@ -111,7 +108,7 @@ x86_setup_cpu_features(void)
 		features |= X86_CPU_FEATURE_BMI2;
 
 out:
-	_x86_cpu_features = features | X86_CPU_FEATURES_KNOWN;
+	_cpu_features = features | X86_CPU_FEATURES_KNOWN;
 }
 
 #endif /* X86_CPU_FEATURES_ENABLED */

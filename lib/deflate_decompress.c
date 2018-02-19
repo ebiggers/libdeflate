@@ -1,8 +1,6 @@
 /*
  * deflate_decompress.c - a decompressor for DEFLATE
  *
- * Originally public domain; changes after 2016-09-07 are copyrighted.
- *
  * Copyright 2016 Eric Biggers
  *
  * Permission is hereby granted, free of charge, to any person
@@ -51,7 +49,6 @@
 
 #include "deflate_constants.h"
 #include "unaligned.h"
-#include "x86_cpu_features.h"
 
 #include "libdeflate.h"
 
@@ -804,65 +801,62 @@ copy_word_unaligned(const void *src, void *dst)
  *                         Main decompression routine
  *****************************************************************************/
 
-#define FUNCNAME deflate_decompress_default
-#define ATTRIBUTES
-#include "decompress_impl.h"
-#undef FUNCNAME
-#undef ATTRIBUTES
-
-#if X86_CPU_FEATURES_ENABLED && \
-	COMPILER_SUPPORTS_BMI2_TARGET && !defined(__BMI2__)
-#  define FUNCNAME deflate_decompress_bmi2
-#  define ATTRIBUTES __attribute__((target("bmi2")))
-#  include "decompress_impl.h"
-#  undef FUNCNAME
-#  undef ATTRIBUTES
-#  define DISPATCH_ENABLED 1
-#else
-#  define DISPATCH_ENABLED 0
-#endif
-
-#if DISPATCH_ENABLED
-
-static enum libdeflate_result
-dispatch(struct libdeflate_decompressor * restrict d,
-	 const void * restrict in, size_t in_nbytes,
-	 void * restrict out, size_t out_nbytes_avail,
-	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
-
 typedef enum libdeflate_result (*decompress_func_t)
 	(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
+#undef DEFAULT_IMPL
+#undef DISPATCH
+#if defined(__i386__) || defined(__x86_64__)
+#  include "x86/decompress_impl.h"
+#endif
+
+#ifndef DEFAULT_IMPL
+#  define FUNCNAME deflate_decompress_default
+#  define ATTRIBUTES
+#  include "decompress_template.h"
+#  define DEFAULT_IMPL deflate_decompress_default
+#endif
+
+#ifdef DISPATCH
+static enum libdeflate_result
+dispatch(struct libdeflate_decompressor * restrict d,
+	 const void * restrict in, size_t in_nbytes,
+	 void * restrict out, size_t out_nbytes_avail,
+	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
+
 static decompress_func_t decompress_impl = dispatch;
 
+/* Choose the fastest implementation at runtime */
 static enum libdeflate_result
 dispatch(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret)
 {
-	decompress_func_t f = deflate_decompress_default;
-#if X86_CPU_FEATURES_ENABLED
-	if (x86_have_cpu_features(X86_CPU_FEATURE_BMI2))
-		f = deflate_decompress_bmi2;
-#endif
+	decompress_func_t f = arch_select_decompress_func();
+
+	if (f == NULL)
+		f = DEFAULT_IMPL;
+
 	decompress_impl = f;
 	return (*f)(d, in, in_nbytes, out, out_nbytes_avail,
 		    actual_in_nbytes_ret, actual_out_nbytes_ret);
 }
-#endif /* DISPATCH_ENABLED */
+#else
+#  define decompress_impl DEFAULT_IMPL /* only one implementation, use it */
+#endif
 
 
 /*
  * This is the main DEFLATE decompression routine.  See libdeflate.h for the
  * documentation.
  *
- * Note that the real code is in decompress_impl.h.  The part here just handles
- * calling the appropriate implementation depending on the CPU features at
- * runtime.
+ * Note that the real code is in decompress_template.h.  The part here just
+ * handles calling the appropriate implementation depending on the CPU features
+ * at runtime.
  */
 LIBDEFLATEAPI enum libdeflate_result
 libdeflate_deflate_decompress_ex(struct libdeflate_decompressor * restrict d,
@@ -871,15 +865,8 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor * restrict d,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret)
 {
-#if DISPATCH_ENABLED
-	return (*decompress_impl)(d, in, in_nbytes, out, out_nbytes_avail,
-				  actual_in_nbytes_ret, actual_out_nbytes_ret);
-#else
-	return deflate_decompress_default(d, in, in_nbytes,
-					  out, out_nbytes_avail,
-					  actual_in_nbytes_ret,
-					  actual_out_nbytes_ret);
-#endif
+	return decompress_impl(d, in, in_nbytes, out, out_nbytes_avail,
+			       actual_in_nbytes_ret, actual_out_nbytes_ret);
 }
 
 LIBDEFLATEAPI enum libdeflate_result

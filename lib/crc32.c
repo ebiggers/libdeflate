@@ -1,8 +1,6 @@
 /*
  * crc32.c - CRC-32 checksum algorithm for the gzip format
  *
- * Originally public domain; changes after 2016-09-07 are copyrighted.
- *
  * Copyright 2016 Eric Biggers
  *
  * Permission is hereby granted, free of charge, to any person
@@ -72,16 +70,16 @@
  * subtraction can be implemented as bitwise exclusive OR (since we are working
  * in GF(2)).  Here is an unoptimized implementation:
  *
- *	static u32 crc32_gzip(const u8 *buffer, size_t nbytes)
+ *	static u32 crc32_gzip(const u8 *buffer, size_t size)
  *	{
  *		u32 remainder = 0;
  *		const u32 divisor = 0xEDB88320;
  *
- *		for (size_t i = 0; i < nbytes * 8 + 32; i++) {
+ *		for (size_t i = 0; i < size * 8 + 32; i++) {
  *			int bit;
  *			u32 multiple;
  *
- *			if (i < nbytes * 8)
+ *			if (i < size * 8)
  *				bit = (buffer[i / 8] >> (i % 8)) & 1;
  *			else
  *				bit = 0; // one of the 32 appended 0 bits
@@ -116,12 +114,12 @@
  * of 'multiple' until 32 bits later, we need not actually add each message bit
  * until that point:
  *
- *	static u32 crc32_gzip(const u8 *buffer, size_t nbytes)
+ *	static u32 crc32_gzip(const u8 *buffer, size_t size)
  *	{
  *		u32 remainder = ~0;
  *		const u32 divisor = 0xEDB88320;
  *
- *		for (size_t i = 0; i < nbytes * 8; i++) {
+ *		for (size_t i = 0; i < size * 8; i++) {
  *			int bit;
  *			u32 multiple;
  *
@@ -168,87 +166,63 @@
  * intermediate remainder (which we never actually store explicitly) is 96 bits.
  *
  * On CPUs that support fast carryless multiplication, CRCs can be computed even
- * more quickly via "folding".  See crc32_pclmul() for an example.
+ * more quickly via "folding".  See e.g. the x86 PCLMUL implementation.
  */
 
-#include "x86_cpu_features.h"
-
+#include "lib_common.h"
 #include "libdeflate.h"
 
-/* Select the implementations to compile in. */
+typedef u32 (*crc32_func_t)(u32, const u8 *, size_t);
 
-#define NEED_GENERIC_IMPL 1 /* include generic impl unless overridden */
-#define DEFAULT_IMPL crc32_slice8
-
-/* Include the PCLMUL implementation? */
-#define NEED_PCLMUL_IMPL 0
-#if defined(__PCLMUL__) || \
-	(X86_CPU_FEATURES_ENABLED && COMPILER_SUPPORTS_PCLMUL_TARGET_INTRINSICS)
-#  include <wmmintrin.h>
-#  undef NEED_PCLMUL_IMPL
-#  define NEED_PCLMUL_IMPL 1
-#  ifdef __PCLMUL__ /* compiling for PCLMUL, i.e. can we assume it's there? */
-#    undef NEED_GENERIC_IMPL
-#    define NEED_GENERIC_IMPL 0 /* generic impl not needed */
-#    undef DEFAULT_IMPL
-#    define DEFAULT_IMPL crc32_pclmul
-#  endif /* otherwise, we can build a PCLMUL version, but we won't know whether
-	    we can use it until runtime */
+/* Include architecture-specific implementations if available */
+#undef CRC32_SLICE1
+#undef CRC32_SLICE4
+#undef CRC32_SLICE8
+#undef DEFAULT_IMPL
+#undef DISPATCH
+#if defined(__i386__) || defined(__x86_64__)
+#  include "x86/crc32_impl.h"
 #endif
 
 /*
- * Include the PCLMUL/AVX implementation?  Although our PCLMUL-optimized CRC-32
- * function doesn't use any AVX intrinsics specifically, it can benefit a lot
- * from being compiled for an AVX target: on Skylake, ~16700 MB/s vs. ~10100
- * MB/s.  I expect this is related to the PCLMULQDQ instructions being assembled
- * in the newer three-operand form rather than the older two-operand form.
- *
- * Note: this is only needed if __AVX__ is *not* defined, since otherwise the
- * "regular" PCLMUL implementation would already be AVX enabled.
+ * Define a generic implementation (crc32_slice8()) if needed.  crc32_slice1()
+ * may also be needed as a fallback for architecture-specific implementations.
  */
-#define NEED_PCLMUL_AVX_IMPL 0
-#if NEED_PCLMUL_IMPL && !defined(__AVX__) && \
-	 X86_CPU_FEATURES_ENABLED && COMPILER_SUPPORTS_AVX_TARGET
-#  undef NEED_PCLMUL_AVX_IMPL
-#  define NEED_PCLMUL_AVX_IMPL 1
+
+#ifndef DEFAULT_IMPL
+#  define CRC32_SLICE8	1
+#  define DEFAULT_IMPL	crc32_slice8
 #endif
 
-#define NUM_IMPLS (NEED_GENERIC_IMPL + NEED_PCLMUL_IMPL + NEED_PCLMUL_AVX_IMPL)
-
-/* Define the CRC-32 table */
-#if NEED_GENERIC_IMPL
-#  define CRC32_SLICE8
-#else
-#  define CRC32_SLICE1 /* only need short table for unaligned ends */
-#endif
+#if defined(CRC32_SLICE1) || defined(CRC32_SLICE4) || defined(CRC32_SLICE8)
 #include "crc32_table.h"
-
 static forceinline u32
 crc32_update_byte(u32 remainder, u8 next_byte)
 {
 	return (remainder >> 8) ^ crc32_table[(u8)remainder ^ next_byte];
 }
+#endif
 
-#if defined(CRC32_SLICE1) || (NUM_IMPLS > NEED_GENERIC_IMPL)
+#ifdef CRC32_SLICE1
 static u32
-crc32_slice1(u32 remainder, const u8 *buffer, size_t nbytes)
+crc32_slice1(u32 remainder, const u8 *buffer, size_t size)
 {
 	size_t i;
 
 	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x100);
 
-	for (i = 0; i < nbytes; i++)
+	for (i = 0; i < size; i++)
 		remainder = crc32_update_byte(remainder, buffer[i]);
 	return remainder;
 }
-#endif
+#endif /* CRC32_SLICE1 */
 
 #ifdef CRC32_SLICE4
 static u32
-crc32_slice4(u32 remainder, const u8 *buffer, size_t nbytes)
+crc32_slice4(u32 remainder, const u8 *buffer, size_t size)
 {
 	const u8 *p = buffer;
-	const u8 *end = buffer + nbytes;
+	const u8 *end = buffer + size;
 	const u8 *end32;
 
 	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x400);
@@ -271,14 +245,14 @@ crc32_slice4(u32 remainder, const u8 *buffer, size_t nbytes)
 
 	return remainder;
 }
-#endif
+#endif /* CRC32_SLICE4 */
 
 #ifdef CRC32_SLICE8
 static u32
-crc32_slice8(u32 remainder, const u8 *buffer, size_t nbytes)
+crc32_slice8(u32 remainder, const u8 *buffer, size_t size)
 {
 	const u8 *p = buffer;
-	const u8 *end = buffer + nbytes;
+	const u8 *end = buffer + size;
 	const u8 *end64;
 
 	STATIC_ASSERT(ARRAY_LEN(crc32_table) >= 0x800);
@@ -306,62 +280,32 @@ crc32_slice8(u32 remainder, const u8 *buffer, size_t nbytes)
 
 	return remainder;
 }
-#endif
+#endif /* CRC32_SLICE8 */
 
-/* Define the PCLMUL implementation if needed. */
-#if NEED_PCLMUL_IMPL
-#  define FUNCNAME		crc32_pclmul
-#  define FUNCNAME_ALIGNED	crc32_pclmul_aligned
-#  ifdef __PCLMUL__
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		__attribute__((target("pclmul")))
-#  endif
-#  include "crc32_impl.h"
-#endif
-
-/* Define the PCLMUL/AVX implementation if needed. */
-#if NEED_PCLMUL_AVX_IMPL
-#  define FUNCNAME		crc32_pclmul_avx
-#  define FUNCNAME_ALIGNED	crc32_pclmul_avx_aligned
-#  define ATTRIBUTES		__attribute__((target("pclmul,avx")))
-#  include "crc32_impl.h"
-#endif
-
-typedef u32 (*crc32_func_t)(u32, const u8 *, size_t);
-
-/*
- * If multiple implementations are available, then dispatch among them based on
- * CPU features at runtime.  Otherwise just call the single one directly.
- */
-#if NUM_IMPLS == 1
-#  define crc32_impl DEFAULT_IMPL
-#else
+#ifdef DISPATCH
 static u32 dispatch(u32, const u8 *, size_t);
 
 static crc32_func_t crc32_impl = dispatch;
 
-static u32 dispatch(u32 remainder, const u8 *buffer, size_t nbytes)
+/* Choose the fastest implementation at runtime */
+static u32 dispatch(u32 remainder, const u8 *buffer, size_t size)
 {
-	crc32_func_t f = DEFAULT_IMPL;
-#if NEED_PCLMUL_IMPL && !defined(__PCLMUL__)
-	if (x86_have_cpu_features(X86_CPU_FEATURE_PCLMULQDQ))
-		f = crc32_pclmul;
-#endif
-#if NEED_PCLMUL_AVX_IMPL
-	if (x86_have_cpu_features(X86_CPU_FEATURE_PCLMULQDQ |
-				  X86_CPU_FEATURE_AVX))
-		f = crc32_pclmul_avx;
-#endif
+	crc32_func_t f = arch_select_crc32_func();
+
+	if (f == NULL)
+		f = DEFAULT_IMPL;
+
 	crc32_impl = f;
-	return crc32_impl(remainder, buffer, nbytes);
+	return crc32_impl(remainder, buffer, size);
 }
-#endif /* NUM_IMPLS != 1 */
+#else
+#  define crc32_impl DEFAULT_IMPL /* only one implementation, use it */
+#endif
 
 LIBDEFLATEAPI u32
-libdeflate_crc32(u32 remainder, const void *buffer, size_t nbytes)
+libdeflate_crc32(u32 remainder, const void *buffer, size_t size)
 {
 	if (buffer == NULL) /* return initial value */
 		return 0;
-	return ~crc32_impl(~remainder, buffer, nbytes);
+	return ~crc32_impl(~remainder, buffer, size);
 }

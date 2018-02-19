@@ -85,9 +85,10 @@ SHARED_LIB := libdeflate$(SHARED_LIB_SUFFIX)
 
 LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
 
-LIB_HEADERS := $(wildcard lib/*.h)
+LIB_HEADERS := $(wildcard lib/*.h) $(wildcard lib/*/*.h)
 
-LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c lib/x86_cpu_features.c
+LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c \
+	   $(wildcard lib/*/cpu_features.c)
 
 DECOMPRESSION_ONLY :=
 ifndef DECOMPRESSION_ONLY
@@ -219,7 +220,9 @@ help:
 
 clean:
 	rm -f *.a *.dll *.exe *.exp *.so \
-		lib/*.o lib/*.obj lib/*.dllobj \
+		lib/*.o lib/*/*.o \
+		lib/*.obj lib/*/*.obj \
+		lib/*.dllobj lib/*/*.dllobj \
 		programs/*.o programs/*.obj \
 		$(DEFAULT_TARGETS) $(TEST_PROGRAMS) programs/config.h \
 		libdeflate.lib libdeflatestatic.lib \

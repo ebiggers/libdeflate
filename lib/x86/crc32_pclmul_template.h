@@ -1,5 +1,5 @@
 /*
- * crc32_impl.h
+ * x86/crc32_pclmul_template.h
  *
  * Copyright 2016 Eric Biggers
  *
@@ -24,6 +24,8 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  */
+
+#include <wmmintrin.h>
 
 /*
  * CRC-32 folding with PCLMULQDQ.
@@ -255,6 +257,9 @@ _128_bits_at_a_time:
 	return _mm_cvtsi128_si32(_mm_srli_si128(x0 ^ x1, 4));
 }
 
+#define CRC32_SLICE1	1
+static u32 crc32_slice1(u32, const u8 *, size_t);
+
 /*
  * Fast CRC-32 implementation for x86_64 processors that have the carryless
  * multiplication extension (PCLMUL).
@@ -264,21 +269,21 @@ _128_bits_at_a_time:
  * table is preferable.
  */
 static u32 ATTRIBUTES
-FUNCNAME(u32 remainder, const u8 *buffer, size_t nbytes)
+FUNCNAME(u32 remainder, const u8 *buffer, size_t size)
 {
 	if ((uintptr_t)buffer & 15) {
-		size_t n = MIN(nbytes, -(uintptr_t)buffer & 15);
+		size_t n = MIN(size, -(uintptr_t)buffer & 15);
 		remainder = crc32_slice1(remainder, buffer, n);
 		buffer += n;
-		nbytes -= n;
+		size -= n;
 	}
-	if (nbytes >= 16) {
+	if (size >= 16) {
 		remainder = FUNCNAME_ALIGNED(remainder, (const __m128i *)buffer,
-					     nbytes / 16);
-		buffer += nbytes & ~15;
-		nbytes &= 15;
+					     size / 16);
+		buffer += size & ~15;
+		size &= 15;
 	}
-	return crc32_slice1(remainder, buffer, nbytes);
+	return crc32_slice1(remainder, buffer, size);
 }
 
 #undef FUNCNAME

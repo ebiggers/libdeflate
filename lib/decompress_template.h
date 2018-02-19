@@ -1,7 +1,5 @@
 /*
- * decompress_impl.h
- *
- * Originally public domain; changes after 2016-09-07 are copyrighted.
+ * decompress_template.h
  *
  * Copyright 2016 Eric Biggers
  *
@@ -410,3 +408,6 @@ block_done:
 	}
 	return LIBDEFLATE_SUCCESS;
 }
+
+#undef FUNCNAME
+#undef ATTRIBUTES

@@ -20,27 +20,14 @@ typedef s16 mf_pos_t;
 
 #define MATCHFINDER_ALIGNMENT 8
 
-#ifdef __AVX2__
-#  include "matchfinder_avx2.h"
-#  if MATCHFINDER_ALIGNMENT < 32
-#    undef MATCHFINDER_ALIGNMENT
-#    define MATCHFINDER_ALIGNMENT 32
-#  endif
-#endif
+#define arch_matchfinder_init(data, size)	false
+#define arch_matchfinder_rebase(data, size)	false
 
-#ifdef __SSE2__
-#  include "matchfinder_sse2.h"
-#  if MATCHFINDER_ALIGNMENT < 16
-#    undef MATCHFINDER_ALIGNMENT
-#    define MATCHFINDER_ALIGNMENT 16
-#  endif
-#endif
-
-#ifdef __ARM_NEON
-#  include "matchfinder_neon.h"
-#  if MATCHFINDER_ALIGNMENT < 16
-#    undef MATCHFINDER_ALIGNMENT
-#    define MATCHFINDER_ALIGNMENT 16
+#ifdef _aligned_attribute
+#  if defined(__arm__) || defined(__aarch64__)
+#    include "arm/matchfinder_impl.h"
+#  elif defined(__i386__) || defined(__x86_64__)
+#    include "x86/matchfinder_impl.h"
 #  endif
 #endif
 
@@ -56,20 +43,8 @@ matchfinder_init(mf_pos_t *data, size_t num_entries)
 {
 	size_t i;
 
-#if defined(__AVX2__) && defined(_aligned_attribute)
-	if (matchfinder_init_avx2(data, num_entries * sizeof(data[0])))
+	if (arch_matchfinder_init(data, num_entries * sizeof(data[0])))
 		return;
-#endif
-
-#if defined(__SSE2__) && defined(_aligned_attribute)
-	if (matchfinder_init_sse2(data, num_entries * sizeof(data[0])))
-		return;
-#endif
-
-#if defined(__ARM_NEON) && defined(_aligned_attribute)
-	if (matchfinder_init_neon(data, num_entries * sizeof(data[0])))
-		return;
-#endif
 
 	for (i = 0; i < num_entries; i++)
 		data[i] = MATCHFINDER_INITVAL;
@@ -101,20 +76,8 @@ matchfinder_rebase(mf_pos_t *data, size_t num_entries)
 {
 	size_t i;
 
-#if defined(__AVX2__) && defined(_aligned_attribute)
-	if (matchfinder_rebase_avx2(data, num_entries * sizeof(data[0])))
+	if (arch_matchfinder_rebase(data, num_entries * sizeof(data[0])))
 		return;
-#endif
-
-#if defined(__SSE2__) && defined(_aligned_attribute)
-	if (matchfinder_rebase_sse2(data, num_entries * sizeof(data[0])))
-		return;
-#endif
-
-#if defined(__ARM_NEON) && defined(_aligned_attribute)
-	if (matchfinder_rebase_neon(data, num_entries * sizeof(data[0])))
-		return;
-#endif
 
 	if (MATCHFINDER_WINDOW_SIZE == 32768) {
 		/* Branchless version for 32768 byte windows.  If the value was

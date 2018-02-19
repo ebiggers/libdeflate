@@ -29,7 +29,7 @@
 #define aligned_malloc			SYM_FIXUP(aligned_malloc)
 #define aligned_free			SYM_FIXUP(aligned_free)
 #define deflate_get_compression_level	SYM_FIXUP(deflate_get_compression_level)
-#define _x86_cpu_features		SYM_FIXUP(_x86_cpu_features)
-#define x86_setup_cpu_features		SYM_FIXUP(x86_setup_cpu_features)
+#define _cpu_features			SYM_FIXUP(_cpu_features)
+#define setup_cpu_features		SYM_FIXUP(setup_cpu_features)
 
 #endif /* LIB_LIB_COMMON_H */

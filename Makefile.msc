@@ -25,7 +25,7 @@ STATIC_LIB_OBJ =			\
 	  lib/deflate_decompress.obj	\
 	  lib/gzip_compress.obj		\
 	  lib/gzip_decompress.obj	\
-	  lib/x86_cpu_features.obj	\
+	  lib/x86/cpu_features.obj	\
 	  lib/zlib_compress.obj		\
 	  lib/zlib_decompress.obj
 
@@ -61,4 +61,5 @@ gunzip.exe:gzip.exe
 
 clean:
 	-del *.dll *.exe *.exp libdeflate.lib libdeflatestatic.lib gzip.lib \
-		lib\*.obj lib\*.dllobj programs\*.obj 2>nul
+		lib\*.obj lib\*\*.obj lib\*.dllobj lib\*\*.dllobj \
+		programs\*.obj 2>nul

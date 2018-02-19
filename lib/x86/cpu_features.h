@@ -1,11 +1,11 @@
 /*
- * x86_cpu_features.h - feature detection for x86 processors
+ * x86/cpu_features.h - feature detection for x86 processors
  */
 
 #ifndef LIB_X86_CPU_FEATURES_H
 #define LIB_X86_CPU_FEATURES_H
 
-#include "lib_common.h"
+#include "../lib_common.h"
 
 #if defined(__x86_64__) && COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
 #  define X86_CPU_FEATURES_ENABLED 1
@@ -23,18 +23,15 @@
 
 #define X86_CPU_FEATURES_KNOWN		0x80000000
 
-extern u32 _x86_cpu_features;
+extern u32 _cpu_features;
 
-extern void
-x86_setup_cpu_features(void);
+extern void setup_cpu_features(void);
 
-/* Does the processor have the specified feature(s)?  */
-static inline bool
-x86_have_cpu_features(u32 features)
+static inline u32 get_cpu_features(void)
 {
-	if (_x86_cpu_features == 0)
-		x86_setup_cpu_features();
-	return (_x86_cpu_features & features) == features;
+	if (_cpu_features == 0)
+		setup_cpu_features();
+	return _cpu_features;
 }
 
 #endif /* X86_CPU_FEATURES_ENABLED */
