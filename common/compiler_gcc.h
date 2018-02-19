@@ -54,39 +54,39 @@
 #define prefetchw(addr)		__builtin_prefetch((addr), 1)
 #define _aligned_attribute(n)	__attribute__((aligned(n)))
 
-/*
- * Support for the following x86 instruction set extensions was introduced by
- * the following gcc versions:
- *
- *	PCLMUL	4.4
- *	AVX	4.6
- *	BMI2	4.7
- *	AVX2	4.7
- *
- * With clang, __has_builtin() can be used to detect the presence of one of the
- * associated builtins.
- *
- * Additionally, gcc 4.4 introduced the 'target' function attribute.  With
- * clang, support for this can be detected with with __has_attribute(target).
- *
- * However, prior to gcc 4.9 and clang 3.8, x86 intrinsics not available in the
- * main target could not be used in 'target' attribute functions.  Unfortunately
- * clang has no feature test macro for this so we have to check its version.
- */
-#define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE		\
+#define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE	\
 	(GCC_PREREQ(4, 4) || __has_attribute(target))
+
 #if COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
-#  define COMPILER_SUPPORTS_TARGET_INTRINSICS			\
-	(GCC_PREREQ(4, 9) || CLANG_PREREQ(3, 8, 7030000))
-#  define COMPILER_SUPPORTS_PCLMUL_TARGET			\
+
+#  if defined(__i386__) || defined(__x86_64__)
+
+#    define COMPILER_SUPPORTS_PCLMUL_TARGET	\
 	(GCC_PREREQ(4, 4) || __has_builtin(__builtin_ia32_pclmulqdq128))
-#  define COMPILER_SUPPORTS_AVX_TARGET				\
+
+#    define COMPILER_SUPPORTS_AVX_TARGET	\
 	(GCC_PREREQ(4, 6) || __has_builtin(__builtin_ia32_maxps256))
-#  define COMPILER_SUPPORTS_BMI2_TARGET				\
+
+#    define COMPILER_SUPPORTS_BMI2_TARGET	\
 	(GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di))
-#  define COMPILER_SUPPORTS_AVX2_TARGET				\
+
+#    define COMPILER_SUPPORTS_AVX2_TARGET	\
 	(GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pmaddwd256))
-#endif
+
+	/*
+	 * Prior to gcc 4.9 (r200349) and clang 3.8 (r239883), x86 intrinsics
+	 * not available in the main target could not be used in 'target'
+	 * attribute functions.  Unfortunately clang has no feature test macro
+	 * for this so we have to check its version.
+	 */
+#    if GCC_PREREQ(4, 9) || CLANG_PREREQ(3, 8, 7030000)
+#      define COMPILER_SUPPORTS_PCLMUL_TARGET_INTRINSICS	\
+		COMPILER_SUPPORTS_PCLMUL_TARGET
+#      define COMPILER_SUPPORTS_AVX2_TARGET_INTRINSICS	\
+		COMPILER_SUPPORTS_AVX2_TARGET
+#    endif
+#  endif
+#endif /* COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE */
 
 /* Newer gcc supports __BYTE_ORDER__.  Older gcc doesn't. */
 #ifdef __BYTE_ORDER__

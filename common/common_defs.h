@@ -121,23 +121,23 @@ typedef size_t machine_word_t;
 #  define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE 0
 #endif
 
-/* Are target-specific intrinsics supported in 'target' attribute functions? */
-#ifndef COMPILER_SUPPORTS_TARGET_INTRINSICS
-#  define COMPILER_SUPPORTS_TARGET_INTRINSICS 0
-#endif
-
 /* Which targets are supported with the 'target' function attribute? */
-#ifndef COMPILER_SUPPORTS_PCLMUL_TARGET
-#  define COMPILER_SUPPORTS_PCLMUL_TARGET 0
-#endif
 #ifndef COMPILER_SUPPORTS_BMI2_TARGET
 #  define COMPILER_SUPPORTS_BMI2_TARGET 0
 #endif
 #ifndef COMPILER_SUPPORTS_AVX_TARGET
 #  define COMPILER_SUPPORTS_AVX_TARGET 0
 #endif
-#ifndef COMPILER_SUPPORTS_AVX2_TARGET
-#  define COMPILER_SUPPORTS_AVX2_TARGET 0
+
+/*
+ * Which targets are supported with the 'target' function attribute and have
+ * intrinsics that work within 'target'-ed functions?
+ */
+#ifndef COMPILER_SUPPORTS_PCLMUL_TARGET_INTRINSICS
+#  define COMPILER_SUPPORTS_PCLMUL_TARGET_INTRINSICS 0
+#endif
+#ifndef COMPILER_SUPPORTS_AVX2_TARGET_INTRINSICS
+#  define COMPILER_SUPPORTS_AVX2_TARGET_INTRINSICS 0
 #endif
 
 /* _aligned_attribute(n) - declare that the annotated variable, or variables of
