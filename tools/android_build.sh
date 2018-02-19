@@ -5,7 +5,8 @@ set -eu
 ARCH="arm32"
 COMPILER="gcc"
 NDKDIR="/opt/android-ndk"
-DISABLE_NEON=
+ENABLE_NEON=false
+ENABLE_CRYPTO=false
 
 usage() {
 	cat << EOF
@@ -15,12 +16,13 @@ Build the libdeflate test programs for Android
   --arch=ARCH          Architecture: arm32|arm64 (default: $ARCH)
   --compiler=COMPILER  Compiler: gcc|clang (default: $COMPILER)
   --ndkdir=NDKDIR      Android NDK directory (default: $NDKDIR)
-  --disable-neon       Disable NEON instructions
+  --enable-neon        Enable NEON instructions
+  --enable-crypto      Enable crypto extensions (implies NEON too)
 EOF
 }
 
 if ! options=$(getopt -o '' \
-	-l 'arch:,compiler:,ndkdir:,disable-neon,help' -- "$@"); then
+	-l 'arch:,compiler:,ndkdir:,enable-neon,enable-crypto,help' -- "$@"); then
 	usage
 	exit 1
 fi
@@ -41,8 +43,11 @@ while [ $# -gt 0 ]; do
 		NDKDIR="$2"
 		shift
 		;;
-	--disable-neon)
-		DISABLE_NEON=1
+	--enable-neon)
+		ENABLE_NEON=true
+		;;
+	--enable-crypto)
+		ENABLE_CRYPTO=true
 		;;
 	--help)
 		usage
@@ -66,16 +71,23 @@ case "$ARCH" in
 arm|arm32|aarch32)
 	GCC_TOOLCHAIN="arm-linux-androideabi-4.9"
 	CLANG_TARGET="armv7-none-linux-androideabi"
-	if [ -n "$DISABLE_NEON" ]; then
-		CFLAGS+=" -march=armv6"
+	if $ENABLE_CRYPTO; then
+		CFLAGS+=" -march=armv7-a -mfloat-abi=softfp -mfpu=crypto-neon-fp-armv8"
+	elif $ENABLE_NEON; then
+		CFLAGS+=" -march=armv7-a -mfloat-abi=softfp -mfpu=neon"
 	else
-		CFLAGS+=" -march=armv7-a -mfpu=neon -mfloat-abi=softfp"
+		CFLAGS+=" -march=armv6"
 	fi
 	CFLAGS+=" --sysroot=\"$NDKDIR/platforms/android-12/arch-arm\""
 	;;
 arm64|aarch64)
 	GCC_TOOLCHAIN="aarch64-linux-android-4.9"
 	CLANG_TARGET="aarch64-none-linux-android"
+	if $ENABLE_CRYPTO; then
+		CFLAGS+=" -march=armv8-a+crypto"
+	else
+		CFLAGS+=" -march=armv8-a"
+	fi
 	CFLAGS+=" --sysroot=\"$NDKDIR/platforms/android-21/arch-arm64\""
 	;;
 *)
