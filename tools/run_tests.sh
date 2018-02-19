@@ -140,8 +140,9 @@ native_tests() {
 	fi
 	for compiler in ${compilers_to_try[@]}; do
 		for cflags in "${cflags_to_try[@]}"; do
-			if [ "$compiler" = "/usr/bin/gcc-4.8" -a \
-			     "$cflags" = "-m32" ]; then
+			if [ "$cflags" = "-m32" ] && \
+			   $compiler -v |& grep -q -- '--disable-multilib'
+			then
 				continue
 			fi
 			log "Running tests with CC=$compiler," \
