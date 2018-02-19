@@ -101,7 +101,7 @@
  *	http://www.intel.com/content/dam/www/public/us/en/documents/white-papers/fast-crc-computation-generic-polynomials-pclmulqdq-paper.pdf
  */
 static u32 ATTRIBUTES
-FUNCNAME_ALIGNED(u32 remainder, const __m128i *p, size_t vec_count)
+FUNCNAME_ALIGNED(u32 remainder, const __m128i *p, size_t nr_segs)
 {
 	/* Constants precomputed by gen_crc32_multipliers.c.  Do not edit! */
 	const __v2di multipliers_4 = (__v2di){ 0x8F352D95, 0x1D9513D7 };
@@ -112,8 +112,8 @@ FUNCNAME_ALIGNED(u32 remainder, const __m128i *p, size_t vec_count)
 	const __v2di barrett_reduction_constants =
 			(__v2di){ 0x00000001F7011641, 0x00000001DB710641 };
 
-	const __m128i * const end = p + vec_count;
-	const __m128i * const end512 = p + (vec_count & ~3);
+	const __m128i * const end = p + nr_segs;
+	const __m128i * const end512 = p + (nr_segs & ~3);
 	__m128i x0, x1, x2, x3;
 
 	/*
@@ -257,35 +257,6 @@ _128_bits_at_a_time:
 	return _mm_cvtsi128_si32(_mm_srli_si128(x0 ^ x1, 4));
 }
 
-#define CRC32_SLICE1	1
-static u32 crc32_slice1(u32, const u8 *, size_t);
-
-/*
- * Fast CRC-32 implementation for x86_64 processors that have the carryless
- * multiplication extension (PCLMUL).
- *
- * Note: on unaligned ends of the buffer, we fall back to crc32_slice1() instead
- * of crc32_slice8() because only a few bytes need to be processed, so a smaller
- * table is preferable.
- */
-static u32 ATTRIBUTES
-FUNCNAME(u32 remainder, const u8 *buffer, size_t size)
-{
-	if ((uintptr_t)buffer & 15) {
-		size_t n = MIN(size, -(uintptr_t)buffer & 15);
-		remainder = crc32_slice1(remainder, buffer, n);
-		buffer += n;
-		size -= n;
-	}
-	if (size >= 16) {
-		remainder = FUNCNAME_ALIGNED(remainder, (const __m128i *)buffer,
-					     size / 16);
-		buffer += size & ~15;
-		size &= 15;
-	}
-	return crc32_slice1(remainder, buffer, size);
-}
-
-#undef FUNCNAME
-#undef FUNCNAME_ALIGNED
-#undef ATTRIBUTES
+#define IMPL_ALIGNMENT		16
+#define IMPL_SEGMENT_SIZE	16
+#include "../crc32_vec_template.h"
