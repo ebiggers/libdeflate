@@ -827,7 +827,7 @@ dispatch(struct libdeflate_decompressor * restrict d,
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
-static decompress_func_t decompress_impl = dispatch;
+static volatile decompress_func_t decompress_impl = dispatch;
 
 /* Choose the fastest implementation at runtime */
 static enum libdeflate_result

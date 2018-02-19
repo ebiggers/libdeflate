@@ -23,7 +23,7 @@
 
 #define X86_CPU_FEATURES_KNOWN		0x80000000
 
-extern u32 _cpu_features;
+extern volatile u32 _cpu_features;
 
 extern void setup_cpu_features(void);
 

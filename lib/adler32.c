@@ -104,7 +104,7 @@ static u32 adler32_generic(u32 adler, const u8 *p, size_t size)
 #ifdef DISPATCH
 static u32 dispatch(u32, const u8 *, size_t);
 
-static adler32_func_t adler32_impl = dispatch;
+static volatile adler32_func_t adler32_impl = dispatch;
 
 /* Choose the fastest implementation at runtime */
 static u32 dispatch(u32 adler, const u8 *buffer, size_t size)

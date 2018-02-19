@@ -29,7 +29,7 @@
 
 #if X86_CPU_FEATURES_ENABLED
 
-u32 _cpu_features = 0;
+volatile u32 _cpu_features = 0;
 
 /* With old GCC versions we have to manually save and restore the x86_32 PIC
  * register (ebx).  See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47602  */

@@ -285,7 +285,7 @@ crc32_slice8(u32 remainder, const u8 *buffer, size_t size)
 #ifdef DISPATCH
 static u32 dispatch(u32, const u8 *, size_t);
 
-static crc32_func_t crc32_impl = dispatch;
+static volatile crc32_func_t crc32_impl = dispatch;
 
 /* Choose the fastest implementation at runtime */
 static u32 dispatch(u32 remainder, const u8 *buffer, size_t size)
