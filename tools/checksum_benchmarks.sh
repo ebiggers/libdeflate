@@ -135,10 +135,16 @@ i386|x86_64)
 		disable_impl "SSE2" "-mno-sse2"
 	fi
 	;;
-arm*|aarch*)
+arm*)
 	if have_cpu_feature neon; then
 		do_benchmark "NEON"
 		disable_impl "NEON" "-mfpu=vfpv3"
+	fi
+	;;
+aarch*)
+	if have_cpu_feature asimd; then
+		do_benchmark "NEON"
+		disable_impl "NEON" "-march=armv8-a+nosimd"
 	fi
 	;;
 esac
