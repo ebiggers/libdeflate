@@ -110,7 +110,7 @@ void setup_cpu_features(void)
 	if (hwcap & (1 << 1))	/* HWCAP_ASIMD */
 		features |= ARM_CPU_FEATURE_NEON;
 	if (hwcap & (1 << 4))	/* HWCAP_PMULL */
-		features |= ARM_CPU_FEATURE_NEON;
+		features |= ARM_CPU_FEATURE_PMULL;
 #endif
 
 	_cpu_features = features | ARM_CPU_FEATURES_KNOWN;
