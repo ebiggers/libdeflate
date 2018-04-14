@@ -1,3 +1,23 @@
+Version 1.0:
+	Added support for multi-member gzip files.
+
+	Moved architecture-specific code into subdirectories.  If you
+	aren't using the provided Makefile to build libdeflate, you now
+	need to compile lib/*.c and lib/*/*.c instead of just lib/*.c.
+
+	Added an ARM PMULL implementation of CRC-32, which speeds up
+	gzip compression and decompression on 32-bit and 64-bit ARM
+	processors that have the Cryptography Extensions.
+
+	Improved detection of CPU features, resulting in accelerated
+	functions being used in more cases.  This includes:
+
+	   - Detect CPU features on 32-bit x86, not just 64-bit as was
+	     done previously.
+
+	   - Detect CPU features on ARM, both 32 and 64-bit.
+	     (Limited to Linux only currently.)
+
 Version 0.8:
 	Build fixes for certain platforms and compilers.
 
