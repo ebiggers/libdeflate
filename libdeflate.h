@@ -18,7 +18,7 @@ extern "C" {
 
 /*
  * On Windows, if you want to link to the DLL version of libdeflate, then
- * #define LIBDEFLATE_DLL.
+ * #define LIBDEFLATE_DLL.  Note that the calling convention is cdecl.
  */
 #ifdef LIBDEFLATE_DLL
 #  ifdef BUILDING_LIBDEFLATE

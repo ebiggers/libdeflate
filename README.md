@@ -152,6 +152,12 @@ This enables you to allocate an output buffer of the correct size without
 guessing.  However, libdeflate's decompression routines do optionally provide
 the actual number of output bytes in case you need it.
 
+Windows developers: note that the calling convention of libdeflate.dll is cdecl.
+This differs from the Windows API, which uses stdcall.  If you call into
+libdeflate.dll using a non-C/C++ language, or dynamically using LoadLibrary(),
+make sure to use the cdecl calling convention.  Using the wrong calling
+convention may crash your application.
+
 # DEFLATE vs. zlib vs. gzip
 
 The DEFLATE format ([rfc1951](https://www.ietf.org/rfc/rfc1951.txt)), the zlib
@@ -224,21 +230,8 @@ processors.  libdeflate addresses this by providing an optimized DEFLATE
 implementation which can be used for benchmarking purposes.  And, of course,
 real applications can use it as well.
 
-That being said, I have also started [a separate
-project](https://github.com/ebiggers/xpack) for an experimental, more modern
-compression format.
-
 # License
 
 libdeflate is [MIT-licensed](COPYING).
 
-Additional notes (informational only):
-
-- I am not aware of any patents covering libdeflate.
-
-- Old versions of libdeflate were public domain; I only started copyrighting
-  changes in newer versions.  Portions of the source code that have not been
-  changed since being released in a public domain version can theoretically
-  still be used as public domain if you want to.  But for practical purposes, it
-  probably would be easier to just take the MIT license option, which is nearly
-  the same anyway.
+I am not aware of any patents or patent applications relevant to libdeflate.
