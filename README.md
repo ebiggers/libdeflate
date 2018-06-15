@@ -26,14 +26,15 @@ use this library are also provided:
 
 ## For UNIX
 
-Just run `make`.  You need GNU Make and either GCC or Clang.  GCC is recommended
-because it builds slightly faster binaries.  There is no `make install` yet;
-just copy the file(s) to where you want.
+Just run `make`, then (if desired) `make install`.  You need GNU Make and either
+GCC or Clang.  GCC is recommended because it builds slightly faster binaries.
 
-By default, all targets are built, including the library and programs, with the
-exception of the `benchmark` program.  `make help` shows the available targets.
-There are also several options which can be set on the `make` command line.  See
-the Makefile for details.
+By default, the following targets are built: the static library `libdeflate.a`,
+the shared library `libdeflate.so`, the `gzip` program, and the `gunzip` program
+(which is actually just a hard link to `gzip`).  Benchmarking and test programs
+such as `benchmark` are not built by default.  You can run `make help` to
+display the available build targets.  There are also several options which can
+be set on the `make` command line; see the Makefile for details.
 
 ## For Windows
 

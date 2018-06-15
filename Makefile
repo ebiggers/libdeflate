@@ -209,6 +209,20 @@ DEFAULT_TARGETS += gunzip$(PROG_SUFFIX)
 
 all:$(DEFAULT_TARGETS)
 
+install:all
+	install -Dm644 -t $(DESTDIR)/usr/lib $(STATIC_LIB)
+	install -Dm755 -t $(DESTDIR)/usr/lib $(SHARED_LIB)
+	install -Dm644 -t $(DESTDIR)/usr/include libdeflate.h
+	install -Dm755 gzip $(DESTDIR)/usr/bin/libdeflate-gzip
+	ln -f $(DESTDIR)/usr/bin/libdeflate-gzip $(DESTDIR)/usr/bin/libdeflate-gunzip
+
+uninstall:
+	rm -f $(DESTDIR)/usr/lib/$(STATIC_LIB) \
+		$(DESTDIR)/usr/lib/$(SHARED_LIB) \
+		$(DESTDIR)/usr/include/libdeflate.h \
+		$(DESTDIR)/usr/bin/libdeflate-gzip \
+		$(DESTDIR)/usr/bin/libdeflate-gunzip
+
 test_programs:$(TEST_PROGRAMS)
 
 help:
@@ -233,6 +247,6 @@ realclean: clean
 
 FORCE:
 
-.PHONY: all test_programs help clean realclean
+.PHONY: all install uninstall test_programs help clean realclean
 
 .DEFAULT_GOAL = all
