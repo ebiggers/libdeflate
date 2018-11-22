@@ -29,7 +29,7 @@
 
 #include "prog_util.h"
 
-static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::C:D:ghs:VYZz");
+static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::C:D:Gghs:VYZz");
 
 enum wrapper {
 	NO_WRAPPER,
@@ -297,6 +297,14 @@ name_to_engine(const tchar *name)
 
 /******************************************************************************/
 
+struct chunk_buffers {
+	void *original_buf;
+	void *compressed_buf;
+	void *decompressed_buf;
+	u8 *guarded_buf1_start, *guarded_buf1_end;
+	u8 *guarded_buf2_start, *guarded_buf2_end;
+};
+
 static bool
 compressor_init(struct compressor *c, int level, enum wrapper wrapper,
 		const struct engine *engine)
@@ -308,10 +316,26 @@ compressor_init(struct compressor *c, int level, enum wrapper wrapper,
 }
 
 static size_t
-do_compress(struct compressor *c, const void *in, size_t in_nbytes,
-	    void *out, size_t out_nbytes_avail)
+do_compress(struct compressor *c, struct chunk_buffers *buffers,
+	    size_t original_size, size_t max_compressed_size)
 {
-	return c->engine->compress(c, in, in_nbytes, out, out_nbytes_avail);
+	void *in = buffers->original_buf;
+	void *out = buffers->compressed_buf;
+	size_t compressed_size;
+
+	if (buffers->guarded_buf1_start != NULL) {
+		in = buffers->guarded_buf1_end - original_size;
+		out = buffers->guarded_buf2_end - max_compressed_size;
+		memcpy(in, buffers->original_buf, original_size);
+	}
+
+	compressed_size = c->engine->compress(c, in, original_size,
+					      out, max_compressed_size);
+
+	if (out != buffers->compressed_buf)
+		memcpy(buffers->compressed_buf, out, compressed_size);
+
+	return compressed_size;
 }
 
 static void
@@ -330,10 +354,25 @@ decompressor_init(struct decompressor *d, enum wrapper wrapper,
 }
 
 static bool
-do_decompress(struct decompressor *d, const void *in, size_t in_nbytes,
-	      void *out, size_t out_nbytes)
+do_decompress(struct decompressor *d, struct chunk_buffers *buffers,
+	      size_t compressed_size, size_t original_size)
 {
-	return d->engine->decompress(d, in, in_nbytes, out, out_nbytes);
+	void *in = buffers->compressed_buf;
+	void *out = buffers->decompressed_buf;
+	bool ok;
+
+	if (buffers->guarded_buf1_start != NULL) {
+		in = buffers->guarded_buf1_end - compressed_size;
+		out = buffers->guarded_buf2_end - original_size;
+		memcpy(in, buffers->compressed_buf, compressed_size);
+	}
+
+	ok = d->engine->decompress(d, in, compressed_size, out, original_size);
+
+	if (ok && out != buffers->decompressed_buf)
+		memcpy(buffers->decompressed_buf, out, original_size);
+
+	return ok;
 }
 
 static void
@@ -371,6 +410,7 @@ show_usage(FILE *fp)
 "  -12       slowest (best) compression\n"
 "  -C ENGINE compression engine\n"
 "  -D ENGINE decompression engine\n"
+"  -G        test with guard pages\n"
 "  -g        use gzip wrapper\n"
 "  -h        print this help\n"
 "  -s SIZE   chunk size\n"
@@ -397,10 +437,48 @@ show_version(void)
 
 /******************************************************************************/
 
+static void free_chunk_buffers(struct chunk_buffers *buffers)
+{
+	free(buffers->original_buf);
+	free(buffers->compressed_buf);
+	free(buffers->decompressed_buf);
+	free_guarded_buffer(buffers->guarded_buf1_start,
+			    buffers->guarded_buf1_end);
+	free_guarded_buffer(buffers->guarded_buf2_start,
+			    buffers->guarded_buf2_end);
+	memset(buffers, 0, sizeof(*buffers));
+}
+
+static bool alloc_chunk_buffers(struct chunk_buffers *buffers,
+				u32 chunk_size, bool use_guard_pages)
+{
+	int res = 0;
+
+	memset(buffers, 0, sizeof(*buffers));
+
+	buffers->original_buf = xmalloc(chunk_size);
+	buffers->compressed_buf = xmalloc(chunk_size - 1);
+	buffers->decompressed_buf = xmalloc(chunk_size);
+
+	if (use_guard_pages) {
+		res |= alloc_guarded_buffer(chunk_size,
+					    &buffers->guarded_buf1_start,
+					    &buffers->guarded_buf1_end);
+		res |= alloc_guarded_buffer(chunk_size,
+					    &buffers->guarded_buf2_start,
+					    &buffers->guarded_buf2_end);
+	}
+	if (buffers->original_buf == NULL || buffers->compressed_buf == NULL ||
+	    buffers->decompressed_buf == NULL || res != 0) {
+		free_chunk_buffers(buffers);
+		return false;
+	}
+	return true;
+}
+
 static int
-do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
-	     void *decompressed_buf, u32 chunk_size,
-	     struct compressor *compressor,
+do_benchmark(struct file_stream *in, struct chunk_buffers *buffers,
+	     u32 chunk_size, struct compressor *compressor,
 	     struct decompressor *decompressor)
 {
 	u64 total_uncompressed_size = 0;
@@ -409,7 +487,7 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 	u64 total_decompress_time = 0;
 	ssize_t ret;
 
-	while ((ret = xread(in, original_buf, chunk_size)) > 0) {
+	while ((ret = xread(in, buffers->original_buf, chunk_size)) > 0) {
 		u32 original_size = ret;
 		u32 compressed_size;
 		u64 start_time;
@@ -419,11 +497,8 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 
 		/* Compress the chunk of data. */
 		start_time = timer_ticks();
-		compressed_size = do_compress(compressor,
-					      original_buf,
-					      original_size,
-					      compressed_buf,
-					      original_size - 1);
+		compressed_size = do_compress(compressor, buffers,
+					      original_size, original_size - 1);
 		total_compress_time += timer_ticks() - start_time;
 
 		if (compressed_size) {
@@ -432,9 +507,8 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 			/* Decompress the data we just compressed and compare
 			 * the result with the original. */
 			start_time = timer_ticks();
-			ok = do_decompress(decompressor,
-					   compressed_buf, compressed_size,
-					   decompressed_buf, original_size);
+			ok = do_decompress(decompressor, buffers,
+					   compressed_size, original_size);
 			total_decompress_time += timer_ticks() - start_time;
 
 			if (!ok) {
@@ -443,7 +517,8 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 				return -1;
 			}
 
-			if (memcmp(original_buf, decompressed_buf,
+			if (memcmp(buffers->original_buf,
+				   buffers->decompressed_buf,
 				   original_size) != 0)
 			{
 				msg("%"TS": data did not decompress to "
@@ -495,12 +570,11 @@ tmain(int argc, tchar *argv[])
 	enum wrapper wrapper = NO_WRAPPER;
 	const struct engine *compress_engine = &DEFAULT_ENGINE;
 	const struct engine *decompress_engine = &DEFAULT_ENGINE;
-	void *original_buf = NULL;
-	void *compressed_buf = NULL;
-	void *decompressed_buf = NULL;
+	struct chunk_buffers buffers;
 	struct compressor compressor;
 	struct decompressor decompressor;
 	tchar *default_file_list[] = { NULL };
+	bool use_guard_pages = false;
 	int opt_char;
 	int i;
 	int ret;
@@ -538,6 +612,9 @@ tmain(int argc, tchar *argv[])
 				return 1;
 			}
 			break;
+		case 'G':
+			use_guard_pages = true;
+			break;
 		case 'g':
 			wrapper = GZIP_WRAPPER;
 			break;
@@ -572,13 +649,9 @@ tmain(int argc, tchar *argv[])
 	argc -= toptind;
 	argv += toptind;
 
-	original_buf = xmalloc(chunk_size);
-	compressed_buf = xmalloc(chunk_size - 1);
-	decompressed_buf = xmalloc(chunk_size);
-
 	ret = -1;
-	if (original_buf == NULL || compressed_buf == NULL ||
-	    decompressed_buf == NULL)
+
+	if (!alloc_chunk_buffers(&buffers, chunk_size, use_guard_pages))
 		goto out0;
 
 	if (!compressor_init(&compressor, level, wrapper, compress_engine))
@@ -604,6 +677,8 @@ tmain(int argc, tchar *argv[])
 	       wrapper == ZLIB_WRAPPER ? "zlib" : "gzip");
 	printf("\tCompression engine: %"TS"\n", compress_engine->name);
 	printf("\tDecompression engine: %"TS"\n", decompress_engine->name);
+	if (use_guard_pages)
+		printf("\tDebugging options: guard_pages\n");
 
 	for (i = 0; i < argc; i++) {
 		struct file_stream in;
@@ -614,8 +689,7 @@ tmain(int argc, tchar *argv[])
 
 		printf("Processing %"TS"...\n", in.name);
 
-		ret = do_benchmark(&in, original_buf, compressed_buf,
-				   decompressed_buf, chunk_size, &compressor,
+		ret = do_benchmark(&in, &buffers, chunk_size, &compressor,
 				   &decompressor);
 		xclose(&in);
 		if (ret != 0)
@@ -627,8 +701,6 @@ out2:
 out1:
 	compressor_destroy(&compressor);
 out0:
-	free(decompressed_buf);
-	free(compressed_buf);
-	free(original_buf);
+	free_chunk_buffers(&buffers);
 	return -ret;
 }
