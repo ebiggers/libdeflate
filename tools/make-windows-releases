@@ -9,7 +9,8 @@ for arch in 'i686' 'x86_64'; do
 	dir=libdeflate-$(git describe --tags | tr -d v)-windows-${arch}-bin
 	rm -rf $dir ${dir}.zip
 	mkdir $dir
-	cp libdeflate.dll libdeflate.lib libdeflate.h *.exe $dir
+	cp libdeflate.dll libdeflate.lib libdeflatestatic.lib \
+		libdeflate.h *.exe $dir
 	${arch}-w64-mingw32-strip ${dir}/libdeflate.dll ${dir}/*.exe
 	for file in COPYING NEWS; do
 		sed < $file > ${dir}/${file}.txt -e 's/$/\r/g'

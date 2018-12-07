@@ -31,22 +31,24 @@ override CFLAGS :=							\
 
 ##############################################################################
 
-STATIC_LIB_SUFFIX := .a
-SHARED_LIB_SUFFIX := .so
-SHARED_LIB_CFLAGS := -fPIC
-PROG_SUFFIX       :=
-PROG_CFLAGS       :=
-HARD_LINKS        := 1
+STATIC_LIB_SUFFIX  := .a
+SHARED_LIB_SUFFIX  := .so
+SHARED_LIB_CFLAGS  := -fPIC
+SHARED_LIB_LDFLAGS :=
+PROG_SUFFIX        :=
+PROG_CFLAGS        :=
+HARD_LINKS         := 1
 
 # Compiling for Windows with MinGW?
 ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
-    STATIC_LIB_SUFFIX := .lib
-    SHARED_LIB_SUFFIX := .dll
-    SHARED_LIB_CFLAGS :=
-    PROG_SUFFIX       := .exe
-    PROG_CFLAGS       := -static -municode
-    HARD_LINKS        :=
-    override CFLAGS   := $(CFLAGS) $(call cc-option,-Wno-pedantic-ms-format)
+    STATIC_LIB_SUFFIX  := static.lib
+    SHARED_LIB_SUFFIX  := .dll
+    SHARED_LIB_CFLAGS  :=
+    SHARED_LIB_LDFLAGS := -Wl,--out-implib,libdeflate.lib
+    PROG_SUFFIX        := .exe
+    PROG_CFLAGS        := -static -municode
+    HARD_LINKS         :=
+    override CFLAGS    := $(CFLAGS) $(call cc-option,-Wno-pedantic-ms-format)
 
     # If AR was not already overridden, then derive it from $(CC).
     # Note that CC may take different forms, e.g. "cc", "gcc",
@@ -130,7 +132,8 @@ DEFAULT_TARGETS += $(STATIC_LIB)
 
 # Create shared library
 $(SHARED_LIB):$(SHARED_LIB_OBJ)
-	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(LIB_CFLAGS) -shared $+
+	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(LIB_CFLAGS) \
+		$(SHARED_LIB_LDFLAGS) -shared $+
 
 DEFAULT_TARGETS += $(SHARED_LIB)
 
