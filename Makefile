@@ -31,16 +31,18 @@ override CFLAGS :=							\
 
 ##############################################################################
 
+SOVERSION          := 0
 STATIC_LIB_SUFFIX  := .a
-SHARED_LIB_SUFFIX  := .so
+SHARED_LIB_SUFFIX  := .so.$(SOVERSION)
 SHARED_LIB_CFLAGS  := -fPIC
-SHARED_LIB_LDFLAGS :=
+SHARED_LIB_LDFLAGS := -Wl,-soname=libdeflate$(SHARED_LIB_SUFFIX)
 PROG_SUFFIX        :=
 PROG_CFLAGS        :=
 HARD_LINKS         := 1
 
 # Compiling for Windows with MinGW?
 ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
+    SOVERSION          :=
     STATIC_LIB_SUFFIX  := static.lib
     SHARED_LIB_SUFFIX  := .dll
     SHARED_LIB_CFLAGS  :=
@@ -137,6 +139,13 @@ $(SHARED_LIB):$(SHARED_LIB_OBJ)
 
 DEFAULT_TARGETS += $(SHARED_LIB)
 
+ifdef SOVERSION
+# Create the symlink libdeflate.so => libdeflate.so.$SOVERSION
+libdeflate.so:$(SHARED_LIB)
+	$(QUIET_LN) ln -sf $+ $@
+DEFAULT_TARGETS += libdeflate.so
+endif
+
 # Rebuild if CC or LIB_CFLAGS changed
 .lib-cflags: FORCE
 	@flags='$(CC):$(LIB_CFLAGS)'; \
@@ -215,6 +224,7 @@ all:$(DEFAULT_TARGETS)
 install:all
 	install -Dm644 -t $(DESTDIR)/usr/lib $(STATIC_LIB)
 	install -Dm755 -t $(DESTDIR)/usr/lib $(SHARED_LIB)
+	ln -sf $(SHARED_LIB) $(DESTDIR)/usr/lib/libdeflate.so
 	install -Dm644 -t $(DESTDIR)/usr/include libdeflate.h
 	install -Dm755 gzip $(DESTDIR)/usr/bin/libdeflate-gzip
 	ln -f $(DESTDIR)/usr/bin/libdeflate-gzip $(DESTDIR)/usr/bin/libdeflate-gunzip
@@ -222,6 +232,7 @@ install:all
 uninstall:
 	rm -f $(DESTDIR)/usr/lib/$(STATIC_LIB) \
 		$(DESTDIR)/usr/lib/$(SHARED_LIB) \
+		$(DESTDIR)/usr/lib/libdeflate.so \
 		$(DESTDIR)/usr/include/libdeflate.h \
 		$(DESTDIR)/usr/bin/libdeflate-gzip \
 		$(DESTDIR)/usr/bin/libdeflate-gunzip

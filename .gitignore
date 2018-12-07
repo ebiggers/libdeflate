@@ -6,6 +6,7 @@
 *.o
 *.obj
 *.so
+*.so.*
 /.lib-cflags
 /.prog-cflags
 /programs/config.h
