@@ -22,14 +22,29 @@ extern "C" {
  */
 #ifdef LIBDEFLATE_DLL
 #  ifdef BUILDING_LIBDEFLATE
-#    define LIBDEFLATEAPI LIBEXPORT
+#    define LIBDEFLATEAPI_SYM_VISIBILITY	LIBEXPORT
 #  elif defined(_WIN32) || defined(__CYGWIN__)
-#    define LIBDEFLATEAPI __declspec(dllimport)
+#    define LIBDEFLATEAPI_SYM_VISIBILITY	__declspec(dllimport)
 #  endif
 #endif
-#ifndef LIBDEFLATEAPI
-#  define LIBDEFLATEAPI
+#ifndef LIBDEFLATEAPI_SYM_VISIBILITY
+#  define LIBDEFLATEAPI_SYM_VISIBILITY
 #endif
+
+#if defined(BUILDING_LIBDEFLATE) && defined(__GNUC__) && \
+	defined(_WIN32) && defined(__i386__)
+    /*
+     * On 32-bit Windows, gcc assumes 16-byte stack alignment but MSVC only 4.
+     * Realign the stack when entering libdeflate to avoid crashing in SSE/AVX
+     * code when called from an MSVC-compiled application.
+     */
+#  define LIBDEFLATEAPI_STACKALIGN	__attribute__((force_align_arg_pointer))
+#endif
+#ifndef LIBDEFLATEAPI_STACKALIGN
+#  define LIBDEFLATEAPI_STACKALIGN
+#endif
+
+#define LIBDEFLATEAPI	LIBDEFLATEAPI_SYM_VISIBILITY LIBDEFLATEAPI_STACKALIGN
 
 /* ========================================================================== */
 /*                             Compression                                    */
