@@ -79,7 +79,7 @@ endif
 
 ##############################################################################
 
-COMMON_HEADERS := $(wildcard common/*.h)
+COMMON_HEADERS := $(wildcard common/*.h) libdeflate.h
 DEFAULT_TARGETS :=
 
 #### Library
