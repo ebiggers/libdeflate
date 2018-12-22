@@ -86,7 +86,9 @@
 #      define COMPILER_SUPPORTS_AVX2_TARGET_INTRINSICS	\
 		COMPILER_SUPPORTS_AVX2_TARGET
 #    endif
-#  elif defined(__arm__) || defined(__aarch64__)
+#  elif (defined(__arm__) && defined(__ARM_FP)) || defined(__aarch64__)
+	/* arm: including arm_neon.h requires hardware fp support */
+
 	/*
 	 * Prior to gcc 6.1 (r230411 for arm, r226563 for aarch64), NEON
 	 * and crypto intrinsics not available in the main target could not be
