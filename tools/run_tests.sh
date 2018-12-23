@@ -341,6 +341,10 @@ EOF
 		run_cmd ./benchmark -6 "$TMPFILE"
 		run_cmd ./benchmark -12 "$TMPFILE"
 	fi
+
+	# Check worst-case decompression speed
+	run_cmd make -j$NPROC test_slow_decompression
+	run_cmd ./test_slow_decompression
 }
 
 ###############################################################################

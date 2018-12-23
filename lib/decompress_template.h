@@ -89,6 +89,8 @@ next_block:
 		STATIC_ASSERT(DEFLATE_NUM_PRECODE_SYMS == ((1 << 4) - 1) + 4);
 		num_explicit_precode_lens = POP_BITS(4) + 4;
 
+		d->static_codes_loaded = false;
+
 		/* Read the precode codeword lengths.  */
 		STATIC_ASSERT(DEFLATE_MAX_PRE_CODEWORD_LEN == (1 << 3) - 1);
 		if (CAN_ENSURE(DEFLATE_NUM_PRECODE_SYMS * 3)) {
@@ -217,9 +219,20 @@ next_block:
 	} else {
 		SAFETY_CHECK(block_type == DEFLATE_BLOCKTYPE_STATIC_HUFFMAN);
 
-		/* Static Huffman block: set the static Huffman codeword
-		 * lengths.  Then the remainder is the same as decompressing a
-		 * dynamic Huffman block.  */
+		/*
+		 * Static Huffman block: build the decode tables for the static
+		 * codes.  Skip doing so if the tables are already set up from
+		 * an earlier static block; this speeds up decompression of
+		 * degenerate input of many empty or very short static blocks.
+		 *
+		 * Afterwards, the remainder is the same as decompressing a
+		 * dynamic Huffman block.
+		 */
+
+		if (d->static_codes_loaded)
+			goto have_decode_tables;
+
+		d->static_codes_loaded = true;
 
 		STATIC_ASSERT(DEFLATE_NUM_LITLEN_SYMS == 288);
 		STATIC_ASSERT(DEFLATE_NUM_OFFSET_SYMS == 32);
@@ -238,13 +251,13 @@ next_block:
 
 		num_litlen_syms = 288;
 		num_offset_syms = 32;
-
 	}
 
 	/* Decompressing a Huffman block (either dynamic or static)  */
 
 	SAFETY_CHECK(build_offset_decode_table(d, num_litlen_syms, num_offset_syms));
 	SAFETY_CHECK(build_litlen_decode_table(d, num_litlen_syms, num_offset_syms));
+have_decode_tables:
 
 	/* The main DEFLATE decode loop  */
 	for (;;) {

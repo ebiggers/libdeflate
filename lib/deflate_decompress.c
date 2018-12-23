@@ -139,6 +139,8 @@ struct libdeflate_decompressor {
 
 	u16 working_space[2 * (DEFLATE_MAX_CODEWORD_LEN + 1) +
 			  DEFLATE_MAX_NUM_SYMS];
+
+	bool static_codes_loaded;
 };
 
 /*****************************************************************************
@@ -883,7 +885,15 @@ libdeflate_deflate_decompress(struct libdeflate_decompressor * restrict d,
 LIBDEFLATEAPI struct libdeflate_decompressor *
 libdeflate_alloc_decompressor(void)
 {
-	return malloc(sizeof(struct libdeflate_decompressor));
+	struct libdeflate_decompressor *d;
+
+	d = malloc(sizeof(*d));
+	if (d == NULL)
+		return NULL;
+
+	d->static_codes_loaded = false;
+
+	return d;
 }
 
 LIBDEFLATEAPI void

@@ -166,8 +166,10 @@ PROG_CFLAGS += $(CFLAGS)		 \
 PROG_COMMON_HEADERS := programs/prog_util.h programs/config.h
 PROG_COMMON_SRC     := programs/prog_util.c programs/tgetopt.c
 NONTEST_PROGRAM_SRC := programs/gzip.c
-TEST_PROGRAM_SRC    := programs/benchmark.c programs/test_checksums.c \
-			programs/checksum.c
+TEST_PROGRAM_SRC    := programs/benchmark.c \
+		       programs/checksum.c \
+		       programs/test_checksums.c \
+		       programs/test_slow_decompression.c
 
 NONTEST_PROGRAMS := $(NONTEST_PROGRAM_SRC:programs/%.c=%$(PROG_SUFFIX))
 DEFAULT_TARGETS  += $(NONTEST_PROGRAMS)

@@ -16,5 +16,6 @@
 /gunzip
 /run_tests.log
 /test_checksums
+/test_slow_decompression
 tags
 cscope*
