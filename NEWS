@@ -1,3 +1,24 @@
+Version 1.1:
+	Fixed crash in CRC-32 code when the prebuilt libdeflate for
+	32-bit Windows was called by a program built with Visual Studio.
+
+	Improved the worst-case decompression speed of malicious data.
+
+	Fixed build error when compiling for an ARM processor without
+	hardware floating point support.
+
+	Improved performance on the PowerPC64 architecture.
+
+	Added soname to libdeflate.so, to make packaging easier.
+
+	Added 'make install' target to the Makefile.
+
+	The Makefile now supports user-specified CPPFLAGS.
+
+	The Windows binary releases now include the import library for
+	libdeflate.dll.  libdeflate.lib is now the import library, and
+	libdeflatestatic.lib is the static library.
+
 Version 1.0:
 	Added support for multi-member gzip files.
 
