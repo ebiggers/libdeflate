@@ -127,6 +127,8 @@ assertion_failed(const char *expr, const char *file, int line);
 #define ASSERT(expr) if (!(expr)) assertion_failed(#expr, __FILE__, __LINE__)
 
 extern void *xmalloc(size_t size);
+extern int alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret);
+extern void free_guarded_buffer(u8 *start, u8 *end);
 
 extern u64 timer_ticks(void);
 extern u64 timer_ticks_to_ms(u64 ticks);

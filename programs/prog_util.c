@@ -115,6 +115,97 @@ xmalloc(size_t size)
 	return p;
 }
 
+static size_t
+get_page_size(void)
+{
+#ifdef _WIN32
+	SYSTEM_INFO info;
+
+	GetSystemInfo(&info);
+	return info.dwPageSize;
+#else
+	return sysconf(_SC_PAGESIZE);
+#endif
+}
+
+/* Allocate a buffer with guard pages */
+int
+alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret)
+{
+	const size_t pagesize = get_page_size();
+	const size_t nr_pages = (size + pagesize - 1) / pagesize;
+	u8 *base_addr;
+	u8 *start, *end;
+#ifdef _WIN32
+	DWORD oldProtect;
+#else
+	int fd;
+#endif
+
+	*start_ret = NULL;
+	*end_ret = NULL;
+
+#ifdef _WIN32
+	/* Allocate buffer and guard pages with no access. */
+	base_addr = VirtualAlloc(NULL, (nr_pages + 2) * pagesize,
+				 MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS);
+	if (!base_addr) {
+		msg("Unable to allocate memory (VirtualAlloc): Windows error %u",
+		    (unsigned int)GetLastError());
+		return -1;
+	}
+	start = base_addr + pagesize;
+	end = start + (nr_pages * pagesize);
+
+	/* Grant read+write access to just the buffer. */
+	if (!VirtualProtect(start, end - start, PAGE_READWRITE, &oldProtect)) {
+		msg("Unable to protect memory (VirtualProtect): Windows error %u",
+		    (unsigned int)GetLastError());
+		VirtualFree(base_addr, 0, MEM_RELEASE);
+		return -1;
+	}
+#else
+	/*
+	 * Allocate buffer and guard pages.
+	 * For portability, use /dev/zero instead of MAP_ANONYMOUS.
+	 */
+	fd = open("/dev/zero", O_RDONLY);
+	if (fd < 0) {
+		msg_errno("Unable to open /dev/zero");
+		return -1;
+	}
+	base_addr = mmap(NULL, (nr_pages + 2) * pagesize,
+			 PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
+	close(fd);
+	if (base_addr == (u8 *)MAP_FAILED) {
+		msg_errno("Unable to allocate memory (unable to mmap /dev/zero)");
+		return -1;
+	}
+	start = base_addr + pagesize;
+	end = start + (nr_pages * pagesize);
+
+	/* Unmap the guard pages. */
+	munmap(base_addr, pagesize);
+	munmap(end, pagesize);
+#endif
+	*start_ret = start;
+	*end_ret = end;
+	return 0;
+}
+
+/* Free a buffer that was allocated by alloc_guarded_buffer() */
+void
+free_guarded_buffer(u8 *start, u8 *end)
+{
+	if (!start)
+		return;
+#ifdef _WIN32
+	VirtualFree(start - get_page_size(), 0, MEM_RELEASE);
+#else
+	munmap(start, end - start);
+#endif
+}
+
 /*
  * Return the number of timer ticks that have elapsed since some unspecified
  * point fixed at the start of program execution
