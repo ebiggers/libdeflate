@@ -29,6 +29,8 @@ override CFLAGS :=							\
 	$(call cc-option,-Wstrict-prototypes)				\
 	$(call cc-option,-Wvla)
 
+# We don't define any CPPFLAGS, but support the user specifying it.
+
 ##############################################################################
 
 SOVERSION          := 0
@@ -120,11 +122,12 @@ SHARED_LIB_OBJ := $(LIB_SRC:.c=.shlib.o)
 
 # Compile static library object files
 $(STATIC_LIB_OBJ): %.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
-	$(QUIET_CC) $(CC) -o $@ -c $(LIB_CFLAGS) $<
+	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(LIB_CFLAGS) $<
 
 # Compile shared library object files
 $(SHARED_LIB_OBJ): %.shlib.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
-	$(QUIET_CC) $(CC) -o $@ -c $(LIB_CFLAGS) $(SHARED_LIB_CFLAGS) -DLIBDEFLATE_DLL $<
+	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(LIB_CFLAGS) \
+		$(SHARED_LIB_CFLAGS) -DLIBDEFLATE_DLL $<
 
 # Create static library
 $(STATIC_LIB):$(STATIC_LIB_OBJ)
@@ -146,9 +149,9 @@ libdeflate.so:$(SHARED_LIB)
 DEFAULT_TARGETS += libdeflate.so
 endif
 
-# Rebuild if CC or LIB_CFLAGS changed
+# Rebuild if CC, LIB_CFLAGS, or CPPFLAGS changed
 .lib-cflags: FORCE
-	@flags='$(CC):$(LIB_CFLAGS)'; \
+	@flags='$(CC):$(LIB_CFLAGS):$(CPPFLAGS)'; \
 	if [ "$$flags" != "`cat $@ 2>/dev/null`" ]; then \
 		[ -e $@ ] && echo "Rebuilding library due to new compiler flags"; \
 		echo "$$flags" > $@; \
@@ -186,7 +189,7 @@ programs/config.h:programs/detect.sh .prog-cflags
 
 # Compile program object files
 $(PROG_OBJ): %.o: %.c $(PROG_COMMON_HEADERS) $(COMMON_HEADERS) .prog-cflags
-	$(QUIET_CC) $(CC) -o $@ -c $(PROG_CFLAGS) $<
+	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(PROG_CFLAGS) $<
 
 # Link the programs.
 #
@@ -211,9 +214,9 @@ endif
 
 DEFAULT_TARGETS += gunzip$(PROG_SUFFIX)
 
-# Rebuild if CC or PROG_CFLAGS changed
+# Rebuild if CC, PROG_CFLAGS, or CPPFLAGS changed
 .prog-cflags: FORCE
-	@flags='$(CC):$(PROG_CFLAGS)'; \
+	@flags='$(CC):$(PROG_CFLAGS):$(CPPFLAGS)'; \
 	if [ "$$flags" != "`cat $@ 2>/dev/null`" ]; then \
 		[ -e $@ ] && echo "Rebuilding programs due to new compiler flags"; \
 		echo "$$flags" > $@; \
