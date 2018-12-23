@@ -95,6 +95,14 @@ msg_errno(const char *format, ...)
 	va_end(va);
 }
 
+/* Abort with an error message */
+_noreturn void
+assertion_failed(const char *expr, const char *file, int line)
+{
+	msg("Assertion failed: %s at %s:%d", expr, file, line);
+	abort();
+}
+
 /* malloc() wrapper */
 void *
 xmalloc(size_t size)

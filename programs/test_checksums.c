@@ -13,16 +13,6 @@
 
 static unsigned int rng_seed;
 
-static void
-assertion_failed(const char *file, int line)
-{
-	fprintf(stderr, "Assertion failed at %s:%d\n", file, line);
-	fprintf(stderr, "RNG seed was %u\n", rng_seed);
-	abort();
-}
-
-#define ASSERT(expr) if (!(expr)) assertion_failed(__FILE__, __LINE__);
-
 typedef u32 (*cksum_fn_t)(u32, const void *, size_t);
 
 static u32
@@ -138,7 +128,9 @@ static void test_random_buffers(u8 *buffer, size_t limit, u32 num_iter)
 int
 tmain(int argc, tchar *argv[])
 {
-	u8 *buffer = malloc(32768);
+	u8 *buffer = xmalloc(32768);
+
+	program_invocation_name = get_filename(argv[0]);
 
 	rng_seed = time(NULL);
 	srand(rng_seed);
