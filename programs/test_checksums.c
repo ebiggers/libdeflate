@@ -111,17 +111,26 @@ test_adler32(const void *buffer, size_t size, u32 initial_value)
 		       libdeflate_adler32, zlib_adler32, initial_value);
 }
 
-static void test_random_buffers(u8 *buffer, size_t limit, u32 num_iter)
+static void test_random_buffers(u8 *buffer, u8 *guarded_buf_end,
+				size_t limit, u32 num_iter)
 {
 	for (u32 i = 0; i < num_iter; i++) {
 		size_t start = rand() % limit;
 		size_t len = rand() % (limit - start);
+		u32 a0 = select_initial_adler();
+		u32 c0 = select_initial_crc();
 
 		for (size_t j = start; j < start + len; j++)
 			buffer[j] = rand();
 
-		test_adler32(&buffer[start], len, select_initial_adler());
-		test_crc32(&buffer[start], len, select_initial_crc());
+		/* Test with chosen size and alignment */
+		test_adler32(&buffer[start], len, a0);
+		test_crc32(&buffer[start], len, c0);
+
+		/* Test with chosen size, with guard page after input buffer */
+		memcpy(guarded_buf_end - len, &buffer[start], len);
+		test_adler32(guarded_buf_end - len, len, a0);
+		test_crc32(guarded_buf_end - len, len, c0);
 	}
 }
 
@@ -129,8 +138,11 @@ int
 tmain(int argc, tchar *argv[])
 {
 	u8 *buffer = xmalloc(32768);
+	u8 *guarded_buf_start, *guarded_buf_end;
 
 	program_invocation_name = get_filename(argv[0]);
+
+	alloc_guarded_buffer(32768, &guarded_buf_start, &guarded_buf_end);
 
 	rng_seed = time(NULL);
 	srand(rng_seed);
@@ -141,9 +153,9 @@ tmain(int argc, tchar *argv[])
 	test_initial_values(zlib_crc32, 0);
 
 	/* Test different buffer sizes and alignments */
-	test_random_buffers(buffer, 256, 5000);
-	test_random_buffers(buffer, 1024, 500);
-	test_random_buffers(buffer, 32768, 50);
+	test_random_buffers(buffer, guarded_buf_end, 256, 5000);
+	test_random_buffers(buffer, guarded_buf_end, 1024, 500);
+	test_random_buffers(buffer, guarded_buf_end, 32768, 50);
 
 	/*
 	 * Test Adler-32 overflow cases.  For example, given all 0xFF bytes and
@@ -170,5 +182,6 @@ tmain(int argc, tchar *argv[])
 	printf("Adler-32 and CRC-32 checksum tests passed!\n");
 
 	free(buffer);
+	free_guarded_buffer(guarded_buf_start, guarded_buf_end);
 	return 0;
 }
