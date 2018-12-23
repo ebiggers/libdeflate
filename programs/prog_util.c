@@ -171,6 +171,14 @@ u64 timer_MB_per_s(u64 bytes, u64 ticks)
 }
 
 /*
+ * Convert a byte count and a number of elapsed timer ticks to KB/s
+ */
+u64 timer_KB_per_s(u64 bytes, u64 ticks)
+{
+	return bytes * timer_frequency() / ticks / 1000;
+}
+
+/*
  * Retrieve a pointer to the filename component of the specified path.
  *
  * Note: this does not modify the path.  Therefore, it is not guaranteed to work
