@@ -71,7 +71,10 @@
 	(GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di))
 
 #    define COMPILER_SUPPORTS_AVX2_TARGET	\
-	(GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pmaddwd256))
+	(GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_psadbw256))
+
+#    define COMPILER_SUPPORTS_AVX512BW_TARGET	\
+	(GCC_PREREQ(5, 1) || __has_builtin(__builtin_ia32_psadbw512))
 
 	/*
 	 * Prior to gcc 4.9 (r200349) and clang 3.8 (r239883), x86 intrinsics
@@ -85,6 +88,8 @@
 		COMPILER_SUPPORTS_PCLMUL_TARGET
 #      define COMPILER_SUPPORTS_AVX2_TARGET_INTRINSICS	\
 		COMPILER_SUPPORTS_AVX2_TARGET
+#      define COMPILER_SUPPORTS_AVX512BW_TARGET_INTRINSICS	\
+		COMPILER_SUPPORTS_AVX512BW_TARGET
 #    endif
 #  elif (defined(__arm__) && defined(__ARM_FP)) || defined(__aarch64__)
 	/* arm: including arm_neon.h requires hardware fp support */

@@ -128,6 +128,9 @@ typedef size_t machine_word_t;
 #ifndef COMPILER_SUPPORTS_AVX_TARGET
 #  define COMPILER_SUPPORTS_AVX_TARGET 0
 #endif
+#ifndef COMPILER_SUPPORTS_AVX512BW_TARGET
+#  define COMPILER_SUPPORTS_AVX512BW_TARGET 0
+#endif
 
 /*
  * Which targets are supported with the 'target' function attribute and have
@@ -141,6 +144,9 @@ typedef size_t machine_word_t;
 #endif
 #ifndef COMPILER_SUPPORTS_AVX2_TARGET_INTRINSICS
 #  define COMPILER_SUPPORTS_AVX2_TARGET_INTRINSICS 0
+#endif
+#ifndef COMPILER_SUPPORTS_AVX512BW_TARGET_INTRINSICS
+#  define COMPILER_SUPPORTS_AVX512BW_TARGET_INTRINSICS 0
 #endif
 #ifndef COMPILER_SUPPORTS_NEON_TARGET_INTRINSICS
 #  define COMPILER_SUPPORTS_NEON_TARGET_INTRINSICS 0
