@@ -63,7 +63,17 @@ read_xcr(u32 index)
 	return ((u64)edx << 32) | eax;
 }
 
-#define IS_SET(reg, bit) ((reg) & ((u32)1 << (bit)))
+#undef BIT
+#define BIT(nr)			(1UL << (nr))
+
+#define XCR0_BIT_SSE		BIT(1)
+#define XCR0_BIT_AVX		BIT(2)
+#define XCR0_BIT_OPMASK		BIT(5)
+#define XCR0_BIT_ZMM_HI256	BIT(6)
+#define XCR0_BIT_HI16_ZMM	BIT(7)
+
+#define IS_SET(reg, nr)		((reg) & BIT(nr))
+#define IS_ALL_SET(reg, mask)	(((reg) & (mask)) == (mask))
 
 /* Initialize _cpu_features with bits for interesting processor features. */
 void setup_cpu_features(void)
@@ -72,7 +82,8 @@ void setup_cpu_features(void)
 	u32 dummy1, dummy2, dummy3, dummy4;
 	u32 max_function;
 	u32 features_1, features_2, features_3, features_4;
-	bool os_saves_ymm_regs = false;
+	bool os_avx_support = false;
+	bool os_avx512_support = false;
 
 	/* Get maximum supported function  */
 	cpuid(0, 0, &max_function, &dummy2, &dummy3, &dummy4);
@@ -88,11 +99,22 @@ void setup_cpu_features(void)
 	if (IS_SET(features_2, 1))
 		features |= X86_CPU_FEATURE_PCLMULQDQ;
 
-	if (IS_SET(features_2, 27)) /* OSXSAVE set?  */
-		if ((read_xcr(0) & 0x6) == 0x6)
-			os_saves_ymm_regs = true;
+	if (IS_SET(features_2, 27)) { /* OSXSAVE set? */
+		u64 xcr0 = read_xcr(0);
 
-	if (os_saves_ymm_regs && IS_SET(features_2, 28))
+		os_avx_support = IS_ALL_SET(xcr0,
+					    XCR0_BIT_SSE |
+					    XCR0_BIT_AVX);
+
+		os_avx512_support = IS_ALL_SET(xcr0,
+					       XCR0_BIT_SSE |
+					       XCR0_BIT_AVX |
+					       XCR0_BIT_OPMASK |
+					       XCR0_BIT_ZMM_HI256 |
+					       XCR0_BIT_HI16_ZMM);
+	}
+
+	if (os_avx_support && IS_SET(features_2, 28))
 		features |= X86_CPU_FEATURE_AVX;
 
 	if (max_function < 7)
@@ -101,11 +123,14 @@ void setup_cpu_features(void)
 	/* Extended feature flags  */
 	cpuid(7, 0, &dummy1, &features_3, &features_4, &dummy4);
 
-	if (os_saves_ymm_regs && IS_SET(features_3, 5))
+	if (os_avx_support && IS_SET(features_3, 5))
 		features |= X86_CPU_FEATURE_AVX2;
 
 	if (IS_SET(features_3, 8))
 		features |= X86_CPU_FEATURE_BMI2;
+
+	if (os_avx512_support && IS_SET(features_3, 30))
+		features |= X86_CPU_FEATURE_AVX512BW;
 
 out:
 	_cpu_features = features | X86_CPU_FEATURES_KNOWN;
