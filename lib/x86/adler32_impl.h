@@ -27,7 +27,132 @@
 
 #include "cpu_features.h"
 
-/* AVX2 implementation */
+/*
+ * The following macros horizontally sum the s1 counters and add them to the
+ * real s1, and likewise for s2.  They do this via a series of reductions, each
+ * of which halves the vector length, until just one counter remains.
+ *
+ * The s1 reductions don't depend on the s2 reductions and vice versa, so for
+ * efficiency they are interleaved.  Also, every other s1 counter is 0 due to
+ * the 'psadbw' instruction (_mm_sad_epu8) summing groups of 8 bytes rather than
+ * 4; hence, one of the s1 reductions is skipped when going from 128 => 32 bits.
+ */
+
+#define ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2)		    \
+{									    \
+	__v4si s1_last = (v_s1), s2_last = (v_s2);			    \
+									    \
+	/* 128 => 32 bits */						    \
+	s2_last += (__v4si)_mm_shuffle_epi32((__m128i)s2_last, 0x31);	    \
+	s1_last += (__v4si)_mm_shuffle_epi32((__m128i)s1_last, 0x02);	    \
+	s2_last += (__v4si)_mm_shuffle_epi32((__m128i)s2_last, 0x02);	    \
+									    \
+	*(s1) += (u32)_mm_cvtsi128_si32((__m128i)s1_last);		    \
+	*(s2) += (u32)_mm_cvtsi128_si32((__m128i)s2_last);		    \
+}
+
+#define ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2)		    \
+{									    \
+	__v4si s1_128bit, s2_128bit;					    \
+									    \
+	/* 256 => 128 bits */						    \
+	s1_128bit = (__v4si)_mm256_extracti128_si256((__m256i)(v_s1), 0) +  \
+		    (__v4si)_mm256_extracti128_si256((__m256i)(v_s1), 1);   \
+	s2_128bit = (__v4si)_mm256_extracti128_si256((__m256i)(v_s2), 0) +  \
+		    (__v4si)_mm256_extracti128_si256((__m256i)(v_s2), 1);   \
+									    \
+	ADLER32_FINISH_VEC_CHUNK_128((s1), (s2), s1_128bit, s2_128bit);	    \
+}
+
+#define ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1, v_s2)		    \
+{									    \
+	__v8si s1_256bit, s2_256bit;					    \
+									    \
+	/* 512 => 256 bits */						    \
+	s1_256bit = (__v8si)_mm512_extracti64x4_epi64((__m512i)(v_s1), 0) + \
+		    (__v8si)_mm512_extracti64x4_epi64((__m512i)(v_s1), 1);  \
+	s2_256bit = (__v8si)_mm512_extracti64x4_epi64((__m512i)(v_s2), 0) + \
+		    (__v8si)_mm512_extracti64x4_epi64((__m512i)(v_s2), 1);  \
+									    \
+	ADLER32_FINISH_VEC_CHUNK_256((s1), (s2), s1_256bit, s2_256bit);	    \
+}
+
+/* AVX-512BW implementation: like the AVX2 one, but does 64 bytes at a time */
+#undef DISPATCH_AVX512BW
+#if !defined(DEFAULT_IMPL) &&						\
+    /*
+     * clang before v3.9 is missing some AVX-512BW intrinsics including
+     * _mm512_sad_epu8(), a.k.a. __builtin_ia32_psadbw512.  So just make using
+     * AVX-512BW, even when __AVX512BW__ is defined, conditional on
+     * COMPILER_SUPPORTS_AVX512BW_TARGET where we check for that builtin.
+     */									\
+    COMPILER_SUPPORTS_AVX512BW_TARGET &&				\
+    (defined(__AVX512BW__) || (X86_CPU_FEATURES_ENABLED &&		\
+			       COMPILER_SUPPORTS_AVX512BW_TARGET_INTRINSICS))
+#  define FUNCNAME		adler32_avx512bw
+#  define FUNCNAME_CHUNK	adler32_avx512bw_chunk
+#  define IMPL_ALIGNMENT	64
+#  define IMPL_SEGMENT_SIZE	64
+#  define IMPL_MAX_CHUNK_SIZE	MAX_CHUNK_SIZE
+#  ifdef __AVX512BW__
+#    define ATTRIBUTES
+#    define DEFAULT_IMPL	adler32_avx512bw
+#  else
+#    define ATTRIBUTES		__attribute__((target("avx512bw")))
+#    define DISPATCH		1
+#    define DISPATCH_AVX512BW	1
+#  endif
+#  include <immintrin.h>
+static forceinline ATTRIBUTES void
+adler32_avx512bw_chunk(const __m512i *p, const __m512i *const end,
+		       u32 *s1, u32 *s2)
+{
+	const __m512i zeroes = _mm512_setzero_si512();
+	const __v64qi multipliers = (__v64qi){
+		64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
+		48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33,
+		32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
+		16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,
+	};
+	const __v32hi ones = (__v32hi)_mm512_set1_epi16(1);
+	__v16si v_s1 = (__v16si)zeroes;
+	__v16si v_s1_sums = (__v16si)zeroes;
+	__v16si v_s2 = (__v16si)zeroes;
+
+	do {
+		/* Load the next 64-byte segment */
+		__m512i bytes = *p++;
+
+		/* Multiply the bytes by 64...1 (the number of times they need
+		 * to be added to s2) and add adjacent products */
+		__v32hi sums = (__v32hi)_mm512_maddubs_epi16(
+						bytes, (__m512i)multipliers);
+
+		/* Keep sum of all previous s1 counters, for adding to s2 later.
+		 * This allows delaying the multiplication by 64 to the end. */
+		v_s1_sums += v_s1;
+
+		/* Add the sum of each group of 8 bytes to the corresponding s1
+		 * counter */
+		v_s1 += (__v16si)_mm512_sad_epu8(bytes, zeroes);
+
+		/* Add the sum of each group of 4 products of the bytes by
+		 * 64...1 to the corresponding s2 counter */
+		v_s2 += (__v16si)_mm512_madd_epi16((__m512i)sums,
+						   (__m512i)ones);
+	} while (p != end);
+
+	/* Finish the s2 counters by adding the sum of the s1 values at the
+	 * beginning of each segment, multiplied by the segment size (64) */
+	v_s2 += (__v16si)_mm512_slli_epi32((__m512i)v_s1_sums, 6);
+
+	/* Add the counters to the real s1 and s2 */
+	ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1, v_s2);
+}
+#  include "../adler32_vec_template.h"
+#endif /* AVX-512BW implementation */
+
+/* AVX2 implementation: like the AVX-512BW one, but does 32 bytes at a time */
 #undef DISPATCH_AVX2
 #if !defined(DEFAULT_IMPL) &&	\
 	(defined(__AVX2__) || (X86_CPU_FEATURES_ENABLED &&	\
@@ -50,32 +175,43 @@ static forceinline ATTRIBUTES void
 adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 {
 	const __m256i zeroes = _mm256_setzero_si256();
-	const __v32qi multipliers = (__v32qi) { 32, 31, 30, 29, 28, 27, 26, 25,
-						24, 23, 22, 21, 20, 19, 18, 17,
-						16, 15, 14, 13, 12, 11, 10, 9,
-						8,  7,  6,  5,  4,  3,  2,  1 };
+	const __v32qi multipliers = (__v32qi){
+		32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
+		16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,
+	};
 	const __v16hi ones = (__v16hi)_mm256_set1_epi16(1);
 	__v8si v_s1 = (__v8si)zeroes;
 	__v8si v_s1_sums = (__v8si)zeroes;
 	__v8si v_s2 = (__v8si)zeroes;
 
 	do {
+		/* Load the next 32-byte segment */
 		__m256i bytes = *p++;
+
+		/* Multiply the bytes by 32...1 (the number of times they need
+		 * to be added to s2) and add adjacent products */
 		__v16hi sums = (__v16hi)_mm256_maddubs_epi16(
 						bytes, (__m256i)multipliers);
+
+		/* Keep sum of all previous s1 counters, for adding to s2 later.
+		 * This allows delaying the multiplication by 32 to the end. */
 		v_s1_sums += v_s1;
+
+		/* Add the sum of each group of 8 bytes to the corresponding s1
+		 * counter */
 		v_s1 += (__v8si)_mm256_sad_epu8(bytes, zeroes);
+
+		/* Add the sum of each group of 4 products of the bytes by
+		 * 32...1 to the corresponding s2 counter */
 		v_s2 += (__v8si)_mm256_madd_epi16((__m256i)sums, (__m256i)ones);
 	} while (p != end);
 
-	v_s1 = (__v8si)_mm256_hadd_epi32((__m256i)v_s1, zeroes);
-	v_s1 = (__v8si)_mm256_hadd_epi32((__m256i)v_s1, zeroes);
-	*s1 += (u32)v_s1[0] + (u32)v_s1[4];
-
+	/* Finish the s2 counters by adding the sum of the s1 values at the
+	 * beginning of each segment, multiplied by the segment size (32) */
 	v_s2 += (__v8si)_mm256_slli_epi32((__m256i)v_s1_sums, 5);
-	v_s2 = (__v8si)_mm256_hadd_epi32((__m256i)v_s2, zeroes);
-	v_s2 = (__v8si)_mm256_hadd_epi32((__m256i)v_s2, zeroes);
-	*s2 += (u32)v_s2[0] + (u32)v_s2[4];
+
+	/* Add the counters to the real s1 and s2 */
+	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2);
 }
 #  include "../adler32_vec_template.h"
 #endif /* AVX2 implementation */
@@ -167,14 +303,8 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 	v_s2 += (__v4si)_mm_madd_epi16((__m128i)v_byte_sums_d,
 				       (__m128i)(__v8hi){ 8,  7,  6,  5,  4,  3,  2,  1 });
 
-	/* Now accumulate what we computed into the real s1 and s2 */
-	v_s1 += (__v4si)_mm_shuffle_epi32((__m128i)v_s1, 0x31);
-	v_s1 += (__v4si)_mm_shuffle_epi32((__m128i)v_s1, 0x02);
-	*s1 += _mm_cvtsi128_si32((__m128i)v_s1);
-
-	v_s2 += (__v4si)_mm_shuffle_epi32((__m128i)v_s2, 0x31);
-	v_s2 += (__v4si)_mm_shuffle_epi32((__m128i)v_s2, 0x02);
-	*s2 += _mm_cvtsi128_si32((__m128i)v_s2);
+	/* Add the counters to the real s1 and s2 */
+	ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2);
 }
 #  include "../adler32_vec_template.h"
 #endif /* SSE2 implementation */
@@ -185,6 +315,10 @@ arch_select_adler32_func(void)
 {
 	u32 features = get_cpu_features();
 
+#ifdef DISPATCH_AVX512BW
+	if (features & X86_CPU_FEATURE_AVX512BW)
+		return adler32_avx512bw;
+#endif
 #ifdef DISPATCH_AVX2
 	if (features & X86_CPU_FEATURE_AVX2)
 		return adler32_avx2;
