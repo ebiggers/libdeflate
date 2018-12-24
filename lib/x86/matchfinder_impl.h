@@ -25,6 +25,60 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifdef __AVX512BW__
+#  if MATCHFINDER_ALIGNMENT < 64
+#    undef MATCHFINDER_ALIGNMENT
+#    define MATCHFINDER_ALIGNMENT 64
+#  endif
+#  include <immintrin.h>
+static forceinline bool
+matchfinder_init_avx512bw(mf_pos_t *data, size_t size)
+{
+	__m512i v, *p;
+	size_t n;
+
+	if (size % (sizeof(__m512i) * 4) != 0)
+		return false;
+
+	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
+	v = _mm512_set1_epi16(MATCHFINDER_INITVAL);
+	p = (__m512i *)data;
+	n = size / (sizeof(__m512i) * 4);
+	do {
+		p[0] = v;
+		p[1] = v;
+		p[2] = v;
+		p[3] = v;
+		p += 4;
+	} while (--n);
+	return true;
+}
+
+static forceinline bool
+matchfinder_rebase_avx512bw(mf_pos_t *data, size_t size)
+{
+	__m512i v, *p;
+	size_t n;
+
+	if (size % (sizeof(__m512i) * 4) != 0)
+		return false;
+
+	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
+	v = _mm512_set1_epi16((u16)-MATCHFINDER_WINDOW_SIZE);
+	p = (__m512i *)data;
+	n = size / (sizeof(__m512i) * 4);
+	do {
+		/* PADDSW: Add Packed Signed Integers With Signed Saturation  */
+		p[0] = _mm512_adds_epi16(p[0], v);
+		p[1] = _mm512_adds_epi16(p[1], v);
+		p[2] = _mm512_adds_epi16(p[2], v);
+		p[3] = _mm512_adds_epi16(p[3], v);
+		p += 4;
+	} while (--n);
+	return true;
+}
+#endif /* __AVX512BW__*/
+
 #ifdef __AVX2__
 #  if MATCHFINDER_ALIGNMENT < 32
 #    undef MATCHFINDER_ALIGNMENT
@@ -137,6 +191,10 @@ matchfinder_rebase_sse2(mf_pos_t *data, size_t size)
 static forceinline bool
 arch_matchfinder_init(mf_pos_t *data, size_t size)
 {
+#ifdef __AVX512BW__
+	if (matchfinder_init_avx512bw(data, size))
+		return true;
+#endif
 #ifdef __AVX2__
 	if (matchfinder_init_avx2(data, size))
 		return true;
@@ -152,6 +210,10 @@ arch_matchfinder_init(mf_pos_t *data, size_t size)
 static forceinline bool
 arch_matchfinder_rebase(mf_pos_t *data, size_t size)
 {
+#ifdef __AVX512BW__
+	if (matchfinder_rebase_avx512bw(data, size))
+		return true;
+#endif
 #ifdef __AVX2__
 	if (matchfinder_rebase_avx2(data, size))
 		return true;
