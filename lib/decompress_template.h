@@ -93,17 +93,9 @@ next_block:
 
 		/* Read the precode codeword lengths.  */
 		STATIC_ASSERT(DEFLATE_MAX_PRE_CODEWORD_LEN == (1 << 3) - 1);
-		if (CAN_ENSURE(DEFLATE_NUM_PRECODE_SYMS * 3)) {
-
-			ENSURE_BITS(DEFLATE_NUM_PRECODE_SYMS * 3);
-
-			for (i = 0; i < num_explicit_precode_lens; i++)
-				d->u.precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
-		} else {
-			for (i = 0; i < num_explicit_precode_lens; i++) {
-				ENSURE_BITS(3);
-				d->u.precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
-			}
+		for (i = 0; i < num_explicit_precode_lens; i++) {
+			ENSURE_BITS(3);
+			d->u.precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
 		}
 
 		for (; i < DEFLATE_NUM_PRECODE_SYMS; i++)

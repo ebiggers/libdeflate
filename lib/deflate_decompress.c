@@ -176,18 +176,18 @@ typedef machine_word_t bitbuf_t;
 
 /*
  * Number of bits the bitbuffer variable can hold.
+ *
+ * This is one less than the obvious value because of the optimized arithmetic
+ * in FILL_BITS_WORDWISE() that leaves 'bitsleft' in the range
+ * [WORDBITS - 8, WORDBITS - 1] rather than [WORDBITS - 7, WORDBITS].
  */
-#define BITBUF_NBITS	(8 * sizeof(bitbuf_t))
+#define BITBUF_NBITS	(8 * sizeof(bitbuf_t) - 1)
 
 /*
- * The maximum number of bits that can be requested to be in the bitbuffer
- * variable.  This is the maximum value of 'n' that can be passed
- * ENSURE_BITS(n).
- *
- * This not equal to BITBUF_NBITS because we never read less than one byte at a
- * time.  If the bitbuffer variable contains more than (BITBUF_NBITS - 8) bits,
- * then we can't read another byte without first consuming some bits.  So the
- * maximum count we can ensure is (BITBUF_NBITS - 7).
+ * The maximum number of bits that can be ensured in the bitbuffer variable,
+ * i.e. the maximum value of 'n' that can be passed ENSURE_BITS(n).  The decoder
+ * only reads whole bytes from memory, so this is the lowest value of 'bitsleft'
+ * at which another byte cannot be read without first consuming some bits.
  */
 #define MAX_ENSURE	(BITBUF_NBITS - 7)
 
@@ -228,18 +228,38 @@ do {								\
 } while (bitsleft <= BITBUF_NBITS - 8)
 
 /*
- * Fill the bitbuffer variable by reading the next word from the input buffer.
- * This can be significantly faster than FILL_BITS_BYTEWISE().  However, for
- * this to work correctly, the word must be interpreted in little-endian format.
- * In addition, the memory access may be unaligned.  Therefore, this method is
- * most efficient on little-endian architectures that support fast unaligned
- * access, such as x86 and x86_64.
+ * Fill the bitbuffer variable by reading the next word from the input buffer
+ * and branchlessly updating 'in_next' and 'bitsleft' based on how many bits
+ * were filled.  This can be significantly faster than FILL_BITS_BYTEWISE().
+ * However, for this to work correctly, the word must be interpreted in
+ * little-endian format.  In addition, the memory access may be unaligned.
+ * Therefore, this method is most efficient on little-endian architectures that
+ * support fast unaligned access, such as x86 and x86_64.
+ *
+ * For faster updating of 'bitsleft', we consider the bitbuffer size in bits to
+ * be 1 less than the word size and therefore be all 1 bits.  Then the number of
+ * bits filled is the value of the 0 bits in position >= 3 when changed to 1.
+ * E.g. if words are 64 bits and bitsleft = 16 = b010000 then we refill b101000
+ * = 40 bits = 5 bytes.  This uses only 4 operations to update 'in_next' and
+ * 'bitsleft': one each of +, ^, >>, and |.  (Not counting operations the
+ * compiler optimizes out.)  In contrast, the alternative of:
+ *
+ *	in_next += (BITBUF_NBITS - bitsleft) >> 3;
+ *	bitsleft += (BITBUF_NBITS - bitsleft) & ~7;
+ *
+ * (where BITBUF_NBITS would be WORDBITS rather than WORDBITS - 1) would on
+ * average refill an extra bit, but uses 5 operations: two +, and one each of
+ * -, >>, and &.  Also the - and & must be completed before 'bitsleft' can be
+ * updated, while the current solution updates 'bitsleft' with no dependencies.
  */
 #define FILL_BITS_WORDWISE()					\
 do {								\
+	/* BITBUF_NBITS must be all 1's in binary, see above */	\
+	STATIC_ASSERT((BITBUF_NBITS & (BITBUF_NBITS + 1)) == 0);\
+								\
 	bitbuf |= get_unaligned_leword(in_next) << bitsleft;	\
-	in_next += (BITBUF_NBITS - bitsleft) >> 3;		\
-	bitsleft += (BITBUF_NBITS - bitsleft) & ~7;		\
+	in_next += (bitsleft ^ BITBUF_NBITS) >> 3;		\
+	bitsleft |= BITBUF_NBITS & ~7;				\
 } while (0)
 
 /*
