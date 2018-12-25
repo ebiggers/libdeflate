@@ -87,7 +87,7 @@
  * required for the corresponding Huffman code, including the main table and all
  * subtables.  Each number depends on three parameters:
  *
- *	(1) the maximum number of symbols in the code (DEFLATE_NUM_*_SYMBOLS)
+ *	(1) the maximum number of symbols in the code (DEFLATE_NUM_*_SYMS)
  *	(2) the number of main table bits (the TABLEBITS numbers defined above)
  *	(3) the maximum allowed codeword length (DEFLATE_MAX_*_CODEWORD_LEN)
  *
