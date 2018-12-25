@@ -364,19 +364,28 @@ do {									\
 /* Shift to extract the decode result from a decode table entry.  */
 #define HUFFDEC_RESULT_SHIFT		8
 
+/* Shift a decode result into its position in the decode table entry.  */
+#define HUFFDEC_RESULT_ENTRY(result)	((u32)(result) << HUFFDEC_RESULT_SHIFT)
+
 /* The decode result for each precode symbol.  There is no special optimization
  * for the precode; the decode result is simply the symbol value.  */
 static const u32 precode_decode_results[DEFLATE_NUM_PRECODE_SYMS] = {
-	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+#define ENTRY(presym)	HUFFDEC_RESULT_ENTRY(presym)
+	ENTRY(0)   , ENTRY(1)   , ENTRY(2)   , ENTRY(3)   ,
+	ENTRY(4)   , ENTRY(5)   , ENTRY(6)   , ENTRY(7)   ,
+	ENTRY(8)   , ENTRY(9)   , ENTRY(10)  , ENTRY(11)  ,
+	ENTRY(12)  , ENTRY(13)  , ENTRY(14)  , ENTRY(15)  ,
+	ENTRY(16)  , ENTRY(17)  , ENTRY(18)  ,
+#undef ENTRY
 };
 
 /* The decode result for each litlen symbol.  For literals, this is the literal
  * value itself and the HUFFDEC_LITERAL flag.  For lengths, this is the length
  * base and the number of extra length bits.  */
 static const u32 litlen_decode_results[DEFLATE_NUM_LITLEN_SYMS] = {
-#define ENTRY(literal)	((HUFFDEC_LITERAL >> HUFFDEC_RESULT_SHIFT) | (literal))
 
 	/* Literals  */
+#define ENTRY(literal)	(HUFFDEC_LITERAL | HUFFDEC_RESULT_ENTRY(literal))
 	ENTRY(0)   , ENTRY(1)   , ENTRY(2)   , ENTRY(3)   ,
 	ENTRY(4)   , ENTRY(5)   , ENTRY(6)   , ENTRY(7)   ,
 	ENTRY(8)   , ENTRY(9)   , ENTRY(10)  , ENTRY(11)  ,
@@ -447,8 +456,8 @@ static const u32 litlen_decode_results[DEFLATE_NUM_LITLEN_SYMS] = {
 #define HUFFDEC_LENGTH_BASE_SHIFT	8
 #define HUFFDEC_END_OF_BLOCK_LENGTH	0
 
-#define ENTRY(length_base, num_extra_bits) \
-	(((u32)(length_base) << HUFFDEC_LENGTH_BASE_SHIFT) | (num_extra_bits))
+#define ENTRY(length_base, num_extra_bits)	HUFFDEC_RESULT_ENTRY(	\
+	((u32)(length_base) << HUFFDEC_LENGTH_BASE_SHIFT) | (num_extra_bits))
 
 	/* End of block  */
 	ENTRY(HUFFDEC_END_OF_BLOCK_LENGTH, 0),
@@ -472,8 +481,9 @@ static const u32 offset_decode_results[DEFLATE_NUM_OFFSET_SYMS] = {
 #define HUFFDEC_EXTRA_OFFSET_BITS_SHIFT 16
 #define HUFFDEC_OFFSET_BASE_MASK (((u32)1 << HUFFDEC_EXTRA_OFFSET_BITS_SHIFT) - 1)
 
-#define ENTRY(offset_base, num_extra_bits) \
-	((offset_base) | ((u32)(num_extra_bits) << HUFFDEC_EXTRA_OFFSET_BITS_SHIFT))
+#define ENTRY(offset_base, num_extra_bits)	HUFFDEC_RESULT_ENTRY(	\
+		((u32)(num_extra_bits) << HUFFDEC_EXTRA_OFFSET_BITS_SHIFT) | \
+		(offset_base))
 	ENTRY(1     , 0)  , ENTRY(2     , 0)  , ENTRY(3     , 0)  , ENTRY(4     , 0)  ,
 	ENTRY(5     , 1)  , ENTRY(7     , 1)  , ENTRY(9     , 2)  , ENTRY(13    , 2) ,
 	ENTRY(17    , 3)  , ENTRY(25    , 3)  , ENTRY(33    , 4)  , ENTRY(49    , 4)  ,
@@ -484,13 +494,6 @@ static const u32 offset_decode_results[DEFLATE_NUM_OFFSET_SYMS] = {
 	ENTRY(16385 , 13) , ENTRY(24577 , 13) , ENTRY(32769 , 14) , ENTRY(49153 , 14) ,
 #undef ENTRY
 };
-
-/* Construct a decode table entry from a decode result and codeword length.  */
-static forceinline u32
-make_decode_table_entry(u32 result, u32 length)
-{
-	return (result << HUFFDEC_RESULT_SHIFT) | length;
-}
 
 /*
  * Build a table for fast decoding of symbols from a Huffman code.  As input,
@@ -596,7 +599,7 @@ build_decode_table(u32 decode_table[],
 		 * decompressing a well-formed stream, these default values will
 		 * never be used.  But since a malformed stream might contain
 		 * any bits at all, these entries need to be set anyway.  */
-		u32 entry = make_decode_table_entry(decode_results[0], 1);
+		u32 entry = decode_results[0] | 1;
 		for (sym = 0; sym < (1U << table_bits); sym++)
 			decode_table[sym] = entry;
 
@@ -679,8 +682,8 @@ build_decode_table(u32 decode_table[],
 			 * number of entries it contains).  */
 			decode_table[cur_codeword_prefix] =
 				HUFFDEC_SUBTABLE_POINTER |
-				make_decode_table_entry(cur_table_start,
-							cur_table_bits);
+				HUFFDEC_RESULT_ENTRY(cur_table_start) |
+				cur_table_bits;
 
 			/* Now that we're filling a subtable, we need to drop
 			 * the first 'table_bits' bits of the codewords.  */
@@ -690,8 +693,7 @@ build_decode_table(u32 decode_table[],
 		/* Create the decode table entry, which packs the decode result
 		 * and the codeword length (minus 'table_bits' for subtables)
 		 * together.  */
-		entry = make_decode_table_entry(decode_results[sym],
-						codeword_len - num_dropped_bits);
+		entry = decode_results[sym] | (codeword_len - num_dropped_bits);
 
 		/* Fill in as many copies of the decode table entry as are
 		 * needed.  The number of entries to fill is a power of 2 and
