@@ -515,6 +515,39 @@ static const u32 offset_decode_results[DEFLATE_NUM_OFFSET_SYMS] = {
 #undef ENTRY
 };
 
+/* Advance to the next codeword in the canonical Huffman code */
+static forceinline void
+next_codeword(unsigned *codeword_p, unsigned *codeword_len_p,
+	      unsigned *stride_p, unsigned len_counts[])
+{
+	unsigned codeword = *codeword_p;
+	unsigned codeword_len = *codeword_len_p;
+	unsigned bit;
+
+	/*
+	 * Increment the codeword, bit-reversed: find the last (highest order) 0
+	 * bit in the codeword, set it, and clear any later (higher order) bits.
+	 */
+	bit = 1U << bsr32(~codeword & ((1U << codeword_len) - 1));
+	codeword &= bit - 1;
+	codeword |= bit;
+
+	/*
+	 * If there are no more codewords of this length, proceed to the next
+	 * lowest used length.  Increasing the length logically appends 0's to
+	 * the codeword, but this is a no-op due to the codeword being
+	 * represented in bit-reversed form.
+	 */
+	len_counts[codeword_len]--;
+	while (len_counts[codeword_len] == 0) {
+		codeword_len++;
+		*stride_p <<= 1;
+	}
+
+	*codeword_p = codeword;
+	*codeword_len_p = codeword_len;
+}
+
 /*
  * Build a table for fast decoding of symbols from a Huffman code.  As input,
  * this function takes the codeword length of each symbol which may be used in
@@ -562,19 +595,20 @@ build_decode_table(u32 decode_table[],
 		   const unsigned max_codeword_len,
 		   u16 sorted_syms[])
 {
+	const unsigned table_mask = (1U << table_bits) - 1;
 	unsigned len_counts[DEFLATE_MAX_CODEWORD_LEN + 1];
 	unsigned offsets[DEFLATE_MAX_CODEWORD_LEN + 1];
 	unsigned len;
 	unsigned sym;
 	s32 remainder;
 	unsigned sym_idx;
+	unsigned codeword;
 	unsigned codeword_len;
-	unsigned codeword_reversed = 0;
-	unsigned cur_codeword_prefix = -1;
-	unsigned cur_table_start = 0;
-	unsigned cur_table_bits = table_bits;
-	unsigned num_dropped_bits = 0;
-	const unsigned table_mask = (1U << table_bits) - 1;
+	unsigned stride;
+	unsigned cur_table_end = 1U << table_bits;
+	unsigned subtable_prefix;
+	unsigned subtable_start;
+	unsigned subtable_bits;
 
 	/* Count how many symbols have each codeword length, including 0.  */
 	for (len = 0; len <= max_codeword_len; len++)
@@ -647,32 +681,53 @@ build_decode_table(u32 decode_table[],
 	/* Start with the smallest codeword length and the smallest-valued
 	 * symbol which has that codeword length.  */
 	sym_idx = offsets[0];
+	sym = sorted_syms[sym_idx++];
+	codeword = 0;
 	codeword_len = 1;
 	while (len_counts[codeword_len] == 0)
 		codeword_len++;
+	stride = 1U << codeword_len;
 
-	for (;;) {  /* For each used symbol and its codeword...  */
-		unsigned sym;
+	/* For each symbol and its codeword in the main part of the table... */
+	do {
 		u32 entry;
 		unsigned i;
-		unsigned end;
-		unsigned increment;
-		unsigned bit;
 
-		/* Get the next symbol.  */
-		sym = sorted_syms[sym_idx];
+		/* Fill in as many copies of the decode table entry as are
+		 * needed.  The number of entries to fill is a power of 2 and
+		 * depends on the codeword length; it could be as few as 1 or as
+		 * large as half the size of the table.  Since the codewords are
+		 * bit-reversed, the indices to fill are those with the codeword
+		 * in its low bits; it's the high bits that vary.  */
+		entry = decode_results[sym] | codeword_len;
+		i = codeword;
+		do {
+			decode_table[i] = entry;
+			i += stride; /* stride is 1U << codeword_len */
+		} while (i < cur_table_end);
 
-		/* Start a new subtable if the codeword is long enough to
-		 * require a subtable, *and* the first 'table_bits' bits of the
-		 * codeword don't match the prefix for the previous subtable if
-		 * any.  */
-		if (codeword_len > table_bits &&
-		    (codeword_reversed & table_mask) != cur_codeword_prefix) {
+		/* Advance to the next symbol and codeword */
+		if (sym_idx == num_syms)
+			return true;
+		sym = sorted_syms[sym_idx++];
+		next_codeword(&codeword, &codeword_len, &stride, len_counts);
+	} while (codeword_len <= table_bits);
 
-			cur_codeword_prefix = (codeword_reversed & table_mask);
+	/* The codeword length has exceeded table_bits, so we're done filling
+	 * direct entries.  Start filling subtable pointers and subtables. */
+	stride >>= table_bits;
+	goto new_subtable;
 
-			cur_table_start += 1U << cur_table_bits;
+	for (;;) {
+		u32 entry;
+		unsigned i;
 
+		/* Start a new subtable if the first 'table_bits' bits of the
+		 * codeword don't match the prefix for the current subtable. */
+		if ((codeword & table_mask) != subtable_prefix) {
+		new_subtable:
+			subtable_prefix = (codeword & table_mask);
+			subtable_start = cur_table_end;
 			/* Calculate the subtable length.  If the codeword
 			 * length exceeds 'table_bits' by n, the subtable needs
 			 * at least 2**n entries.  But it may need more; if
@@ -684,74 +739,43 @@ build_decode_table(u32 decode_table[],
 			 * subtable, since the only case where we may have an
 			 * incomplete code is a single codeword of length 1,
 			 * and that never requires any subtables.  */
-			cur_table_bits = codeword_len - table_bits;
-			remainder = (s32)1 << cur_table_bits;
+			subtable_bits = codeword_len - table_bits;
+			remainder = 1U << subtable_bits;
 			for (;;) {
 				remainder -= len_counts[table_bits +
-							cur_table_bits];
+							subtable_bits];
 				if (remainder <= 0)
 					break;
-				cur_table_bits++;
+				subtable_bits++;
 				remainder <<= 1;
 			}
+			cur_table_end = subtable_start + (1U << subtable_bits);
 
 			/* Create the entry that points from the main table to
 			 * the subtable.  This entry contains the index of the
 			 * start of the subtable and the number of bits with
 			 * which the subtable is indexed (the log base 2 of the
 			 * number of entries it contains).  */
-			decode_table[cur_codeword_prefix] =
+			decode_table[subtable_prefix] =
 				HUFFDEC_SUBTABLE_POINTER |
-				HUFFDEC_RESULT_ENTRY(cur_table_start) |
-				cur_table_bits;
-
-			/* Now that we're filling a subtable, we need to drop
-			 * the first 'table_bits' bits of the codewords.  */
-			num_dropped_bits = table_bits;
+				HUFFDEC_RESULT_ENTRY(subtable_start) |
+				subtable_bits;
 		}
 
-		/* Create the decode table entry, which packs the decode result
-		 * and the codeword length (minus 'table_bits' for subtables)
-		 * together.  */
-		entry = decode_results[sym] | (codeword_len - num_dropped_bits);
-
-		/* Fill in as many copies of the decode table entry as are
-		 * needed.  The number of entries to fill is a power of 2 and
-		 * depends on the codeword length; it could be as few as 1 or as
-		 * large as half the size of the table.  Since the codewords are
-		 * bit-reversed, the indices to fill are those with the codeword
-		 * in its low bits; it's the high bits that vary.  */
-		i = cur_table_start + (codeword_reversed >> num_dropped_bits);
-		end = cur_table_start + (1U << cur_table_bits);
-		increment = 1U << (codeword_len - num_dropped_bits);
+		/* Fill the subtable entries */
+		entry = decode_results[sym] | (codeword_len - table_bits);
+		i = subtable_start + (codeword >> table_bits);
 		do {
 			decode_table[i] = entry;
-			i += increment;
-		} while (i < end);
+			/* stride is 1U << (codeword_len - table_bits) */
+			i += stride;
+		} while (i < cur_table_end);
 
 		/* Advance to the next symbol and codeword */
-
-		if (++sym_idx == num_syms)
+		if (sym_idx == num_syms)
 			return true;
-		/*
-		 * Increment the codeword, bit-reversed: find the last (highest
-		 * order) 0 bit in the codeword, set it, and clear any later
-		 * (higher order) bits.
-		 */
-		bit = 1U << bsr32(~codeword_reversed &
-				  ((1U << codeword_len) - 1));
-		codeword_reversed &= bit - 1;
-		codeword_reversed |= bit;
-
-		/*
-		 * If there are no more codewords of this length, proceed to the
-		 * next lowest used length.  Increasing the length logically
-		 * appends 0's to the codeword, but this is a no-op due to the
-		 * codeword being represented in bit-reversed form.
-		 */
-		len_counts[codeword_len]--;
-		while (len_counts[codeword_len] == 0)
-			codeword_len++;
+		sym = sorted_syms[sym_idx++];
+		next_codeword(&codeword, &codeword_len, &stride, len_counts);
 	}
 }
 
