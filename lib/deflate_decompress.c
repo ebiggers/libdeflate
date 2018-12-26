@@ -729,22 +729,26 @@ build_decode_table(u32 decode_table[],
 			i += increment;
 		} while (i < end);
 
-		/* Advance to the next codeword by incrementing it.  But since
-		 * our codewords are bit-reversed, we must manipulate the bits
-		 * ourselves rather than simply adding 1.  */
-		bit = 1U << (codeword_len - 1);
-		while (codeword_reversed & bit)
-			bit >>= 1;
+		/* Advance to the next symbol and codeword */
+
+		if (++sym_idx == num_syms)
+			return true;
+		/*
+		 * Increment the codeword, bit-reversed: find the last (highest
+		 * order) 0 bit in the codeword, set it, and clear any later
+		 * (higher order) bits.
+		 */
+		bit = 1U << bsr32(~codeword_reversed &
+				  ((1U << codeword_len) - 1));
 		codeword_reversed &= bit - 1;
 		codeword_reversed |= bit;
 
-		/* Advance to the next symbol.  This will either increase the
-		 * codeword length, or keep the same codeword length but
-		 * increase the symbol value.  Note: since we are using
-		 * bit-reversed codewords, we don't need to explicitly append
-		 * zeroes to the codeword when the codeword length increases. */
-		if (++sym_idx == num_syms)
-			return true;
+		/*
+		 * If there are no more codewords of this length, proceed to the
+		 * next lowest used length.  Increasing the length logically
+		 * appends 0's to the codeword, but this is a no-op due to the
+		 * codeword being represented in bit-reversed form.
+		 */
 		len_counts[codeword_len]--;
 		while (len_counts[codeword_len] == 0)
 			codeword_len++;
