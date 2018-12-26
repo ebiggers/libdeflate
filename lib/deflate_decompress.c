@@ -137,8 +137,8 @@ struct libdeflate_decompressor {
 
 	u32 offset_decode_table[OFFSET_ENOUGH];
 
-	u16 working_space[2 * (DEFLATE_MAX_CODEWORD_LEN + 1) +
-			  DEFLATE_MAX_NUM_SYMS];
+	/* used only during build_decode_table() */
+	u16 sorted_syms[DEFLATE_MAX_NUM_SYMS];
 
 	bool static_codes_loaded;
 };
@@ -546,8 +546,9 @@ static const u32 offset_decode_results[DEFLATE_NUM_OFFSET_SYMS] = {
  *	The log base-2 of the number of main table entries to use.
  * @max_codeword_len
  *	The maximum allowed codeword length for this Huffman code.
- * @working_space
- *	A temporary array of length '2 * (@max_codeword_len + 1) + @num_syms'.
+ *	Must be <= DEFLATE_MAX_CODEWORD_LEN.
+ * @sorted_syms
+ *	A temporary array of length @num_syms.
  *
  * Returns %true if successful; %false if the codeword lengths do not form a
  * valid Huffman code.
@@ -559,11 +560,10 @@ build_decode_table(u32 decode_table[],
 		   const u32 decode_results[],
 		   const unsigned table_bits,
 		   const unsigned max_codeword_len,
-		   u16 working_space[])
+		   u16 sorted_syms[])
 {
-	u16 * const len_counts = &working_space[0];
-	u16 * const offsets = &working_space[1 * (max_codeword_len + 1)];
-	u16 * const sorted_syms = &working_space[2 * (max_codeword_len + 1)];
+	unsigned len_counts[DEFLATE_MAX_CODEWORD_LEN + 1];
+	unsigned offsets[DEFLATE_MAX_CODEWORD_LEN + 1];
 	unsigned len;
 	unsigned sym;
 	s32 remainder;
@@ -768,7 +768,7 @@ build_precode_decode_table(struct libdeflate_decompressor *d)
 				  precode_decode_results,
 				  PRECODE_TABLEBITS,
 				  DEFLATE_MAX_PRE_CODEWORD_LEN,
-				  d->working_space);
+				  d->sorted_syms);
 }
 
 /* Build the decode table for the literal/length code.  */
@@ -785,7 +785,7 @@ build_litlen_decode_table(struct libdeflate_decompressor *d,
 				  litlen_decode_results,
 				  LITLEN_TABLEBITS,
 				  DEFLATE_MAX_LITLEN_CODEWORD_LEN,
-				  d->working_space);
+				  d->sorted_syms);
 }
 
 /* Build the decode table for the offset code.  */
@@ -802,7 +802,7 @@ build_offset_decode_table(struct libdeflate_decompressor *d,
 				  offset_decode_results,
 				  OFFSET_TABLEBITS,
 				  DEFLATE_MAX_OFFSET_CODEWORD_LEN,
-				  d->working_space);
+				  d->sorted_syms);
 }
 
 static forceinline machine_word_t
