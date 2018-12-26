@@ -256,6 +256,8 @@ have_decode_tables:
 		u32 entry;
 		u32 length;
 		u32 offset;
+		const u8 *src;
+		u8 *dst;
 
 		/* Decode a litlen symbol.  */
 		ENSURE_BITS(DEFLATE_MAX_LITLEN_CODEWORD_LEN);
@@ -328,65 +330,66 @@ have_decode_tables:
 		 * output buffer.  */
 		SAFETY_CHECK(offset <= out_next - (const u8 *)out);
 
-		/* Copy the match: 'length' bytes at 'out_next - offset' to
-		 * 'out_next'.  */
+		/*
+		 * Copy the match: 'length' bytes at 'out_next - offset' to
+		 * 'out_next', possibly overlapping.  If the match doesn't end
+		 * too close to the end of the buffer and offset >= WORDBYTES ||
+		 * offset == 1, take a fast path which copies a word at a time
+		 * -- potentially more than the length of the match, but that's
+		 * fine as long as we check for enough extra space.
+		 *
+		 * The remaining cases are not performance-critical so are
+		 * handled by a simple byte-by-byte copy.
+		 */
+
+		src = out_next - offset;
+		dst = out_next;
+		out_next += length;
 
 		if (UNALIGNED_ACCESS_IS_FAST &&
-		    length <= (3 * WORDBYTES) &&
-		    offset >= WORDBYTES &&
-		    length + (3 * WORDBYTES) <= out_end - out_next)
-		{
-			/* Fast case: short length, no overlaps if we copy one
-			 * word at a time, and we aren't getting too close to
-			 * the end of the output array.  */
-			copy_word_unaligned(out_next - offset + (0 * WORDBYTES),
-					    out_next + (0 * WORDBYTES));
-			copy_word_unaligned(out_next - offset + (1 * WORDBYTES),
-					    out_next + (1 * WORDBYTES));
-			copy_word_unaligned(out_next - offset + (2 * WORDBYTES),
-					    out_next + (2 * WORDBYTES));
-		} else {
-			const u8 *src = out_next - offset;
-			u8 *dst = out_next;
-			u8 *end = out_next + length;
-
-			if (UNALIGNED_ACCESS_IS_FAST &&
-			    likely(out_end - end >= WORDBYTES - 1)) {
-				if (offset >= WORDBYTES) {
+		    /* max overrun is writing 3 words for a min length match */
+		    likely(out_end - out_next >=
+			   3 * WORDBYTES - DEFLATE_MIN_MATCH_LEN)) {
+			if (offset >= WORDBYTES) { /* words don't overlap? */
+				copy_word_unaligned(src, dst);
+				src += WORDBYTES;
+				dst += WORDBYTES;
+				copy_word_unaligned(src, dst);
+				src += WORDBYTES;
+				dst += WORDBYTES;
+				do {
 					copy_word_unaligned(src, dst);
 					src += WORDBYTES;
 					dst += WORDBYTES;
-					if (dst < end) {
-						do {
-							copy_word_unaligned(src, dst);
-							src += WORDBYTES;
-							dst += WORDBYTES;
-						} while (dst < end);
-					}
-				} else if (offset == 1) {
-					machine_word_t v = repeat_byte(*(dst - 1));
-					do {
-						store_word_unaligned(v, dst);
-						src += WORDBYTES;
-						dst += WORDBYTES;
-					} while (dst < end);
-				} else {
-					*dst++ = *src++;
-					*dst++ = *src++;
-					do {
-						*dst++ = *src++;
-					} while (dst < end);
-				}
+				} while (dst < out_next);
+			} else if (offset == 1) {
+				/* RLE encoding of previous byte, common if the
+				 * data contains many repeated bytes */
+				machine_word_t v = repeat_byte(*src);
+
+				store_word_unaligned(v, dst);
+				dst += WORDBYTES;
+				store_word_unaligned(v, dst);
+				dst += WORDBYTES;
+				do {
+					store_word_unaligned(v, dst);
+					dst += WORDBYTES;
+				} while (dst < out_next);
 			} else {
 				*dst++ = *src++;
 				*dst++ = *src++;
 				do {
 					*dst++ = *src++;
-				} while (dst < end);
+				} while (dst < out_next);
 			}
+		} else {
+			STATIC_ASSERT(DEFLATE_MIN_MATCH_LEN == 3);
+			*dst++ = *src++;
+			*dst++ = *src++;
+			do {
+				*dst++ = *src++;
+			} while (dst < out_next);
 		}
-
-		out_next += length;
 	}
 
 block_done:
