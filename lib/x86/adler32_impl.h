@@ -33,9 +33,7 @@
  * of which halves the vector length, until just one counter remains.
  *
  * The s1 reductions don't depend on the s2 reductions and vice versa, so for
- * efficiency they are interleaved.  Also, every other s1 counter is 0 due to
- * the 'psadbw' instruction (_mm_sad_epu8) summing groups of 8 bytes rather than
- * 4; hence, one of the s1 reductions is skipped when going from 128 => 32 bits.
+ * efficiency they are interleaved.
  */
 
 #define ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2)		    \
@@ -43,6 +41,7 @@
 	__v4su s1_last = (v_s1), s2_last = (v_s2);			    \
 									    \
 	/* 128 => 32 bits */						    \
+	s1_last += (__v4su)_mm_shuffle_epi32((__m128i)s1_last, 0x31);	    \
 	s2_last += (__v4su)_mm_shuffle_epi32((__m128i)s2_last, 0x31);	    \
 	s1_last += (__v4su)_mm_shuffle_epi32((__m128i)s1_last, 0x02);	    \
 	s2_last += (__v4su)_mm_shuffle_epi32((__m128i)s2_last, 0x02);	    \
@@ -108,46 +107,50 @@ adler32_avx512bw_chunk(const __m512i *p, const __m512i *const end,
 		       u32 *s1, u32 *s2)
 {
 	const __m512i zeroes = _mm512_setzero_si512();
-	const __v64qi multipliers = (__v64qi){
-		64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
-		48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33,
-		32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
-		16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,
-	};
-	const __v32hi ones = (__v32hi)_mm512_set1_epi16(1);
-	__v16si v_s1 = (__v16si)zeroes;
-	__v16si v_s1_sums = (__v16si)zeroes;
-	__v16si v_s2 = (__v16si)zeroes;
+	__v16si s1_a = (__v16si)zeroes;
+	__v16si s1_b = (__v16si)zeroes;
+	__v16si s1_c = (__v16si)zeroes;
+	__v16si s1_d = (__v16si)zeroes;
+	__v16si s2_a = (__v16si)zeroes;
+	__v16si s2_b = (__v16si)zeroes;
+	__v16si s2_c = (__v16si)zeroes;
+	__v16si s2_d = (__v16si)zeroes;
 
 	do {
-		/* Load the next 64-byte segment */
-		__m512i bytes = *p++;
+		const __m128i *p128 = (const __m128i *)p;
+		__v16si bytes_a = (__v16si)_mm512_cvtepu8_epi32(p128[0]);
+		__v16si bytes_b = (__v16si)_mm512_cvtepu8_epi32(p128[1]);
+		__v16si bytes_c = (__v16si)_mm512_cvtepu8_epi32(p128[2]);
+		__v16si bytes_d = (__v16si)_mm512_cvtepu8_epi32(p128[3]);
 
-		/* Multiply the bytes by 64...1 (the number of times they need
-		 * to be added to s2) and add adjacent products */
-		__v32hi sums = (__v32hi)_mm512_maddubs_epi16(
-						bytes, (__m512i)multipliers);
+		s2_a += s1_a;
+		s2_b += s1_b;
+		s2_c += s1_c;
+		s2_d += s1_d;
 
-		/* Keep sum of all previous s1 counters, for adding to s2 later.
-		 * This allows delaying the multiplication by 64 to the end. */
-		v_s1_sums += v_s1;
+		s1_a += bytes_a;
+		s1_b += bytes_b;
+		s1_c += bytes_c;
+		s1_d += bytes_d;
+	} while (++p != end);
 
-		/* Add the sum of each group of 8 bytes to the corresponding s1
-		 * counter */
-		v_s1 += (__v16si)_mm512_sad_epu8(bytes, zeroes);
+	s2_a += s2_c;
+	s2_b += s2_d;
+	s2_a += s2_b;
 
-		/* Add the sum of each group of 4 products of the bytes by
-		 * 64...1 to the corresponding s2 counter */
-		v_s2 += (__v16si)_mm512_madd_epi16((__m512i)sums,
-						   (__m512i)ones);
-	} while (p != end);
+	s2_a = (__v16si)_mm512_slli_epi32((__m512i)s2_a, 5);
 
-	/* Finish the s2 counters by adding the sum of the s1 values at the
-	 * beginning of each segment, multiplied by the segment size (64) */
-	v_s2 += (__v16si)_mm512_slli_epi32((__m512i)v_s1_sums, 6);
+	s2_a += s1_a * (__v16si){64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49};
+	s2_a += s1_b * (__v16si){48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33};
+	s2_a += s1_c * (__v16si){32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17};
+	s2_a += s1_d * (__v16si){16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1};
+
+	s1_a += s1_c;
+	s1_b += s1_d;
+	s1_a += s1_b;
 
 	/* Add the counters to the real s1 and s2 */
-	ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1, v_s2);
+	ADLER32_FINISH_VEC_CHUNK_512(s1, s2, s1_a, s2_a);
 }
 #  include "../adler32_vec_template.h"
 #endif /* AVX-512BW implementation */
@@ -175,43 +178,67 @@ static forceinline ATTRIBUTES void
 adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 {
 	const __m256i zeroes = _mm256_setzero_si256();
-	const __v32qu multipliers = (__v32qu){
-		32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
-		16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,
+	__v8su s1_a = (__v8su)zeroes;
+	__v8su s1_b = (__v8su)zeroes;
+	__v8su s1_c = (__v8su)zeroes;
+	__v8su s1_d = (__v8su)zeroes;
+	__v8su s2_a = (__v8su)zeroes;
+	__v8su s2_b = (__v8su)zeroes;
+	__v8su s2_c = (__v8su)zeroes;
+	__v8su s2_d = (__v8su)zeroes;
+	const __m256i shuf_a = (__m256i)(__v32qi){
+		0, -1, -1, -1, 4, -1, -1, -1,  8, -1, -1, -1, 12, -1, -1, -1,
+		0, -1, -1, -1, 4, -1, -1, -1,  8, -1, -1, -1, 12, -1, -1, -1
 	};
-	const __v16hu ones = (__v16hu)_mm256_set1_epi16(1);
-	__v8su v_s1 = (__v8su)zeroes;
-	__v8su v_s1_sums = (__v8su)zeroes;
-	__v8su v_s2 = (__v8su)zeroes;
+	const __m256i shuf_b = (__m256i)(__v32qi){
+		1, -1, -1, -1, 5, -1, -1, -1,  9, -1, -1, -1, 13, -1, -1, -1,
+		1, -1, -1, -1, 5, -1, -1, -1,  9, -1, -1, -1, 13, -1, -1, -1
+	};
+	const __m256i shuf_c = (__m256i)(__v32qi){
+		2, -1, -1, -1, 6, -1, -1, -1, 10, -1, -1, -1, 14, -1, -1, -1,
+		2, -1, -1, -1, 6, -1, -1, -1, 10, -1, -1, -1, 14, -1, -1, -1
+	};
+	const __m256i shuf_d = (__m256i)(__v32qi){
+		3, -1, -1, -1, 7, -1, -1, -1, 11, -1, -1, -1, 15, -1, -1, -1,
+		3, -1, -1, -1, 7, -1, -1, -1, 11, -1, -1, -1, 15, -1, -1, -1
+	};
 
 	do {
-		/* Load the next 32-byte segment */
 		__m256i bytes = *p++;
+		__v8su bytes_a = (__v8su)_mm256_shuffle_epi8(bytes, shuf_a);
+		__v8su bytes_b = (__v8su)_mm256_shuffle_epi8(bytes, shuf_b);
+		__v8su bytes_c = (__v8su)_mm256_shuffle_epi8(bytes, shuf_c);
+		__v8su bytes_d = (__v8su)_mm256_shuffle_epi8(bytes, shuf_d);
 
-		/* Multiply the bytes by 32...1 (the number of times they need
-		 * to be added to s2) and add adjacent products */
-		__v16hu sums = (__v16hu)_mm256_maddubs_epi16(
-						bytes, (__m256i)multipliers);
+		s2_a += s1_a;
+		s2_b += s1_b;
+		s2_c += s1_c;
+		s2_d += s1_d;
 
-		/* Keep sum of all previous s1 counters, for adding to s2 later.
-		 * This allows delaying the multiplication by 32 to the end. */
-		v_s1_sums += v_s1;
+		s1_a += bytes_a;
+		s1_b += bytes_b;
+		s1_c += bytes_c;
+		s1_d += bytes_d;
 
-		/* Add the sum of each group of 8 bytes to the corresponding s1
-		 * counter */
-		v_s1 += (__v8su)_mm256_sad_epu8(bytes, zeroes);
-
-		/* Add the sum of each group of 4 products of the bytes by
-		 * 32...1 to the corresponding s2 counter */
-		v_s2 += (__v8su)_mm256_madd_epi16((__m256i)sums, (__m256i)ones);
 	} while (p != end);
 
-	/* Finish the s2 counters by adding the sum of the s1 values at the
-	 * beginning of each segment, multiplied by the segment size (32) */
-	v_s2 += (__v8su)_mm256_slli_epi32((__m256i)v_s1_sums, 5);
+	s2_a += s2_c;
+	s2_b += s2_d;
+	s2_a += s2_b;
+
+	s2_a = (__v8su)_mm256_slli_epi32((__m256i)s2_a, 5);
+
+	s2_a += s1_a * (__v8su){ 32, 28, 24, 20, 16, 12, 8, 4 };
+	s2_a += s1_b * (__v8su){ 31, 27, 23, 19, 15, 11, 7, 3 };
+	s2_a += s1_c * (__v8su){ 30, 26, 22, 18, 14, 10, 6, 2 };
+	s2_a += s1_d * (__v8su){ 29, 25, 21, 17, 13,  9, 5, 1 };
+
+	s1_a += s1_c;
+	s1_b += s1_d;
+	s1_a += s1_b;
 
 	/* Add the counters to the real s1 and s2 */
-	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2);
+	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, s1_a, s2_a);
 }
 #  include "../adler32_vec_template.h"
 #endif /* AVX2 implementation */
