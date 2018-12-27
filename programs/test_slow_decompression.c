@@ -463,8 +463,8 @@ tmain(int argc, tchar *argv[])
 	tz = do_test_zlib("static huffman", in, sizeof(in), out, sizeof(out));
 	/*
 	 * libdeflate is faster than zlib in this case, e.g.
-	 *	[static huffman, libdeflate]: 175243 KB/s
-	 *	[static huffman, zlib      ]: 71331 KB/s
+	 *	[static huffman, libdeflate]: 215861 KB/s
+	 *	[static huffman, zlib      ]: 73651 KB/s
 	 */
 	putchar('\n');
 	ASSERT(t < tz);
@@ -476,8 +476,8 @@ tmain(int argc, tchar *argv[])
 	tz = do_test_zlib("dynamic huffman", in, sizeof(in), out, sizeof(out));
 	/*
 	 * libdeflate is slower than zlib in this case, though not super bad.
-	 *	[dynamic huffman, libdeflate]: 5197 KB/s
-	 *	[dynamic huffman, zlib      ]: 10206 KB/s
+	 *	[dynamic huffman, libdeflate]: 6277 KB/s
+	 *	[dynamic huffman, zlib      ]: 10419 KB/s
 	 * FIXME: make it faster.
 	 */
 	putchar('\n');
