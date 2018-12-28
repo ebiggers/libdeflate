@@ -43,7 +43,7 @@ fi
 
 NDKDIR="${NDKDIR:=/opt/android-ndk}"
 
-FILES=("$SMOKEDATA" ./tools/exec_tests.sh benchmark test_checksums)
+FILES=("$SMOKEDATA" ./tools/exec_tests.sh benchmark 'test_*')
 EXEC_TESTS_CMD="WRAPPER= SMOKEDATA=\"$(basename $SMOKEDATA)\" sh exec_tests.sh"
 NPROC=$(grep -c processor /proc/cpuinfo)
 VALGRIND="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all"
@@ -174,7 +174,7 @@ checksum_benchmarks() {
 
 android_build_and_test() {
 	run_cmd ./tools/android_build.sh --ndkdir="$NDKDIR" "$@"
-	run_cmd adb push "${FILES[@]}" /data/local/tmp/
+	run_cmd adb push ${FILES[@]} /data/local/tmp/
 
 	# Note: adb shell always returns 0, even if the shell command fails...
 	log "adb shell \"cd /data/local/tmp && $EXEC_TESTS_CMD\""
@@ -231,7 +231,7 @@ mips_tests() {
 		return 0
 	fi
 	run_cmd ./tools/mips_build.sh
-	run_cmd scp "${FILES[@]}" root@dd-wrt:
+	run_cmd scp ${FILES[@]} root@dd-wrt:
 	run_cmd ssh root@dd-wrt "$EXEC_TESTS_CMD"
 
 	log "Checking that compression on big endian CPU produces same output"
@@ -341,10 +341,6 @@ EOF
 		run_cmd ./benchmark -6 "$TMPFILE"
 		run_cmd ./benchmark -12 "$TMPFILE"
 	fi
-
-	# Check worst-case decompression speed
-	run_cmd make -j$NPROC test_slow_decompression
-	run_cmd ./test_slow_decompression
 }
 
 ###############################################################################

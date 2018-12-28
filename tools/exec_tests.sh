@@ -9,7 +9,9 @@ run_cmd() {
 	$WRAPPER "$@" > /dev/null
 }
 
-run_cmd ./test_checksums
+for prog in ./test_*; do
+	run_cmd $prog
+done
 
 for format in '' '-g' '-z'; do
 	for ref_impl in '' '-Y' '-Z'; do
