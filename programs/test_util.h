@@ -61,5 +61,6 @@ struct output_bitstream {
 
 extern bool put_bits(struct output_bitstream *os, machine_word_t bits,
 		     int num_bits);
+extern bool flush_bits(struct output_bitstream *os);
 
 #endif /* PROGRAMS_TEST_UTIL_H */

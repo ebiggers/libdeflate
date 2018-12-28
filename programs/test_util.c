@@ -217,3 +217,17 @@ put_bits(struct output_bitstream *os, machine_word_t bits, int num_bits)
 	}
 	return true;
 }
+
+bool
+flush_bits(struct output_bitstream *os)
+{
+	while (os->bitcount > 0) {
+		if (os->next == os->end)
+			return false;
+		*os->next++ = os->bitbuf;
+		os->bitcount -= 8;
+		os->bitbuf >>= 8;
+	}
+	os->bitcount = 0;
+	return true;
+}
