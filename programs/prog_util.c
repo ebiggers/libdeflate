@@ -30,13 +30,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
-#include <time.h>
 #ifdef _WIN32
 #  include <windows.h>
 #else
 #  include <unistd.h>
 #  include <sys/mman.h>
-#  include <sys/time.h>
 #endif
 
 #ifndef O_BINARY
@@ -95,14 +93,6 @@ msg_errno(const char *format, ...)
 	va_end(va);
 }
 
-/* Abort with an error message */
-_noreturn void
-assertion_failed(const char *expr, const char *file, int line)
-{
-	msg("Assertion failed: %s at %s:%d", expr, file, line);
-	abort();
-}
-
 /* malloc() wrapper */
 void *
 xmalloc(size_t size)
@@ -113,160 +103,6 @@ xmalloc(size_t size)
 	if (p == NULL)
 		msg("Out of memory");
 	return p;
-}
-
-static size_t
-get_page_size(void)
-{
-#ifdef _WIN32
-	SYSTEM_INFO info;
-
-	GetSystemInfo(&info);
-	return info.dwPageSize;
-#else
-	return sysconf(_SC_PAGESIZE);
-#endif
-}
-
-/* Allocate a buffer with guard pages */
-int
-alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret)
-{
-	const size_t pagesize = get_page_size();
-	const size_t nr_pages = (size + pagesize - 1) / pagesize;
-	u8 *base_addr;
-	u8 *start, *end;
-#ifdef _WIN32
-	DWORD oldProtect;
-#else
-	int fd;
-#endif
-
-	*start_ret = NULL;
-	*end_ret = NULL;
-
-#ifdef _WIN32
-	/* Allocate buffer and guard pages with no access. */
-	base_addr = VirtualAlloc(NULL, (nr_pages + 2) * pagesize,
-				 MEM_COMMIT | MEM_RESERVE, PAGE_NOACCESS);
-	if (!base_addr) {
-		msg("Unable to allocate memory (VirtualAlloc): Windows error %u",
-		    (unsigned int)GetLastError());
-		return -1;
-	}
-	start = base_addr + pagesize;
-	end = start + (nr_pages * pagesize);
-
-	/* Grant read+write access to just the buffer. */
-	if (!VirtualProtect(start, end - start, PAGE_READWRITE, &oldProtect)) {
-		msg("Unable to protect memory (VirtualProtect): Windows error %u",
-		    (unsigned int)GetLastError());
-		VirtualFree(base_addr, 0, MEM_RELEASE);
-		return -1;
-	}
-#else
-	/*
-	 * Allocate buffer and guard pages.
-	 * For portability, use /dev/zero instead of MAP_ANONYMOUS.
-	 */
-	fd = open("/dev/zero", O_RDONLY);
-	if (fd < 0) {
-		msg_errno("Unable to open /dev/zero");
-		return -1;
-	}
-	base_addr = mmap(NULL, (nr_pages + 2) * pagesize,
-			 PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
-	close(fd);
-	if (base_addr == (u8 *)MAP_FAILED) {
-		msg_errno("Unable to allocate memory (unable to mmap /dev/zero)");
-		return -1;
-	}
-	start = base_addr + pagesize;
-	end = start + (nr_pages * pagesize);
-
-	/* Unmap the guard pages. */
-	munmap(base_addr, pagesize);
-	munmap(end, pagesize);
-#endif
-	*start_ret = start;
-	*end_ret = end;
-	return 0;
-}
-
-/* Free a buffer that was allocated by alloc_guarded_buffer() */
-void
-free_guarded_buffer(u8 *start, u8 *end)
-{
-	if (!start)
-		return;
-#ifdef _WIN32
-	VirtualFree(start - get_page_size(), 0, MEM_RELEASE);
-#else
-	munmap(start, end - start);
-#endif
-}
-
-/*
- * Return the number of timer ticks that have elapsed since some unspecified
- * point fixed at the start of program execution
- */
-u64
-timer_ticks(void)
-{
-#ifdef _WIN32
-	LARGE_INTEGER count;
-	QueryPerformanceCounter(&count);
-	return count.QuadPart;
-#elif defined(HAVE_CLOCK_GETTIME)
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return (1000000000 * (u64)ts.tv_sec) + ts.tv_nsec;
-#else
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return (1000000 * (u64)tv.tv_sec) + tv.tv_usec;
-#endif
-}
-
-/*
- * Return the number of timer ticks per second
- */
-static u64
-timer_frequency(void)
-{
-#ifdef _WIN32
-	LARGE_INTEGER freq;
-	QueryPerformanceFrequency(&freq);
-	return freq.QuadPart;
-#elif defined(HAVE_CLOCK_GETTIME)
-	return 1000000000;
-#else
-	return 1000000;
-#endif
-}
-
-/*
- * Convert a number of elapsed timer ticks to milliseconds
- */
-u64 timer_ticks_to_ms(u64 ticks)
-{
-	return ticks * 1000 / timer_frequency();
-}
-
-/*
- * Convert a byte count and a number of elapsed timer ticks to MB/s
- */
-u64 timer_MB_per_s(u64 bytes, u64 ticks)
-{
-	return bytes * timer_frequency() / ticks / 1000000;
-}
-
-/*
- * Convert a byte count and a number of elapsed timer ticks to KB/s
- */
-u64 timer_KB_per_s(u64 bytes, u64 ticks)
-{
-	return bytes * timer_frequency() / ticks / 1000;
 }
 
 /*

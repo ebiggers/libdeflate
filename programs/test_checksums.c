@@ -7,9 +7,8 @@
 
 #include <stdlib.h>
 #include <time.h>
-#include <zlib.h>
 
-#include "prog_util.h"
+#include "test_util.h"
 
 static unsigned int rng_seed;
 

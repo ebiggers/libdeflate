@@ -44,10 +44,8 @@
 #ifdef __GNUC__
 # define _printf(str_idx, args_idx)	\
 		__attribute__((format(printf, str_idx, args_idx)))
-# define _noreturn __attribute__((noreturn))
 #else
 # define _printf(str_idx, args_idx)
-# define _noreturn
 #endif
 
 #ifdef _WIN32
@@ -121,19 +119,7 @@ extern const tchar *program_invocation_name;
 extern void _printf(1, 2) msg(const char *fmt, ...);
 extern void _printf(1, 2) msg_errno(const char *fmt, ...);
 
-extern void _noreturn
-assertion_failed(const char *expr, const char *file, int line);
-
-#define ASSERT(expr) if (!(expr)) assertion_failed(#expr, __FILE__, __LINE__)
-
 extern void *xmalloc(size_t size);
-extern int alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret);
-extern void free_guarded_buffer(u8 *start, u8 *end);
-
-extern u64 timer_ticks(void);
-extern u64 timer_ticks_to_ms(u64 ticks);
-extern u64 timer_MB_per_s(u64 bytes, u64 ticks);
-extern u64 timer_KB_per_s(u64 bytes, u64 ticks);
 
 extern const tchar *get_filename(const tchar *path);
 

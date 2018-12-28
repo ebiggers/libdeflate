@@ -168,29 +168,37 @@ PROG_CFLAGS += $(CFLAGS)		 \
 	       -D_FILE_OFFSET_BITS=64	 \
 	       -DHAVE_CONFIG_H
 
-PROG_COMMON_HEADERS := programs/prog_util.h programs/config.h
-PROG_COMMON_SRC     := programs/prog_util.c programs/tgetopt.c
-NONTEST_PROGRAM_SRC := programs/gzip.c
-TEST_PROGRAM_SRC    := programs/benchmark.c \
-		       programs/checksum.c \
-		       programs/test_checksums.c \
-		       programs/test_slow_decompression.c
+ALL_PROG_COMMON_HEADERS := programs/config.h \
+			   programs/prog_util.h \
+			   programs/test_util.h
+PROG_COMMON_SRC      := programs/prog_util.c \
+			programs/tgetopt.c
+NONTEST_PROG_SRC     := programs/gzip.c
+TEST_PROG_COMMON_SRC := programs/test_util.c
+TEST_PROG_SRC        := programs/benchmark.c \
+			programs/checksum.c \
+			programs/test_checksums.c \
+			programs/test_slow_decompression.c
 
-NONTEST_PROGRAMS := $(NONTEST_PROGRAM_SRC:programs/%.c=%$(PROG_SUFFIX))
+NONTEST_PROGRAMS := $(NONTEST_PROG_SRC:programs/%.c=%$(PROG_SUFFIX))
 DEFAULT_TARGETS  += $(NONTEST_PROGRAMS)
-TEST_PROGRAMS    := $(TEST_PROGRAM_SRC:programs/%.c=%$(PROG_SUFFIX))
+TEST_PROGRAMS    := $(TEST_PROG_SRC:programs/%.c=%$(PROG_SUFFIX))
 
-PROG_COMMON_OBJ     := $(PROG_COMMON_SRC:%.c=%.o)
-NONTEST_PROGRAM_OBJ := $(NONTEST_PROGRAM_SRC:%.c=%.o)
-TEST_PROGRAM_OBJ    := $(TEST_PROGRAM_SRC:%.c=%.o)
-PROG_OBJ := $(PROG_COMMON_OBJ) $(NONTEST_PROGRAM_OBJ) $(TEST_PROGRAM_OBJ)
+PROG_COMMON_OBJ      := $(PROG_COMMON_SRC:%.c=%.o)
+NONTEST_PROG_OBJ     := $(NONTEST_PROG_SRC:%.c=%.o)
+TEST_PROG_COMMON_OBJ := $(TEST_PROG_COMMON_SRC:%.c=%.o)
+TEST_PROG_OBJ        := $(TEST_PROG_SRC:%.c=%.o)
+
+ALL_PROG_OBJ	     := $(PROG_COMMON_OBJ) $(NONTEST_PROG_OBJ) \
+			$(TEST_PROG_COMMON_OBJ) $(TEST_PROG_OBJ)
 
 # Generate autodetected configuration header
 programs/config.h:programs/detect.sh .prog-cflags
 	$(QUIET_GEN) CC="$(CC)" CFLAGS="$(PROG_CFLAGS)" $< > $@
 
 # Compile program object files
-$(PROG_OBJ): %.o: %.c $(PROG_COMMON_HEADERS) $(COMMON_HEADERS) .prog-cflags
+$(ALL_PROG_OBJ): %.o: %.c $(ALL_PROG_COMMON_HEADERS) $(COMMON_HEADERS) \
+			.prog-cflags
 	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(PROG_CFLAGS) $<
 
 # Link the programs.
@@ -198,10 +206,12 @@ $(PROG_OBJ): %.o: %.c $(PROG_COMMON_HEADERS) $(COMMON_HEADERS) .prog-cflags
 # Note: the test programs are not compiled by default.  One reason is that the
 # test programs must be linked with zlib for doing comparisons.
 
-$(NONTEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) $(STATIC_LIB)
+$(NONTEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) \
+			$(STATIC_LIB)
 	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(PROG_CFLAGS) $+
 
-$(TEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) $(STATIC_LIB)
+$(TEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) \
+			$(TEST_PROG_COMMON_OBJ) $(STATIC_LIB)
 	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(PROG_CFLAGS) $+ -lz
 
 ifdef HARD_LINKS

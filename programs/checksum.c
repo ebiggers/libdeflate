@@ -25,9 +25,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <zlib.h>
-
-#include "prog_util.h"
+#include "test_util.h"
 
 static const tchar *const optstring = T("Ahs:tZ");
 

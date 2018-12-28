@@ -5,9 +5,7 @@
  * streams that start new Huffman blocks extremely frequently.
  */
 
-#include <zlib.h> /* for comparison purposes */
-
-#include "prog_util.h"
+#include "test_util.h"
 
 struct output_bitstream {
 	unsigned long bitbuf;
