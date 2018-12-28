@@ -202,3 +202,18 @@ u64 timer_KB_per_s(u64 bytes, u64 ticks)
 {
 	return bytes * timer_frequency() / ticks / 1000;
 }
+
+bool
+put_bits(struct output_bitstream *os, machine_word_t bits, int num_bits)
+{
+	os->bitbuf |= bits << os->bitcount;
+	os->bitcount += num_bits;
+	while (os->bitcount >= 8) {
+		if (os->next == os->end)
+			return false;
+		*os->next++ = os->bitbuf;
+		os->bitcount -= 8;
+		os->bitbuf >>= 8;
+	}
+	return true;
+}

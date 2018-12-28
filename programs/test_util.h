@@ -52,4 +52,14 @@ extern u64 timer_ticks_to_ms(u64 ticks);
 extern u64 timer_MB_per_s(u64 bytes, u64 ticks);
 extern u64 timer_KB_per_s(u64 bytes, u64 ticks);
 
+struct output_bitstream {
+	machine_word_t bitbuf;
+	int bitcount;
+	u8 *next;
+	u8 *end;
+};
+
+extern bool put_bits(struct output_bitstream *os, machine_word_t bits,
+		     int num_bits);
+
 #endif /* PROGRAMS_TEST_UTIL_H */

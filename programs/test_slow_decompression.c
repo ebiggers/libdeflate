@@ -7,28 +7,6 @@
 
 #include "test_util.h"
 
-struct output_bitstream {
-	unsigned long bitbuf;
-	int bitcount;
-	u8 *next;
-	u8 *end;
-};
-
-static bool
-put_bits(struct output_bitstream *os, unsigned long bits, int num_bits)
-{
-	os->bitbuf |= bits << os->bitcount;
-	os->bitcount += num_bits;
-	while (os->bitcount >= 8) {
-		if (os->next == os->end)
-			return false;
-		*os->next++ = os->bitbuf;
-		os->bitcount -= 8;
-		os->bitbuf >>= 8;
-	}
-	return true;
-}
-
 /*
  * Generate a DEFLATE stream containing all empty "static Huffman" blocks.
  *
