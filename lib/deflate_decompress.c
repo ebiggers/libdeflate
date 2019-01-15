@@ -810,10 +810,9 @@ build_decode_table(u32 decode_table[],
 		bit = 1U << bsr32(codeword ^ ((1U << len) - 1));
 		codeword &= bit - 1;
 		codeword |= bit;
-		if (--count == 0) {
-			while ((count = len_counts[++len]) == 0)
-				;
-		}
+		count--;
+		while (count == 0)
+			count = len_counts[++len];
 	}
 }
 
