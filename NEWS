@@ -1,3 +1,12 @@
+Version 1.2:
+	Slight improvements to decompression speed.
+
+	Added an AVX-512BW implementation of Adler-32.
+
+	The Makefile now supports a user-specified installation PREFIX.
+
+	Fixed build error with some Visual Studio versions.
+
 Version 1.1:
 	Fixed crash in CRC-32 code when the prebuilt libdeflate for
 	32-bit Windows was called by a program built with Visual Studio.
