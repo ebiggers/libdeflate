@@ -222,7 +222,7 @@ android_tests() {
 
 mips_tests() {
 	test_group_included mips || return 0
-	if [ "$(hostname)" != "zzz" ] || [ "$(uname -m)" != "x86_64" ]; then
+	if [ "$(hostname)" != "zzz" ] && [ "$(hostname)" != "sol" ]; then
 		log_skip "MIPS tests are not supported on this host"
 		return 0
 	fi
