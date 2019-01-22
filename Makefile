@@ -34,6 +34,9 @@ override CFLAGS :=							\
 ##############################################################################
 
 PREFIX ?= /usr
+BINDIR ?= $(PREFIX)/bin
+INCDIR ?= $(PREFIX)/include
+LIBDIR ?= $(PREFIX)/lib
 
 SOVERSION          := 0
 STATIC_LIB_SUFFIX  := .a
@@ -240,20 +243,20 @@ DEFAULT_TARGETS += gunzip$(PROG_SUFFIX)
 all:$(DEFAULT_TARGETS)
 
 install:all
-	install -Dm644 -t $(DESTDIR)$(PREFIX)/lib $(STATIC_LIB)
-	install -Dm755 -t $(DESTDIR)$(PREFIX)/lib $(SHARED_LIB)
-	ln -sf $(SHARED_LIB) $(DESTDIR)$(PREFIX)/lib/libdeflate.so
-	install -Dm644 -t $(DESTDIR)$(PREFIX)/include libdeflate.h
-	install -Dm755 gzip $(DESTDIR)$(PREFIX)/bin/libdeflate-gzip
-	ln -f $(DESTDIR)$(PREFIX)/bin/libdeflate-gzip $(DESTDIR)$(PREFIX)/bin/libdeflate-gunzip
+	install -Dm644 -t $(DESTDIR)$(LIBDIR) $(STATIC_LIB)
+	install -Dm755 -t $(DESTDIR)$(LIBDIR) $(SHARED_LIB)
+	ln -sf $(SHARED_LIB) $(DESTDIR)$(LIBDIR)/libdeflate.so
+	install -Dm644 -t $(DESTDIR)$(INCDIR) libdeflate.h
+	install -Dm755 gzip $(DESTDIR)$(BINDIR)/libdeflate-gzip
+	ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip $(DESTDIR)$(BINDIR)/libdeflate-gunzip
 
 uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/lib/$(STATIC_LIB) \
-		$(DESTDIR)$(PREFIX)/lib/$(SHARED_LIB) \
-		$(DESTDIR)$(PREFIX)/lib/libdeflate.so \
-		$(DESTDIR)$(PREFIX)/include/libdeflate.h \
-		$(DESTDIR)$(PREFIX)/bin/libdeflate-gzip \
-		$(DESTDIR)$(PREFIX)/bin/libdeflate-gunzip
+	rm -f $(DESTDIR)$(LIBDIR)/$(STATIC_LIB) \
+		$(DESTDIR)$(LIBDIR)/$(SHARED_LIB) \
+		$(DESTDIR)$(LIBDIR)/libdeflate.so \
+		$(DESTDIR)$(INCDIR)/libdeflate.h \
+		$(DESTDIR)$(BINDIR)/libdeflate-gzip \
+		$(DESTDIR)$(BINDIR)/libdeflate-gunzip
 
 test_programs:$(TEST_PROGRAMS)
 
