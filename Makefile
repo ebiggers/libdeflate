@@ -13,15 +13,18 @@
 #
 ##############################################################################
 
-#### Common compiler flags.
-#### Flags given here are not intended to be overridden, but you can add more
-#### by defining CFLAGS in the environment or on the 'make' command line.
+#### Common compiler flags.  You can add additional flags by defining CFLAGS
+#### in the environment or on the 'make' command line.
+####
+#### The default optimization flags can be overridden, e.g. via CFLAGS="-O3" or
+#### CFLAGS="-O0 -fno-omit-frame-pointer".  But this usually isn't recommended;
+#### you're unlikely to get significantly better performance even with -O3.
 
 cc-option = $(shell if $(CC) $(1) -c -x c /dev/null -o /dev/null \
 	      1>&2 2>/dev/null; then echo $(1); fi)
 
 override CFLAGS :=							\
-	$(CFLAGS) -O2 -fomit-frame-pointer -std=c99 -I. -Icommon	\
+	-O2 -fomit-frame-pointer $(CFLAGS) -std=c99 -I. -Icommon	\
 	-Wall -Wundef							\
 	$(call cc-option,-Wpedantic)					\
 	$(call cc-option,-Wdeclaration-after-statement)			\
