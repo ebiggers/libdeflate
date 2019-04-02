@@ -59,14 +59,17 @@ BINDIR ?= $(PREFIX)/bin
 INCDIR ?= $(PREFIX)/include
 LIBDIR ?= $(PREFIX)/lib
 
-SOVERSION          := 0
+SOVERSION          := .0
 STATIC_LIB_SUFFIX  := .a
-SHARED_LIB_SUFFIX  := .so.$(SOVERSION)
+SHARED_LIB_SUFFIX  := .so
+SHARED_LIB          = libdeflate$(SHARED_LIB_SUFFIX)$(SOVERSION)
 SHARED_LIB_CFLAGS  := -fPIC
-SHARED_LIB_LDFLAGS := -Wl,-soname=libdeflate$(SHARED_LIB_SUFFIX)
+SHARED_LIB_LDFLAGS := -Wl,-soname=$(SHARED_LIB)
 PROG_SUFFIX        :=
 PROG_CFLAGS        :=
 HARD_LINKS         := 1
+ARFLAGS            := cr
+ARCHS              := *
 
 # Compiling for Windows with MinGW?
 ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
@@ -88,6 +91,13 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
         AR := $(shell echo $(CC) | \
                 sed -E 's/g?cc(-?[0-9]+(\.[0-9]+)*)?(\.exe)?$$/ar\3/')
     endif
+else ifeq ($(shell uname),Darwin)
+   SHARED_LIB_SUFFIX  := .dylib
+   SHARED_LIB          = libdeflate$(SOVERSION)$(SHARED_LIB_SUFFIX)
+   SHARED_LIB_LDFLAGS := "-install_name $(SHARED_LIB)"
+   AR                 := libtool
+   ARFLAGS            := -static -o
+   ARCHS              := x86
 endif
 
 ##############################################################################
@@ -113,14 +123,13 @@ DEFAULT_TARGETS :=
 #### Library
 
 STATIC_LIB := libdeflate$(STATIC_LIB_SUFFIX)
-SHARED_LIB := libdeflate$(SHARED_LIB_SUFFIX)
 
 LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
 
 LIB_HEADERS := $(wildcard lib/*.h) $(wildcard lib/*/*.h)
 
 LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c \
-	   $(wildcard lib/*/cpu_features.c)
+	   $(wildcard lib/$(ARCHS)/cpu_features.c)
 
 DECOMPRESSION_ONLY :=
 ifndef DECOMPRESSION_ONLY
@@ -157,7 +166,7 @@ $(SHARED_LIB_OBJ): %.shlib.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
 
 # Create static library
 $(STATIC_LIB):$(STATIC_LIB_OBJ)
-	$(QUIET_AR) $(AR) cr $@ $+
+	$(QUIET_AR) $(AR) $(ARFLAGS) $@ $+
 
 DEFAULT_TARGETS += $(STATIC_LIB)
 
@@ -170,9 +179,9 @@ DEFAULT_TARGETS += $(SHARED_LIB)
 
 ifdef SOVERSION
 # Create the symlink libdeflate.so => libdeflate.so.$SOVERSION
-libdeflate.so:$(SHARED_LIB)
+libdeflate$(SHARED_LIB_SUFFIX):$(SHARED_LIB)
 	$(QUIET_LN) ln -sf $+ $@
-DEFAULT_TARGETS += libdeflate.so
+DEFAULT_TARGETS += libdeflate$(SHARED_LIB_SUFFIX)
 endif
 
 # Rebuild if CC, LIB_CFLAGS, or CPPFLAGS changed
