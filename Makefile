@@ -77,8 +77,6 @@ else ifeq ($(shell uname),Darwin)
    SHARED_LIB_SUFFIX  := .dylib
    SHARED_LIB          = libdeflate$(SOVERSION)$(SHARED_LIB_SUFFIX)
    SHARED_LIB_LDFLAGS := "-install_name $(SHARED_LIB)"
-   ARFLAGS            += --target mach-o-x86-64
-   ARCHS              := x86
 endif
 
 ##############################################################################
