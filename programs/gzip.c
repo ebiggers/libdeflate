@@ -200,7 +200,16 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 	       goto out;
 	}
 
+	/*
+	 * Use the ISIZE field as a hint for the decompressed data size.  It may
+	 * need to be increased later, however, because the file may contain
+	 * multiple gzip members and the particular ISIZE we happen to use may
+	 * not be the largest; or the real size may be >= 4 GiB, causing ISIZE
+	 * to overflow.  In any case, make sure to allocate at least one byte.
+	 */
 	uncompressed_size = load_u32_gzip(&compressed_data[compressed_size - 4]);
+	if (uncompressed_size == 0)
+		uncompressed_size = 1;
 
 	do {
 		if (uncompressed_data == NULL) {
