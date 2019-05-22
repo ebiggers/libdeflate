@@ -559,7 +559,7 @@ deflate_align_bitstream(struct deflate_output_bitstream *os)
  * Flush any remaining bits to the output buffer if needed.  Return the total
  * number of bytes written to the output buffer, or 0 if an overflow occurred.
  */
-static u32
+static size_t
 deflate_flush_output(struct deflate_output_bitstream *os)
 {
 	if (os->next == os->end) /* overflow?  */
