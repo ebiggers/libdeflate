@@ -39,6 +39,8 @@
 
 #if ARM_CPU_FEATURES_ENABLED
 
+#ifdef __linux__
+
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
@@ -115,5 +117,35 @@ void setup_cpu_features(void)
 
 	_cpu_features = features | ARM_CPU_FEATURES_KNOWN;
 }
+
+#elif defined(__aarch64__) /* not __linux__ */
+
+volatile u32 _cpu_features = 0;
+
+void setup_cpu_features(void)
+{
+	/* NEON is a mandatory part of AArch64 */
+	_cpu_features = ARM_CPU_FEATURE_NEON;
+
+	/* On FreeBSD >= 12, Linux >= 4.11 and potentially others, it is possible to use
+	   privileged system registers from userspace to check CPU feature support.
+
+	   For proper support of SoCs where different cores have different capabilities,
+	   the OS has to always report only the features supported by all cores, like FreeBSD does. */
+
+#define bits_shift(x, high, low) ((x >> low) & ((1 << (high - low + 1)) - 1))
+
+#if __FreeBSD__ >= 12
+	uint64_t isar0 = 0;
+	__asm__("mrs %0, ID_AA64ISAR0_EL1" : "=r"(isar0));
+
+	if (bits_shift(isar0, 7, 4) >= 1)
+		_cpu_features |= ARM_CPU_FEATURE_PMULL;
+#endif
+
+	_cpu_features |= ARM_CPU_FEATURES_KNOWN;
+}
+
+#endif
 
 #endif /* ARM_CPU_FEATURES_ENABLED */

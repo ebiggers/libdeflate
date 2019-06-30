@@ -7,8 +7,8 @@
 
 #include "../lib_common.h"
 
-#if (defined(__arm__) || defined(__aarch64__)) && \
-	defined(__linux__) && COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
+#if ((defined(__arm__) && defined(__linux__)) || defined(__aarch64__)) && \
+	 COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
 #  define ARM_CPU_FEATURES_ENABLED 1
 #else
 #  define ARM_CPU_FEATURES_ENABLED 0
