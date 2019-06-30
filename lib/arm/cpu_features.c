@@ -113,6 +113,8 @@ void setup_cpu_features(void)
 		features |= ARM_CPU_FEATURE_NEON;
 	if (hwcap & (1 << 4))	/* HWCAP_PMULL */
 		features |= ARM_CPU_FEATURE_PMULL;
+	if (hwcap & (1 << 7))	/* HWCAP_CRC32 */
+		features |= ARM_CPU_FEATURE_CRC32;
 #endif
 
 	_cpu_features = features | ARM_CPU_FEATURES_KNOWN;
@@ -141,6 +143,8 @@ void setup_cpu_features(void)
 
 	if (bits_shift(isar0, 7, 4) >= 1)
 		_cpu_features |= ARM_CPU_FEATURE_PMULL;
+	if (bits_shift(isar0, 19, 16) >= 1)
+		_cpu_features |= ARM_CPU_FEATURE_CRC32;
 #endif
 
 	_cpu_features |= ARM_CPU_FEATURES_KNOWN;

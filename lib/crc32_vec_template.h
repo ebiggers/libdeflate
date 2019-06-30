@@ -25,8 +25,11 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef FUNCNAME_SLICE1
 #define CRC32_SLICE1	1
 static u32 crc32_slice1(u32, const u8 *, size_t);
+#define FUNCNAME_SLICE1 crc32_slice1
+#endif
 
 /*
  * Template for vectorized CRC-32 implementations.
@@ -41,7 +44,7 @@ FUNCNAME(u32 remainder, const u8 *p, size_t size)
 	if ((uintptr_t)p % IMPL_ALIGNMENT) {
 		size_t n = MIN(size, -(uintptr_t)p % IMPL_ALIGNMENT);
 
-		remainder = crc32_slice1(remainder, p, n);
+		remainder = FUNCNAME_SLICE1(remainder, p, n);
 		p += n;
 		size -= n;
 	}
@@ -51,11 +54,12 @@ FUNCNAME(u32 remainder, const u8 *p, size_t size)
 		p += size - (size % IMPL_SEGMENT_SIZE);
 		size %= IMPL_SEGMENT_SIZE;
 	}
-	return crc32_slice1(remainder, p, size);
+	return FUNCNAME_SLICE1(remainder, p, size);
 }
 
 #undef FUNCNAME
 #undef FUNCNAME_ALIGNED
+#undef FUNCNAME_SLICE1
 #undef ATTRIBUTES
 #undef IMPL_ALIGNMENT
 #undef IMPL_SEGMENT_SIZE

@@ -3,6 +3,7 @@
  *
  * Copyright 2017 Jun He <jun.he@linaro.org>
  * Copyright 2018 Eric Biggers
+ * Copyright 2019 Greg V
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -151,12 +152,66 @@ crc32_pmull_aligned(u32 remainder, const uint8x16_t *p, size_t nr_segs)
 #include "../crc32_vec_template.h"
 #endif /* PMULL implementation */
 
+#undef DISPATCH_INSTR
+#if (defined(__ARM_FEATURE_CRC32) ||	\
+    (ARM_CPU_FEATURES_ENABLED &&	\
+     COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS)) && \
+     /* not yet tested on big endian, probably needs changes to work there */ \
+    (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#  define FUNCNAME		crc32_instr
+#  define FUNCNAME_ALIGNED	crc32_instr_aligned
+#  define FUNCNAME_SLICE1	crc32_instr_slice1
+#  ifdef __ARM_FEATURE_CRC32
+#    define ATTRIBUTES
+#    define DEFAULT_IMPL	crc32_instr
+#  else
+#    define __ARM_FEATURE_CRC32	1
+#    ifdef __clang__
+#      define ATTRIBUTES	__attribute__((target("crc")))
+#    else
+#      define ATTRIBUTES	__attribute__((target("+crc")))
+#    endif
+#    define DISPATCH		1
+#    define DISPATCH_INSTR	1
+#  endif
+
+#include <arm_acle.h>
+
+static forceinline ATTRIBUTES u32
+crc32_instr_slice1(u32 remainder, const u8 *p, size_t size)
+{
+	for (size_t i = 0; i < size; i++)
+		remainder = __crc32b(remainder, p[i]);
+
+	return remainder;
+}
+
+static forceinline ATTRIBUTES u32
+crc32_instr_aligned(u32 remainder, const u64 *p, size_t size)
+{
+	for (size_t i = 0; i < size; i++) {
+		remainder = __crc32d(remainder, p[i * 4 + 0]);
+		remainder = __crc32d(remainder, p[i * 4 + 1]);
+		remainder = __crc32d(remainder, p[i * 4 + 2]);
+		remainder = __crc32d(remainder, p[i * 4 + 3]);
+	}
+	return remainder;
+}
+#define IMPL_ALIGNMENT		8
+#define IMPL_SEGMENT_SIZE	32
+#include "../crc32_vec_template.h"
+#endif /* INSTR implementation */
+
 #ifdef DISPATCH
 static inline crc32_func_t
 arch_select_crc32_func(void)
 {
 	u32 features = get_cpu_features();
 
+#ifdef DISPATCH_INSTR
+	if (features & ARM_CPU_FEATURE_CRC32)
+		return crc32_instr;
+#endif
 #ifdef DISPATCH_PMULL
 	if (features & ARM_CPU_FEATURE_PMULL)
 		return crc32_pmull;
