@@ -36,7 +36,7 @@ override CFLAGS :=							\
 
 ##############################################################################
 
-PREFIX ?= /usr
+PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 INCDIR ?= $(PREFIX)/include
 LIBDIR ?= $(PREFIX)/lib
