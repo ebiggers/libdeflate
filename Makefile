@@ -11,6 +11,23 @@
 #
 # Define DISABLE_ZLIB to disable support for the zlib wrapper format.
 #
+# Define PREFIX to override the installation prefix, like './configure --prefix'
+# in autotools-based projects (default: /usr/local)
+#
+# Define BINDIR to override where to install binaries, like './configure
+# --bindir' in autotools-based projects (default: PREFIX/bin)
+#
+# Define INCDIR to override where to install headers, like './configure
+# --includedir' in autotools-based projects (default: PREFIX/include)
+#
+# Define LIBDIR to override where to install libraries, like './configure
+# --libdir' in autotools-based projects (default: PREFIX/lib)
+#
+# Define DESTDIR to override the installation destination directory
+# (default: empty string)
+#
+# You can also specify custom CFLAGS, CPPFLAGS, and/or LDFLAGS.
+#
 ##############################################################################
 
 #### Common compiler flags.  You can add additional flags by defining CFLAGS

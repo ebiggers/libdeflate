@@ -33,8 +33,11 @@ By default, the following targets are built: the static library `libdeflate.a`,
 the shared library `libdeflate.so`, the `gzip` program, and the `gunzip` program
 (which is actually just a hard link to `gzip`).  Benchmarking and test programs
 such as `benchmark` are not built by default.  You can run `make help` to
-display the available build targets.  There are also several options which can
-be set on the `make` command line; see the Makefile for details.
+display the available build targets.
+
+There are also many options which can be set on the `make` command line, e.g. to
+omit library features or to customize the directories into which `make install`
+installs files.  See the Makefile for details.
 
 ## For Windows
 
