@@ -262,12 +262,15 @@ DEFAULT_TARGETS += gunzip$(PROG_SUFFIX)
 
 all:$(DEFAULT_TARGETS)
 
+# Install the files.  Note: not all versions of the 'install' program have the
+# '-D' and '-t' options, so don't use them; use portable commands only.
 install:all
-	install -Dm644 -t $(DESTDIR)$(LIBDIR) $(STATIC_LIB)
-	install -Dm755 -t $(DESTDIR)$(LIBDIR) $(SHARED_LIB)
+	install -d $(DESTDIR)$(LIBDIR) $(DESTDIR)$(INCDIR) $(DESTDIR)$(BINDIR)
+	install -m644 $(STATIC_LIB) $(DESTDIR)$(LIBDIR)
+	install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR)
 	ln -sf $(SHARED_LIB) $(DESTDIR)$(LIBDIR)/libdeflate.so
-	install -Dm644 -t $(DESTDIR)$(INCDIR) libdeflate.h
-	install -Dm755 gzip $(DESTDIR)$(BINDIR)/libdeflate-gzip
+	install -m644 libdeflate.h $(DESTDIR)$(INCDIR)
+	install -m755 gzip $(DESTDIR)$(BINDIR)/libdeflate-gzip
 	ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip $(DESTDIR)$(BINDIR)/libdeflate-gunzip
 
 uninstall:
