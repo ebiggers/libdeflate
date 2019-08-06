@@ -71,7 +71,8 @@ libdeflate_gzip_compress(struct libdeflate_compressor *c,
 		xfl |= GZIP_XFL_SLOWEST_COMRESSION;
 	*out_next++ = xfl;
 	/* OS */
-	*out_next++ = GZIP_OS_UNKNOWN;	/* OS  */
+	*out_next++ = GZIP_OS_UNKNOWN;
+	/* FILENAME */
 	if (file_name != NULL) {
 		int i = 0;
 		do {
