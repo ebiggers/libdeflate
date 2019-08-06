@@ -1,3 +1,9 @@
+Version 1.3:
+	Activate -n switch in gzip program
+
+	Add file_name parameter to libdeflate_gzip_compress function. This
+	function store filename in gz if file_name parameter in not null.
+	
 Version 1.2:
 	Slight improvements to decompression speed.
 
