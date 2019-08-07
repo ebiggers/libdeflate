@@ -43,17 +43,18 @@ struct options {
 	bool decompress;
 	bool force;
 	bool keep;
+	bool save_filenames;
 	int compression_level;
 	const tchar *suffix;
 };
 
-static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhknS:V");
+static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhkNS:V");
 
 static void
 show_usage(FILE *fp)
 {
 	fprintf(fp,
-"Usage: %"TS" [-LEVEL] [-cdfhkV] [-S SUF] FILE...\n"
+"Usage: %"TS" [-LEVEL] [-cdfhkNV] [-S SUF] FILE...\n"
 "Compress or decompress the specified FILEs.\n"
 "\n"
 "Options:\n"
@@ -65,6 +66,7 @@ show_usage(FILE *fp)
 "  -f        overwrite existing output files\n"
 "  -h        print this help\n"
 "  -k        don't delete input files\n"
+"  -N        save the original name\n"
 "  -S SUF    use suffix SUF instead of .gz\n"
 "  -V        show version and legal information\n",
 	program_invocation_name);
@@ -138,7 +140,8 @@ append_suffix(const tchar *path, const tchar *suffix)
 
 static int
 do_compress(struct libdeflate_compressor *compressor,
-	    struct file_stream *in, struct file_stream *out)
+	    struct file_stream *in, struct file_stream *out,
+		char *file_name)
 {
 	const void *uncompressed_data = in->mmap_mem;
 	size_t uncompressed_size = in->mmap_size;
@@ -157,11 +160,12 @@ do_compress(struct libdeflate_compressor *compressor,
 		goto out;
 	}
 
-	actual_compressed_size = libdeflate_gzip_compress(compressor,
+	actual_compressed_size = libdeflate_gzip_compress_ex(compressor,
 							  uncompressed_data,
 							  uncompressed_size,
 							  compressed_data,
-							  max_compressed_size);
+							  max_compressed_size,
+							  file_name);
 	if (actual_compressed_size == 0) {
 		msg("Bug in libdeflate_gzip_compress_bound()!");
 		ret = -1;
@@ -460,7 +464,9 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 	stat_t stbuf;
 	int ret;
 	int ret2;
-
+	char *file_name;
+	char path_file_name[256];
+			
 	if (path != NULL && !options->to_stdout) {
 		if (!options->force && has_suffix(path, options->suffix)) {
 			msg("%"TS": already has %"TS" suffix -- skipping",
@@ -497,7 +503,19 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 	if (ret != 0)
 		goto out_close_out;
 
-	ret = do_compress(compressor, &in, &out);
+	if (options->save_filenames == true)
+	{
+		wcstombs(path_file_name, path, sizeof path_file_name);
+		if(strrchr(path_file_name, '\\'))
+			strcpy(path_file_name, strrchr(path_file_name, '\\')+1);
+		
+		if(strrchr(path_file_name, '/'))
+			strcpy(path_file_name, strrchr(path_file_name, '/')+1);
+		
+		file_name = path_file_name;
+	}
+	
+	ret = do_compress(compressor, &in, &out, file_name);
 	if (ret != 0)
 		goto out_close_out;
 
@@ -568,12 +586,12 @@ tmain(int argc, tchar *argv[])
 		case 'k':
 			options.keep = true;
 			break;
-		case 'n':
+		case 'N':
+			options.save_filenames = true;
 			/*
-			 * -n means don't save or restore the original filename
-			 *  in the gzip header.  Currently this implementation
-			 *  already behaves this way by default, so accept the
-			 *  option as a no-op.
+			 * -N means save the original filename
+			 *  in the gzip header.
+			 * Restore the name not implemented
 			 */
 			break;
 		case 'S':

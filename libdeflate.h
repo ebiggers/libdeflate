@@ -128,7 +128,7 @@ LIBDEFLATEAPI size_t
 libdeflate_zlib_compress_bound(struct libdeflate_compressor *compressor,
 			       size_t in_nbytes);
 
-/*
+ /*
  * Like libdeflate_deflate_compress(), but stores the data in the gzip wrapper
  * format.
  */
@@ -137,6 +137,16 @@ libdeflate_gzip_compress(struct libdeflate_compressor *compressor,
 			 const void *in, size_t in_nbytes,
 			 void *out, size_t out_nbytes_avail);
 
+/*
+ * Like libdeflate_gzip_compress(), but stores the filename
+ * format.
+ */
+LIBDEFLATEAPI size_t
+libdeflate_gzip_compress_ex(struct libdeflate_compressor *compressor,
+			 const void *in, size_t in_nbytes,
+			 void *out, size_t out_nbytes_avail,
+			 char *file_name);
+ 
 /*
  * Like libdeflate_deflate_compress_bound(), but assumes the data will be
  * compressed with libdeflate_gzip_compress() rather than with
