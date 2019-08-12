@@ -457,7 +457,7 @@ tmain(int argc, tchar *argv[])
 	 * FIXME: make it faster.
 	 */
 	putchar('\n');
-	ASSERT(t < 3 * tz);
+	ASSERT(t < 5 * tz);
 
 	/* original reproducer */
 	t = do_test_libdeflate("original repro", orig_repro, sizeof(orig_repro),
