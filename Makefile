@@ -68,8 +68,6 @@ SHARED_LIB_LDFLAGS := -Wl,-soname=$(SHARED_LIB)
 PROG_SUFFIX        :=
 PROG_CFLAGS        :=
 HARD_LINKS         := 1
-ARFLAGS            := cr
-ARCHS              := *
 
 # Compiling for Windows with MinGW?
 ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
@@ -94,7 +92,7 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
 else ifeq ($(shell uname),Darwin)
    SHARED_LIB_SUFFIX  := .dylib
    SHARED_LIB          = libdeflate$(SOVERSION)$(SHARED_LIB_SUFFIX)
-   SHARED_LIB_LDFLAGS := "-install_name $(SHARED_LIB)"
+   SHARED_LIB_LDFLAGS := -install_name $(SHARED_LIB)
 endif
 
 ##############################################################################
@@ -126,7 +124,7 @@ LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
 LIB_HEADERS := $(wildcard lib/*.h) $(wildcard lib/*/*.h)
 
 LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c \
-	   $(wildcard lib/$(ARCHS)/cpu_features.c)
+	   $(wildcard lib/*/cpu_features.c)
 
 DECOMPRESSION_ONLY :=
 ifndef DECOMPRESSION_ONLY
@@ -163,7 +161,7 @@ $(SHARED_LIB_OBJ): %.shlib.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
 
 # Create static library
 $(STATIC_LIB):$(STATIC_LIB_OBJ)
-	$(QUIET_AR) $(AR) $(ARFLAGS) $@ $+
+	$(QUIET_AR) $(AR) cr $@ $+
 
 DEFAULT_TARGETS += $(STATIC_LIB)
 

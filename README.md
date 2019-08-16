@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/ebiggers/libdeflate.svg?branch=master)](https://travis-ci.com/ebiggers/libdeflate)
+
 # Overview
 
 libdeflate is a library for fast, whole-buffer DEFLATE-based compression and
