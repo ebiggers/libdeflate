@@ -47,7 +47,8 @@ override CFLAGS :=							\
 	$(call cc-option,-Wdeclaration-after-statement)			\
 	$(call cc-option,-Wmissing-prototypes)				\
 	$(call cc-option,-Wstrict-prototypes)				\
-	$(call cc-option,-Wvla)
+	$(call cc-option,-Wvla)						\
+	$(call cc-option,-Wimplicit-fallthrough)
 
 # We don't define any CPPFLAGS, but support the user specifying it.
 
