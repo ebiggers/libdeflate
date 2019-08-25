@@ -1857,7 +1857,7 @@ deflate_finish_sequence(struct deflate_sequence *seq, u32 litrunlen)
  * but rather we combine many symbols into a single "observation type".  For
  * literals we only look at the high bits and low bits, and for matches we only
  * look at whether the match is long or not.  The assumption is that for typical
- * "real" data, places that are good block boundaries will tend to be noticable
+ * "real" data, places that are good block boundaries will tend to be noticeable
  * based only on changes in these aggregate frequencies, without looking for
  * subtle differences in individual symbols.  For example, a change from ASCII
  * bytes to non-ASCII bytes, or from few matches (generally less compressible)

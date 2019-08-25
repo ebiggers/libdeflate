@@ -336,7 +336,7 @@ do {									\
  * pointer", meaning that the entry references a subtable that must be indexed
  * using more bits of the compressed data to decode the symbol.
  *
- * Each decode table (a main table along with with its subtables, if any) is
+ * Each decode table (a main table along with its subtables, if any) is
  * associated with a Huffman code.  Logically, the result of a decode table
  * lookup is a symbol from the alphabet from which the corresponding Huffman
  * code was constructed.  A symbol with codeword length n <= TABLEBITS is
