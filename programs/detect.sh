@@ -13,7 +13,7 @@ trap "rm -f \"$tmpfile\"" EXIT
 
 program_compiles() {
 	echo "$1" > "$tmpfile"
-	$CC $CFLAGS -x c "$tmpfile" -o /dev/null > /dev/null 2>&1
+	$CC $CFLAGS -Wno-error -x c "$tmpfile" -o /dev/null > /dev/null 2>&1
 }
 
 check_function() {
