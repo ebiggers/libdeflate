@@ -32,7 +32,7 @@ cd "$TMPDIR"
 
 begin_test() {
 	CURRENT_TEST="$1"
-	rm -rf -- "$TMPDIR"/*
+	rm -rf -- "${TMPDIR:?}"/*
 	cp "$SMOKEDATA" file
 }
 
@@ -50,9 +50,9 @@ assert_status() {
 	shift 2
 	(
 		set +e
-		eval "$*" 2>&1 >/dev/null
+		{ eval "$*" > /dev/null; } 2>&1
 		local actual_status=$?
-		if [ $actual_status -ne $expected_status ]; then
+		if [ "$actual_status" != "$expected_status" ]; then
 			echo 1>&2 "Command '$*' exited with status" \
 				"$actual_status but expected status" \
 				"$expected_status"
@@ -60,7 +60,7 @@ assert_status() {
 		fi
 		exit 0
 	) > command_output
-	if ! egrep -q "$expected_msg" command_output; then
+	if ! grep -E -q "$expected_msg" command_output; then
 		echo 1>&2 "Expected output of command '$*' to match regex" \
 			"'$expected_msg'"
 		echo 1>&2 "Actual output was:"
@@ -96,9 +96,9 @@ assert_equals() {
 begin_test 'Basic compression and decompression works'
 cp file orig
 gzip file
-[ ! -e file -a -e file.gz ]
+[ ! -e file ] && [ -e file.gz ]
 gunzip file.gz
-[ -e file -a ! -e file.gz ]
+[ -e file ] && [ ! -e file.gz ]
 cmp file orig
 
 
@@ -162,9 +162,9 @@ else
 	done
 	max_level=12
 fi
-for level in `seq 1 $max_level`; do
-	gzip -c -$level file > file$level
-	cmp file <(gunzip -c file$level)
+for level in $(seq 1 $max_level); do
+	gzip -c "-$level" file > "file$level"
+	cmp file <(gunzip -c "file$level")
 done
 rm file command_output
 cmp <(ls -S) <(ls -v) # file,file{1..max_level} have decreasing size
@@ -186,7 +186,7 @@ cmp file orig
 
 begin_test 'Nonexistent input file fails, even with -f'
 for prog in 'gzip' 'gzip -f' 'gunzip' 'gunzip -f'; do
-	assert_error 'No such file or directory' $prog NONEXISTENT
+	assert_error 'No such file or directory' "$prog" NONEXISTENT
 done
 
 
@@ -194,9 +194,9 @@ begin_test 'Compressing already-suffixed file requires -f or -c'
 gzip file
 gzip -c file.gz > c.gz
 gzip file.gz 2>&1 >/dev/null | grep -q 'already has .gz suffix'
-[ -e file.gz -a ! -e file.gz.gz ]
+[ -e file.gz ] && [ ! -e file.gz.gz ]
 gzip -f file.gz
-[ ! -e file.gz -a -e file.gz.gz ]
+[ ! -e file.gz ] && [ -e file.gz.gz ]
 cmp file.gz.gz c.gz
 
 
@@ -211,7 +211,7 @@ mv file file.gz && gunzip file.gz && cmp file orig
 begin_test '... unless there is a corresponding suffixed file'
 cp file orig
 gzip file
-[ ! -e file -a -e file.gz ]
+[ ! -e file ] && [ -e file.gz ]
 gunzip -c file > tmp
 cmp tmp orig
 rm tmp
@@ -220,7 +220,7 @@ gunzip -c file > tmp
 cmp tmp orig
 rm tmp file
 gunzip file
-[ -e file -a ! -e file.gz ]
+[ -e file ] && [ ! -e file.gz ]
 cmp file orig
 
 
@@ -242,9 +242,9 @@ begin_test '(gzip) symlink is rejected without -f or -c'
 ln -s file symlink1
 ln -s file symlink2
 assert_error 'Too many levels of symbolic links' gzip symlink1
-[ -e file -a -e symlink1 -a ! -e symlink1.gz ]
+[ -e file ] && [ -e symlink1 ] && [ ! -e symlink1.gz ]
 gzip -f symlink1
-[ -e file -a ! -e symlink1 -a -e symlink1.gz ]
+[ -e file ] && [ ! -e symlink1 ] && [ -e symlink1.gz ]
 gzip -c symlink2 > /dev/null
 
 
@@ -253,9 +253,9 @@ gzip file
 ln -s file.gz symlink1.gz
 ln -s file.gz symlink2.gz
 assert_error 'Too many levels of symbolic links' gunzip symlink1
-[ -e file.gz -a -e symlink1.gz -a ! -e symlink1 ]
+[ -e file.gz ] && [ -e symlink1.gz ] && [ ! -e symlink1 ]
 gunzip -f symlink1.gz
-[ -e file.gz -a ! -e symlink1.gz -a -e symlink1 ]
+[ -e file.gz ] && [ ! -e symlink1.gz ] && [ -e symlink1 ]
 gunzip -c symlink2.gz > /dev/null
 
 
@@ -321,9 +321,9 @@ cmp link.gz orig.gz
 begin_test 'Multiple files'
 cp file file2
 gzip file file2
-[ ! -e file -a ! -e file2 -a -e file.gz -a -e file2.gz ]
+[ ! -e file ] && [ ! -e file2 ] && [ -e file.gz ] && [ -e file2.gz ]
 gunzip file.gz file2.gz
-[ -e file -a -e file2 -a ! -e file.gz -a ! -e file2.gz ]
+[ -e file ] && [ -e file2 ] && [ ! -e file.gz ] && [ ! -e file2.gz ]
 
 
 begin_test 'Multiple files, continue on warning'
@@ -342,13 +342,13 @@ cmp 2 file
 begin_test 'Multiple files, continue on error'
 cp file 1
 cp file 2
-chmod -r 1
+chmod a-r 1
 assert_error 'Permission denied' gzip 1 2
 [ ! -e 1.gz ]
 cmp file <(gunzip -c 2.gz)
 rm -f 1
 cp 2.gz 1.gz
-chmod -r 1.gz
+chmod a-r 1.gz
 assert_error 'Permission denied' gunzip 1.gz 2.gz
 [ ! -e 1 ]
 cmp 2 file
@@ -379,10 +379,10 @@ assert_error '\<(not in gzip format|crc error)\>' gunzip foo.gz
 for suf in .foo foo .blaaaaaaaaaaaaaaaargh; do
 	begin_test "Custom suffix: $suf"
 	gzip -S $suf file
-	[ ! -e file -a ! -e file.gz -a -e file$suf ]
+	[ ! -e file ] && [ ! -e file.gz ] && [ -e file$suf ]
 	assert_skipped gunzip file$suf
 	gunzip -S $suf file$suf
-	[ -e file -a ! -e file.gz -a ! -e file$suf ]
+	[ -e file ] && [ ! -e file.gz ] && [ ! -e file$suf ]
 done
 # DIFFERENCE: GNU gzip lower cases suffix, we don't
 
