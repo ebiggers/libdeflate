@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eu
+set -eu -o pipefail
 
 have_cpu_feature() {
 	local feature="$1"
