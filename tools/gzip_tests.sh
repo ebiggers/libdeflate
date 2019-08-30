@@ -83,6 +83,15 @@ assert_skipped() {
 	assert_warning '\<(ignored|skipping|unchanged)\>' "$@"
 }
 
+assert_equals() {
+	local expected="$1"
+	local actual="$2"
+
+	if [ "$expected" != "$actual" ]; then
+		echo 1>&2 "Expected '$expected', but got '$actual'"
+		return 1
+	fi
+}
 
 begin_test 'Basic compression and decompression works'
 cp file orig
@@ -284,13 +293,13 @@ cmp <(echo 2) 2
 begin_test '(gzip) hard linked file skipped without -f or -c'
 cp file orig
 ln file link
-[ $(stat -c %h file) -eq 2 ]
+assert_equals 2 "$(stat -c %h file)"
 assert_skipped gzip file
 gzip -c file > /dev/null
-[ $(stat -c %h file) -eq 2 ]
+assert_equals 2 "$(stat -c %h file)"
 gzip -f file
-[ $(stat -c %h link) -eq 1 ]
-[ $(stat -c %h file.gz) -eq 1 ]
+assert_equals 1 "$(stat -c %h link)"
+assert_equals 1 "$(stat -c %h file.gz)"
 cmp link orig
 # XXX: GNU gzip skips hard linked files with -k, libdeflate's doesn't
 
@@ -299,13 +308,13 @@ begin_test '(gunzip) hard linked file skipped without -f or -c'
 gzip file
 ln file.gz link.gz
 cp file.gz orig.gz
-[ $(stat -c %h file.gz) -eq 2 ]
+assert_equals 2 "$(stat -c %h file.gz)"
 assert_skipped gunzip file.gz
 gunzip -c file.gz > /dev/null
-[ $(stat -c %h file.gz) -eq 2 ]
+assert_equals 2 "$(stat -c %h file.gz)"
 gunzip -f file
-[ $(stat -c %h link.gz) -eq 1 ]
-[ $(stat -c %h file) -eq 1 ]
+assert_equals 1 "$(stat -c %h link.gz)"
+assert_equals 1 "$(stat -c %h file)"
 cmp link.gz orig.gz
 
 
@@ -389,7 +398,7 @@ orig_stat="$(stat -c '%a;%x;%y' file)"
 gzip file
 sleep 1
 gunzip file.gz
-[ "$(stat -c '%a;%x;%y' file)" = "$orig_stat" ]
+assert_equals "$orig_stat" "$(stat -c '%a;%x;%y' file)"
 
 
 begin_test 'Decompressing multi-member gzip file'
