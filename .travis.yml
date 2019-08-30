@@ -1,0 +1,71 @@
+language: c
+
+env:
+  global:
+    - CFLAGS=-Werror
+
+matrix:
+  include:
+    - name: Native tests (Linux)
+      os: linux
+      dist: bionic
+      before_install:
+        - sudo apt-get install -y libz-dev gcc-multilib libz-dev:i386
+          libc6-dev-i386 valgrind clang gcc-4.8-multilib gcc-mingw-w64-i686
+      script:
+        - tools/run_tests.sh native
+
+    - name: Checksum, static analysis, and edge case tests (Linux)
+      os: linux
+      dist: bionic
+      before_install:
+        - sudo apt-get install -y libz-dev gcc-multilib libz-dev:i386
+          libc6-dev-i386 clang python3
+      script:
+        - tools/run_tests.sh checksum_benchmarks static_analysis edge_case
+
+    - name: gzip and cross-compile-for-Windows tests (Linux)
+      os: linux
+      dist: bionic
+      before_install:
+        - sudo apt-get install -y libz-dev valgrind
+          gcc-mingw-w64-x86-64 libz-mingw-w64-dev
+      script:
+        - tools/run_tests.sh gzip windows
+
+    - name: Basic tests (old Linux distro, gcc)
+      os: linux
+      dist: precise
+      compiler: gcc
+      script:
+        - make all check
+
+    - name: Basic tests (old Linux distro, clang)
+      os: linux
+      dist: precise
+      compiler: clang
+      script:
+        - make all check
+
+    - name: Basic tests (macOS, xcode11)
+      os: osx
+      osx_image: xcode11
+      script:
+        - make all check
+
+    - name: Basic tests (macOS, xcode9.4)
+      os: osx
+      osx_image: xcode9.4
+      script:
+        - make all check
+
+    - name: Basic tests (macOS, xcode7.3)
+      os: osx
+      osx_image: xcode7.3
+      script:
+        - make all check
+
+    - name: Basic tests (Windows, MinGW)
+      os: windows
+      script:
+        - mingw32-make all check
