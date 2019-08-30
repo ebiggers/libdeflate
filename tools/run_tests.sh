@@ -33,12 +33,25 @@ if [ $# -gt 0 ]; then
 	set_test_groups "$@"
 fi
 
-SMOKEDATA="${SMOKEDATA:=$HOME/data/smokedata}"
-if [ ! -e "$SMOKEDATA" ]; then
-	echo "SMOKEDATA (value: $SMOKEDATA) does not exist.  Set the" \
-	      "environmental variable SMOKEDATA to a file to use in" \
-	      "compression/decompression tests." 1>&2
-	exit 1
+
+TMPFILE="$(mktemp)"
+USING_TMP_SMOKEDATA=false
+
+cleanup() {
+	rm "$TMPFILE"
+	if $USING_TMP_SMOKEDATA; then
+		rm "$SMOKEDATA"
+	fi
+}
+
+trap cleanup EXIT
+
+if [ -z "${SMOKEDATA:-}" ]; then
+	# Generate default SMOKEDATA file.
+	SMOKEDATA=$(mktemp -t smokedata.XXXXXXXXXX)
+	USING_TMP_SMOKEDATA=true
+	cat $(find . -name '*.c' -o -name '*.h' -o -name '*.sh') \
+		| head -c 1000000 > "$SMOKEDATA"
 fi
 
 NDKDIR="${NDKDIR:=/opt/android-ndk}"
@@ -48,9 +61,6 @@ EXEC_TESTS_CMD="WRAPPER= SMOKEDATA=\"$(basename $SMOKEDATA)\" sh exec_tests.sh"
 NPROC=$(grep -c processor /proc/cpuinfo)
 VALGRIND="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all"
 SANITIZE_CFLAGS="-fsanitize=undefined -fno-sanitize-recover=undefined,integer"
-
-TMPFILE="$(mktemp)"
-trap "rm -f \"$TMPFILE\"" EXIT
 
 ###############################################################################
 
