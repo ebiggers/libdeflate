@@ -73,7 +73,7 @@ get_page_size(void)
 }
 
 /* Allocate a buffer with guard pages */
-int
+void
 alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret)
 {
 	const size_t pagesize = get_page_size();
@@ -94,7 +94,7 @@ alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret)
 	if (!base_addr) {
 		msg("Unable to allocate memory (VirtualAlloc): Windows error %u",
 		    (unsigned int)GetLastError());
-		return -1;
+		ASSERT(0);
 	}
 	start = base_addr + pagesize;
 	end = start + (nr_pages * pagesize);
@@ -104,7 +104,7 @@ alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret)
 		msg("Unable to protect memory (VirtualProtect): Windows error %u",
 		    (unsigned int)GetLastError());
 		VirtualFree(base_addr, 0, MEM_RELEASE);
-		return -1;
+		ASSERT(0);
 	}
 #else
 	/* Allocate buffer and guard pages. */
@@ -112,7 +112,7 @@ alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret)
 			 MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 	if (base_addr == (u8 *)MAP_FAILED) {
 		msg_errno("Unable to allocate memory (anonymous mmap)");
-		return -1;
+		ASSERT(0);
 	}
 	start = base_addr + pagesize;
 	end = start + (nr_pages * pagesize);
@@ -123,7 +123,6 @@ alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret)
 #endif
 	*start_ret = start;
 	*end_ret = end;
-	return 0;
 }
 
 /* Free a buffer that was allocated by alloc_guarded_buffer() */
