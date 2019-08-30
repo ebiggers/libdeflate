@@ -2,28 +2,6 @@
 
 set -eu
 
-if [ $# -eq 0 ]; then
-	FILE="$HOME/data/silesia"
-	[ ! -e "$FILE" ] && FILE="$HOME/silesia"
-	[ ! -e "$FILE" ] && FILE="$HOME/data/testdata"
-	[ ! -e "$FILE" ] && FILE="$HOME/testdata"
-	echo "Using default FILE: $FILE"
-	echo
-elif [ $# -eq 1 ]; then
-	FILE="$1"
-else
-	echo "Usage: $0 [FILE]" 1>&2
-	exit 1
-fi
-
-ARCH="$(uname -m)"
-
-if [ -n "$(git status -s | egrep 'adler32_impl.h|crc32_impl.h')" ]; then
-	echo "This script will overwrite adler32_impl.h and crc32_impl.h," \
-		"which have uncommitted changes.  Refusing to run." 1>&2
-	exit 1
-fi
-
 have_cpu_feature() {
 	local feature="$1"
 	local tag
@@ -61,7 +39,7 @@ do_benchmark() {
 	else
 		make_and_test CFLAGS="$EXTRA_CFLAGS"
 		__do_benchmark "libdeflate, $impl"
-		if [ $ARCH = x86_64 ]; then
+		if [ "$ARCH" = x86_64 ]; then
 			make_and_test CFLAGS="-m32 $EXTRA_CFLAGS"
 			__do_benchmark "libdeflate, $impl, 32-bit"
 		fi
@@ -80,11 +58,38 @@ disable_impl() {
 	EXTRA_CFLAGS+=" $extra_cflags"
 }
 
-restore_impls() {
+cleanup() {
 	git checkout -f lib/*/{adler,crc}32_impl.h
+	if $USING_TMPFILE; then
+		rm "$FILE"
+	fi
 }
 
-trap restore_impls EXIT
+ARCH="$(uname -m)"
+USING_TMPFILE=false
+
+if (( $# > 1 )); then
+	echo "Usage: $0 [FILE]" 1>&2
+	exit 1
+fi
+
+if git status -s | grep -E -q 'adler32_impl.h|crc32_impl.h'; then
+	echo "This script will overwrite adler32_impl.h and crc32_impl.h," \
+		"which have uncommitted changes.  Refusing to run." 1>&2
+	exit 1
+fi
+
+trap cleanup EXIT
+
+if (( $# == 0 )); then
+	# Generate default test data file.
+	FILE=$(mktemp -t checksum_testdata.XXXXXXXXXX)
+	USING_TMPFILE=true
+	echo "Generating 100 MB test file: $FILE"
+	head -c 100000000 /dev/urandom > "$FILE"
+else
+	FILE="$1"
+fi
 
 cat << EOF
 Method                                       Speed (MB/s)
