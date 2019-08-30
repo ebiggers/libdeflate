@@ -60,19 +60,17 @@ INCDIR ?= $(PREFIX)/include
 LIBDIR ?= $(PREFIX)/lib
 
 SOVERSION          := 0
+
 STATIC_LIB_SUFFIX  := .a
-SHARED_LIB_SUFFIX  := .so.$(SOVERSION)
-SHARED_LIB_CFLAGS  := -fPIC
-SHARED_LIB_LDFLAGS := -Wl,-soname=libdeflate$(SHARED_LIB_SUFFIX)
 PROG_SUFFIX        :=
 PROG_CFLAGS        :=
 HARD_LINKS         := 1
 
 # Compiling for Windows with MinGW?
 ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
-    SOVERSION          :=
     STATIC_LIB_SUFFIX  := static.lib
-    SHARED_LIB_SUFFIX  := .dll
+    SHARED_LIB         := libdeflate.dll
+    SHARED_LIB_SYMLINK :=
     SHARED_LIB_CFLAGS  :=
     SHARED_LIB_LDFLAGS := -Wl,--out-implib,libdeflate.lib
     PROG_SUFFIX        := .exe
@@ -88,6 +86,20 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
         AR := $(shell echo $(CC) | \
                 sed -E 's/g?cc(-?[0-9]+(\.[0-9]+)*)?(\.exe)?$$/ar\3/')
     endif
+
+# macOS?
+else ifeq ($(shell uname),Darwin)
+   SHARED_LIB         := libdeflate.$(SOVERSION).dylib
+   SHARED_LIB_SYMLINK := libdeflate.dylib
+   SHARED_LIB_CFLAGS  := -fPIC
+   SHARED_LIB_LDFLAGS := -install_name $(SHARED_LIB)
+
+# Linux, FreeBSD, etc.
+else
+   SHARED_LIB         := libdeflate.so.$(SOVERSION)
+   SHARED_LIB_SYMLINK := libdeflate.so
+   SHARED_LIB_CFLAGS  := -fPIC
+   SHARED_LIB_LDFLAGS := -Wl,-soname=$(SHARED_LIB)
 endif
 
 ##############################################################################
@@ -113,7 +125,6 @@ DEFAULT_TARGETS :=
 #### Library
 
 STATIC_LIB := libdeflate$(STATIC_LIB_SUFFIX)
-SHARED_LIB := libdeflate$(SHARED_LIB_SUFFIX)
 
 LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
 
@@ -168,11 +179,11 @@ $(SHARED_LIB):$(SHARED_LIB_OBJ)
 
 DEFAULT_TARGETS += $(SHARED_LIB)
 
-ifdef SOVERSION
+ifdef SHARED_LIB_SYMLINK
 # Create the symlink libdeflate.so => libdeflate.so.$SOVERSION
-libdeflate.so:$(SHARED_LIB)
+$(SHARED_LIB_SYMLINK):$(SHARED_LIB)
 	$(QUIET_LN) ln -sf $+ $@
-DEFAULT_TARGETS += libdeflate.so
+DEFAULT_TARGETS += $(SHARED_LIB_SYMLINK)
 endif
 
 # Rebuild if CC, LIB_CFLAGS, or CPPFLAGS changed
