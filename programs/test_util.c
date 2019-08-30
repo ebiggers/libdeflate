@@ -59,6 +59,16 @@ assertion_failed(const char *expr, const char *file, int line)
 	abort();
 }
 
+void
+begin_performance_test(void)
+{
+	if (getenv("INCLUDE_PERF_TESTS") == NULL) {
+		printf("Skipping '%"TS"' since it's a performance test, which may be flaky.\n",
+		       program_invocation_name);
+		exit(0);
+	}
+}
+
 static size_t
 get_page_size(void)
 {

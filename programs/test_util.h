@@ -44,6 +44,8 @@ assertion_failed(const char *expr, const char *file, int line);
 #define ASSERT(expr) { if (unlikely(!(expr))) \
 	assertion_failed(#expr, __FILE__, __LINE__); }
 
+extern void begin_performance_test(void);
+
 extern void alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret);
 extern void free_guarded_buffer(u8 *start, u8 *end);
 
