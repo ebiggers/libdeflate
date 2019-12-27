@@ -1,3 +1,22 @@
+Version 1.4:
+	The 32-bit Windows build of libdeflate now uses the "stdcall"
+	calling convention instead of "cdecl".  If you're calling
+	libdeflate.dll directly from C or C++, you'll need to recompile
+	your code.  If you're calling it from another language, or
+	calling it indirectly using LoadLibrary(), you'll need to update
+	your code to use the stdcall calling convention.
+
+	The Makefile now supports building libdeflate as a shared
+	library (.dylib) on macOS.
+
+	Fixed a bug where support for certain optimizations and optional
+	features (file access hints and more precise timestamps) was
+	incorrectly omitted when libdeflate was compiled with -Werror.
+
+	Added 'make check' target to the Makefile.
+
+	Added CI configuration files.
+
 Version 1.3:
 	`make install` now supports customizing the directories into
 	which binaries, headers, and libraries are installed.
