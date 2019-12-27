@@ -18,7 +18,7 @@ extern "C" {
 
 /*
  * On Windows, if you want to link to the DLL version of libdeflate, then
- * #define LIBDEFLATE_DLL.  Note that the calling convention is cdecl.
+ * #define LIBDEFLATE_DLL.  Note that the calling convention is "stdcall".
  */
 #ifdef LIBDEFLATE_DLL
 #  ifdef BUILDING_LIBDEFLATE
@@ -31,6 +31,12 @@ extern "C" {
 #  define LIBDEFLATEAPI_SYM_VISIBILITY
 #endif
 
+#if defined(_WIN32) && defined(__i386__)
+#  define LIBDEFLATEAPI_ABI		__stdcall
+#else
+#  define LIBDEFLATEAPI_ABI
+#endif
+
 #if defined(BUILDING_LIBDEFLATE) && defined(__GNUC__) && \
 	defined(_WIN32) && defined(__i386__)
     /*
@@ -39,12 +45,12 @@ extern "C" {
      * code when called from an MSVC-compiled application.
      */
 #  define LIBDEFLATEAPI_STACKALIGN	__attribute__((force_align_arg_pointer))
-#endif
-#ifndef LIBDEFLATEAPI_STACKALIGN
+#else
 #  define LIBDEFLATEAPI_STACKALIGN
 #endif
 
-#define LIBDEFLATEAPI	LIBDEFLATEAPI_SYM_VISIBILITY LIBDEFLATEAPI_STACKALIGN
+#define LIBDEFLATEAPI	LIBDEFLATEAPI_SYM_VISIBILITY LIBDEFLATEAPI_ABI \
+			LIBDEFLATEAPI_STACKALIGN
 
 /* ========================================================================== */
 /*                             Compression                                    */

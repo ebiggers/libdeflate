@@ -15,13 +15,25 @@ static unsigned int rng_seed;
 typedef u32 (*cksum_fn_t)(u32, const void *, size_t);
 
 static u32
-zlib_adler32(u32 adler, const void *buf, size_t len)
+adler32_libdeflate(u32 adler, const void *buf, size_t len)
+{
+	return libdeflate_adler32(adler, buf, len);
+}
+
+static u32
+crc32_libdeflate(u32 crc, const void *buf, size_t len)
+{
+	return libdeflate_crc32(crc, buf, len);
+}
+
+static u32
+adler32_zlib(u32 adler, const void *buf, size_t len)
 {
 	return adler32(adler, buf, len);
 }
 
 static u32
-zlib_crc32(u32 crc, const void *buf, size_t len)
+crc32_zlib(u32 crc, const void *buf, size_t len)
 {
 	return crc32(crc, buf, len);
 }
@@ -51,7 +63,7 @@ static void
 test_initial_values(cksum_fn_t cksum, u32 expected)
 {
 	ASSERT(cksum(0, NULL, 0) == expected);
-	if (cksum != zlib_adler32) /* broken */
+	if (cksum != adler32_zlib) /* broken */
 		ASSERT(cksum(0, NULL, 1) == expected);
 	ASSERT(cksum(0, NULL, 1234) == expected);
 	ASSERT(cksum(1234, NULL, 0) == expected);
@@ -100,14 +112,14 @@ static void
 test_crc32(const void *buffer, size_t size, u32 initial_value)
 {
 	test_checksums(buffer, size, "CRC-32",
-		       libdeflate_crc32, zlib_crc32, initial_value);
+		       crc32_libdeflate, crc32_zlib, initial_value);
 }
 
 static void
 test_adler32(const void *buffer, size_t size, u32 initial_value)
 {
 	test_checksums(buffer, size, "Adler-32",
-		       libdeflate_adler32, zlib_adler32, initial_value);
+		       adler32_libdeflate, adler32_zlib, initial_value);
 }
 
 static void test_random_buffers(u8 *buffer, u8 *guarded_buf_end,
@@ -146,10 +158,10 @@ tmain(int argc, tchar *argv[])
 	rng_seed = time(NULL);
 	srand(rng_seed);
 
-	test_initial_values(libdeflate_adler32, 1);
-	test_initial_values(zlib_adler32, 1);
-	test_initial_values(libdeflate_crc32, 0);
-	test_initial_values(zlib_crc32, 0);
+	test_initial_values(adler32_libdeflate, 1);
+	test_initial_values(adler32_zlib, 1);
+	test_initial_values(crc32_libdeflate, 0);
+	test_initial_values(crc32_zlib, 0);
 
 	/* Test different buffer sizes and alignments */
 	test_random_buffers(buffer, guarded_buf_end, 256, 5000);

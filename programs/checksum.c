@@ -45,19 +45,31 @@ show_usage(FILE *fp)
 	program_invocation_name);
 }
 
+typedef u32 (*cksum_fn_t)(u32, const void *, size_t);
+
 static u32
-zlib_adler32(u32 adler, const void *buf, size_t len)
+adler32_libdeflate(u32 adler, const void *buf, size_t len)
+{
+	return libdeflate_adler32(adler, buf, len);
+}
+
+static u32
+crc32_libdeflate(u32 crc, const void *buf, size_t len)
+{
+	return libdeflate_crc32(crc, buf, len);
+}
+
+static u32
+adler32_zlib(u32 adler, const void *buf, size_t len)
 {
 	return adler32(adler, buf, len);
 }
 
 static u32
-zlib_crc32(u32 crc, const void *buf, size_t len)
+crc32_zlib(u32 crc, const void *buf, size_t len)
 {
 	return crc32(crc, buf, len);
 }
-
-typedef u32 (*cksum_fn_t)(u32, const void *, size_t);
 
 static int
 checksum_stream(struct file_stream *in, cksum_fn_t cksum, u32 *sum,
@@ -137,14 +149,14 @@ tmain(int argc, tchar *argv[])
 
 	if (use_adler32) {
 		if (use_zlib_impl)
-			cksum = zlib_adler32;
+			cksum = adler32_zlib;
 		else
-			cksum = libdeflate_adler32;
+			cksum = adler32_libdeflate;
 	} else {
 		if (use_zlib_impl)
-			cksum = zlib_crc32;
+			cksum = crc32_zlib;
 		else
-			cksum = libdeflate_crc32;
+			cksum = crc32_libdeflate;
 	}
 
 	buf = xmalloc(bufsize);

@@ -158,11 +158,11 @@ This enables you to allocate an output buffer of the correct size without
 guessing.  However, libdeflate's decompression routines do optionally provide
 the actual number of output bytes in case you need it.
 
-Windows developers: note that the calling convention of libdeflate.dll is cdecl.
-This differs from the Windows API, which uses stdcall.  If you call into
-libdeflate.dll using a non-C/C++ language, or dynamically using LoadLibrary(),
-make sure to use the cdecl calling convention.  Using the wrong calling
-convention may crash your application.
+Windows developers: note that the calling convention of libdeflate.dll is
+"stdcall" -- the same as the Win32 API.  If you call into libdeflate.dll using a
+non-C/C++ language, or dynamically using LoadLibrary(), make sure to use the
+stdcall convention.  Using the wrong convention may crash your application.
+(Note: older versions of libdeflate used the "cdecl" convention instead.)
 
 # DEFLATE vs. zlib vs. gzip
 
