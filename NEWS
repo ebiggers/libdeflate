@@ -1,3 +1,8 @@
+Version 1.5:
+	Fixed up stdcall support on 32-bit Windows: the functions are
+	now exported using both suffixed and non-suffixed names, and
+	fixed libdeflate.h to be MSVC-compatible again.
+
 Version 1.4:
 	The 32-bit Windows build of libdeflate now uses the "stdcall"
 	calling convention instead of "cdecl".  If you're calling
