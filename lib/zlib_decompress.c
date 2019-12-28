@@ -32,7 +32,7 @@
 
 #include "libdeflate.h"
 
-LIBDEFLATEAPI enum libdeflate_result
+LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
 libdeflate_zlib_decompress(struct libdeflate_decompressor *d,
 			   const void *in, size_t in_nbytes,
 			   void *out, size_t out_nbytes_avail,

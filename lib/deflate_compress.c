@@ -2669,7 +2669,7 @@ deflate_init_offset_slot_fast(struct libdeflate_compressor *c)
 	}
 }
 
-LIBDEFLATEAPI struct libdeflate_compressor *
+LIBDEFLATEEXPORT struct libdeflate_compressor * LIBDEFLATEAPI
 libdeflate_alloc_compressor(int compression_level)
 {
 	struct libdeflate_compressor *c;
@@ -2778,7 +2778,7 @@ libdeflate_alloc_compressor(int compression_level)
 	return c;
 }
 
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_deflate_compress(struct libdeflate_compressor *c,
 			    const void *in, size_t in_nbytes,
 			    void *out, size_t out_nbytes_avail)
@@ -2799,7 +2799,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	return (*c->impl)(c, in, in_nbytes, out, out_nbytes_avail);
 }
 
-LIBDEFLATEAPI void
+LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
 	aligned_free(c);
@@ -2811,7 +2811,7 @@ deflate_get_compression_level(struct libdeflate_compressor *c)
 	return c->compression_level;
 }
 
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 				  size_t in_nbytes)
 {

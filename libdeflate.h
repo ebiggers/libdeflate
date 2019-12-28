@@ -22,23 +22,23 @@ extern "C" {
  */
 #ifdef LIBDEFLATE_DLL
 #  ifdef BUILDING_LIBDEFLATE
-#    define LIBDEFLATEAPI_SYM_VISIBILITY	LIBEXPORT
+#    define LIBDEFLATEEXPORT	LIBEXPORT
 #  elif defined(_WIN32) || defined(__CYGWIN__)
-#    define LIBDEFLATEAPI_SYM_VISIBILITY	__declspec(dllimport)
+#    define LIBDEFLATEEXPORT	__declspec(dllimport)
 #  endif
 #endif
-#ifndef LIBDEFLATEAPI_SYM_VISIBILITY
-#  define LIBDEFLATEAPI_SYM_VISIBILITY
+#ifndef LIBDEFLATEEXPORT
+#  define LIBDEFLATEEXPORT
 #endif
 
-#if defined(_WIN32) && defined(__i386__)
-#  define LIBDEFLATEAPI_ABI		__stdcall
+#if defined(_WIN32) && !defined(_WIN64)
+#  define LIBDEFLATEAPI_ABI	__stdcall
 #else
 #  define LIBDEFLATEAPI_ABI
 #endif
 
 #if defined(BUILDING_LIBDEFLATE) && defined(__GNUC__) && \
-	defined(_WIN32) && defined(__i386__)
+	defined(_WIN32) && !defined(_WIN64)
     /*
      * On 32-bit Windows, gcc assumes 16-byte stack alignment but MSVC only 4.
      * Realign the stack when entering libdeflate to avoid crashing in SSE/AVX
@@ -49,8 +49,7 @@ extern "C" {
 #  define LIBDEFLATEAPI_STACKALIGN
 #endif
 
-#define LIBDEFLATEAPI	LIBDEFLATEAPI_SYM_VISIBILITY LIBDEFLATEAPI_ABI \
-			LIBDEFLATEAPI_STACKALIGN
+#define LIBDEFLATEAPI	LIBDEFLATEAPI_ABI LIBDEFLATEAPI_STACKALIGN
 
 /* ========================================================================== */
 /*                             Compression                                    */
@@ -72,7 +71,7 @@ struct libdeflate_compressor;
  * A single compressor is not safe to use by multiple threads concurrently.
  * However, different threads may use different compressors concurrently.
  */
-LIBDEFLATEAPI struct libdeflate_compressor *
+LIBDEFLATEEXPORT struct libdeflate_compressor * LIBDEFLATEAPI
 libdeflate_alloc_compressor(int compression_level);
 
 /*
@@ -82,7 +81,7 @@ libdeflate_alloc_compressor(int compression_level);
  * bytes.  The return value is the compressed size in bytes, or 0 if the data
  * could not be compressed to 'out_nbytes_avail' bytes or fewer.
  */
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_deflate_compress(struct libdeflate_compressor *compressor,
 			    const void *in, size_t in_nbytes,
 			    void *out, size_t out_nbytes_avail);
@@ -112,7 +111,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *compressor,
  * libdeflate_deflate_compress() returns 0, indicating that the compressed data
  * did not fit into the provided output buffer.
  */
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_deflate_compress_bound(struct libdeflate_compressor *compressor,
 				  size_t in_nbytes);
 
@@ -120,7 +119,7 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *compressor,
  * Like libdeflate_deflate_compress(), but stores the data in the zlib wrapper
  * format.
  */
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_zlib_compress(struct libdeflate_compressor *compressor,
 			 const void *in, size_t in_nbytes,
 			 void *out, size_t out_nbytes_avail);
@@ -130,7 +129,7 @@ libdeflate_zlib_compress(struct libdeflate_compressor *compressor,
  * compressed with libdeflate_zlib_compress() rather than with
  * libdeflate_deflate_compress().
  */
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_zlib_compress_bound(struct libdeflate_compressor *compressor,
 			       size_t in_nbytes);
 
@@ -138,7 +137,7 @@ libdeflate_zlib_compress_bound(struct libdeflate_compressor *compressor,
  * Like libdeflate_deflate_compress(), but stores the data in the gzip wrapper
  * format.
  */
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_gzip_compress(struct libdeflate_compressor *compressor,
 			 const void *in, size_t in_nbytes,
 			 void *out, size_t out_nbytes_avail);
@@ -148,7 +147,7 @@ libdeflate_gzip_compress(struct libdeflate_compressor *compressor,
  * compressed with libdeflate_gzip_compress() rather than with
  * libdeflate_deflate_compress().
  */
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_gzip_compress_bound(struct libdeflate_compressor *compressor,
 			       size_t in_nbytes);
 
@@ -157,7 +156,7 @@ libdeflate_gzip_compress_bound(struct libdeflate_compressor *compressor,
  * libdeflate_alloc_compressor().  If a NULL pointer is passed in, no action is
  * taken.
  */
-LIBDEFLATEAPI void
+LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_compressor(struct libdeflate_compressor *compressor);
 
 /* ========================================================================== */
@@ -178,7 +177,7 @@ struct libdeflate_decompressor;
  * A single decompressor is not safe to use by multiple threads concurrently.
  * However, different threads may use different decompressors concurrently.
  */
-LIBDEFLATEAPI struct libdeflate_decompressor *
+LIBDEFLATEEXPORT struct libdeflate_decompressor * LIBDEFLATEAPI
 libdeflate_alloc_decompressor(void);
 
 /*
@@ -234,7 +233,7 @@ enum libdeflate_result {
  *     not large enough but no other problems were encountered, or another
  *     nonzero result code if decompression failed for another reason.
  */
-LIBDEFLATEAPI enum libdeflate_result
+LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
 libdeflate_deflate_decompress(struct libdeflate_decompressor *decompressor,
 			      const void *in, size_t in_nbytes,
 			      void *out, size_t out_nbytes_avail,
@@ -246,7 +245,7 @@ libdeflate_deflate_decompress(struct libdeflate_decompressor *decompressor,
  * then the actual compressed size of the DEFLATE stream (aligned to the next
  * byte boundary) is written to *actual_in_nbytes_ret.
  */
-LIBDEFLATEAPI enum libdeflate_result
+LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
 libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *decompressor,
 				 const void *in, size_t in_nbytes,
 				 void *out, size_t out_nbytes_avail,
@@ -257,7 +256,7 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *decompressor,
  * Like libdeflate_deflate_decompress(), but assumes the zlib wrapper format
  * instead of raw DEFLATE.
  */
-LIBDEFLATEAPI enum libdeflate_result
+LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
 libdeflate_zlib_decompress(struct libdeflate_decompressor *decompressor,
 			   const void *in, size_t in_nbytes,
 			   void *out, size_t out_nbytes_avail,
@@ -271,7 +270,7 @@ libdeflate_zlib_decompress(struct libdeflate_decompressor *decompressor,
  * will be decompressed.  Use libdeflate_gzip_decompress_ex() if you need
  * multi-member support.
  */
-LIBDEFLATEAPI enum libdeflate_result
+LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
 libdeflate_gzip_decompress(struct libdeflate_decompressor *decompressor,
 			   const void *in, size_t in_nbytes,
 			   void *out, size_t out_nbytes_avail,
@@ -284,7 +283,7 @@ libdeflate_gzip_decompress(struct libdeflate_decompressor *decompressor,
  * buffer was decompressed), then the actual number of input bytes consumed is
  * written to *actual_in_nbytes_ret.
  */
-LIBDEFLATEAPI enum libdeflate_result
+LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
 libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *decompressor,
 			      const void *in, size_t in_nbytes,
 			      void *out, size_t out_nbytes_avail,
@@ -296,7 +295,7 @@ libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *decompressor,
  * libdeflate_alloc_decompressor().  If a NULL pointer is passed in, no action
  * is taken.
  */
-LIBDEFLATEAPI void
+LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_decompressor(struct libdeflate_decompressor *decompressor);
 
 /* ========================================================================== */
@@ -309,7 +308,7 @@ libdeflate_free_decompressor(struct libdeflate_decompressor *decompressor);
  * required initial value for 'adler' is 1.  This value is also returned when
  * 'buffer' is specified as NULL.
  */
-LIBDEFLATEAPI uint32_t
+LIBDEFLATEEXPORT uint32_t LIBDEFLATEAPI
 libdeflate_adler32(uint32_t adler32, const void *buffer, size_t len);
 
 
@@ -319,7 +318,7 @@ libdeflate_adler32(uint32_t adler32, const void *buffer, size_t len);
  * initial value for 'crc' is 0.  This value is also returned when 'buffer' is
  * specified as NULL.
  */
-LIBDEFLATEAPI uint32_t
+LIBDEFLATEEXPORT uint32_t LIBDEFLATEAPI
 libdeflate_crc32(uint32_t crc, const void *buffer, size_t len);
 
 #ifdef __cplusplus

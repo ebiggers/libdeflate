@@ -304,7 +304,7 @@ static u32 dispatch(u32 remainder, const u8 *buffer, size_t size)
 #  define crc32_impl DEFAULT_IMPL /* only one implementation, use it */
 #endif
 
-LIBDEFLATEAPI u32
+LIBDEFLATEEXPORT u32 LIBDEFLATEAPI
 libdeflate_crc32(u32 remainder, const void *buffer, size_t size)
 {
 	if (buffer == NULL) /* return initial value */
