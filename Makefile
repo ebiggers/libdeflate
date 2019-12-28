@@ -73,6 +73,7 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
     SHARED_LIB_SYMLINK :=
     SHARED_LIB_CFLAGS  :=
     SHARED_LIB_LDFLAGS := -Wl,--out-implib,libdeflate.lib \
+                          -Wl,--output-def,libdeflate.def \
                           -Wl,--add-stdcall-alias
     PROG_SUFFIX        := .exe
     PROG_CFLAGS        := -static -municode
@@ -318,7 +319,7 @@ clean:
 		lib/*.dllobj lib/*/*.dllobj \
 		programs/*.o programs/*.obj \
 		$(DEFAULT_TARGETS) $(TEST_PROGRAMS) programs/config.h \
-		libdeflate.lib libdeflatestatic.lib \
+		libdeflate.lib libdeflate.def libdeflatestatic.lib \
 		.lib-cflags .prog-cflags
 
 realclean: clean

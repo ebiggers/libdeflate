@@ -1,4 +1,5 @@
 *.a
+*.def
 *.dll
 *.dylib
 *.exe
