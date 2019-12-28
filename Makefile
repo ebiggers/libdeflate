@@ -72,7 +72,8 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
     SHARED_LIB         := libdeflate.dll
     SHARED_LIB_SYMLINK :=
     SHARED_LIB_CFLAGS  :=
-    SHARED_LIB_LDFLAGS := -Wl,--out-implib,libdeflate.lib
+    SHARED_LIB_LDFLAGS := -Wl,--out-implib,libdeflate.lib \
+                          -Wl,--add-stdcall-alias
     PROG_SUFFIX        := .exe
     PROG_CFLAGS        := -static -municode
     HARD_LINKS         :=
