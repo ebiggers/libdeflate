@@ -60,6 +60,6 @@ gunzip.exe:gzip.exe
 	copy $** $@
 
 clean:
-	-del *.dll *.exe *.exp libdeflate.lib libdeflatestatic.lib gzip.lib \
-		lib\*.obj lib\*\*.obj lib\*.dllobj lib\*\*.dllobj \
-		programs\*.obj 2>nul
+	-del /s /q *.dll *.exe *.exp libdeflate.lib libdeflatestatic.lib gzip.lib \
+		lib\*.obj lib\*.dllobj \
+		programs\*.obj >nul 2>&1
