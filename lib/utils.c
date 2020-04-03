@@ -1,7 +1,5 @@
 /*
- * aligned_malloc.c - aligned memory allocation
- *
- * Originally public domain; changes after 2016-09-07 are copyrighted.
+ * utils.c - utility functions for libdeflate
  *
  * Copyright 2016 Eric Biggers
  *
@@ -25,12 +23,6 @@
  * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
- */
-
-/*
- * This file provides portable aligned memory allocation functions that only
- * use malloc() and free().  This avoids portability problems with
- * posix_memalign(), aligned_alloc(), etc.
  */
 
 #include <stdlib.h>

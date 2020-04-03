@@ -18,13 +18,13 @@ SHARED_LIB = libdeflate.dll
 IMPORT_LIB = libdeflate.lib
 
 STATIC_LIB_OBJ =			\
-	  lib/aligned_malloc.obj	\
 	  lib/adler32.obj		\
 	  lib/crc32.obj			\
 	  lib/deflate_compress.obj	\
 	  lib/deflate_decompress.obj	\
 	  lib/gzip_compress.obj		\
 	  lib/gzip_decompress.obj	\
+	  lib/utils.obj			\
 	  lib/x86/cpu_features.obj	\
 	  lib/zlib_compress.obj		\
 	  lib/zlib_decompress.obj

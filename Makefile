@@ -132,7 +132,7 @@ LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
 
 LIB_HEADERS := $(wildcard lib/*.h) $(wildcard lib/*/*.h)
 
-LIB_SRC := lib/aligned_malloc.c lib/deflate_decompress.c \
+LIB_SRC := lib/deflate_decompress.c lib/utils.c \
 	   $(wildcard lib/*/cpu_features.c)
 
 DECOMPRESSION_ONLY :=
