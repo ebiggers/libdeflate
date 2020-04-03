@@ -68,7 +68,6 @@ int wmain(int argc, wchar_t **argv);
 #  define	topen		_wopen
 #  define	tstrchr		wcschr
 #  define	tstrcmp		wcscmp
-#  define	tstrcpy		wcscpy
 #  define	tstrlen		wcslen
 #  define	tstrrchr	wcsrchr
 #  define	tstrtoul	wcstoul
@@ -100,7 +99,6 @@ int wmain(int argc, wchar_t **argv);
 #  define	topen		open
 #  define	tstrchr		strchr
 #  define	tstrcmp		strcmp
-#  define	tstrcpy		strcpy
 #  define	tstrlen		strlen
 #  define	tstrrchr	strrchr
 #  define	tstrtoul	strtoul
