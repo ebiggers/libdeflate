@@ -26,6 +26,10 @@
 # Define DESTDIR to override the installation destination directory
 # (default: empty string)
 #
+# Define FREESTANDING to build a freestanding library, i.e. a library that
+# doesn't link to any libc functions like malloc(), free(), and memcpy().
+# All users will need to call libdeflate_set_memory_allocator().
+#
 # You can also specify custom CFLAGS, CPPFLAGS, and/or LDFLAGS.
 #
 ##############################################################################
@@ -50,7 +54,11 @@ override CFLAGS :=							\
 	$(call cc-option,-Wvla)						\
 	$(call cc-option,-Wimplicit-fallthrough)
 
-# We don't define any CPPFLAGS, but support the user specifying it.
+FREESTANDING :=
+ifdef FREESTANDING
+override CPPFLAGS += -DFREESTANDING
+LIB_CFLAGS += -ffreestanding -nostdlib
+endif
 
 ##############################################################################
 

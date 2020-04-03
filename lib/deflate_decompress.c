@@ -45,7 +45,6 @@
  */
 
 #include <limits.h>
-#include <string.h>
 
 #include "deflate_constants.h"
 #include "unaligned.h"

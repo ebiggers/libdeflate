@@ -25,7 +25,12 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <stdlib.h>
+#ifdef FREESTANDING
+#  define malloc NULL
+#  define free NULL
+#else
+#  include <stdlib.h>
+#endif
 
 #include "lib_common.h"
 
@@ -72,3 +77,57 @@ libdeflate_set_memory_allocator(void *(*malloc_func)(size_t),
 	libdeflate_malloc_func = malloc_func;
 	libdeflate_free_func = free_func;
 }
+
+/*
+ * Implementations of libc functions for freestanding library builds.
+ * Not optimized yet.  Normal library builds don't use these.
+ */
+#ifdef FREESTANDING
+void *memset(void *s, int c, size_t n)
+{
+	u8 *p = s;
+	size_t i;
+
+	for (i = 0; i < n; i++)
+		p[i] = c;
+	return s;
+}
+
+void *memcpy(void *dest, const void *src, size_t n)
+{
+	u8 *d = dest;
+	const u8 *s = src;
+	size_t i;
+
+	for (i = 0; i < n; i++)
+		d[i] = s[i];
+	return dest;
+}
+
+void *memmove(void *dest, const void *src, size_t n)
+{
+	u8 *d = dest;
+	const u8 *s = src;
+	size_t i;
+
+	if (d <= s)
+		return memcpy(d, s, n);
+
+	for (i = n; i > 0; i--)
+		d[i - 1] = s[i - 1];
+	return dest;
+}
+
+int memcmp(const void *s1, const void *s2, size_t n)
+{
+	const u8 *p1 = s1;
+	const u8 *p2 = s2;
+	size_t i;
+
+	for (i = 0; i < n; i++) {
+		if (p1[i] != p2[i])
+			return (int)p1[i] - (int)p2[i];
+	}
+	return 0;
+}
+#endif /* FREESTANDING */

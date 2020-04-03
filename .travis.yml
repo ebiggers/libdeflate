@@ -13,7 +13,7 @@ matrix:
         - sudo apt-get install -y libz-dev gcc-multilib libz-dev:i386
           libc6-dev-i386 valgrind clang gcc-4.8-multilib gcc-mingw-w64-i686
       script:
-        - tools/run_tests.sh native
+        - tools/run_tests.sh native freestanding
 
     - name: Checksum, static analysis, and edge case tests (Linux)
       os: linux

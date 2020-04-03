@@ -130,6 +130,11 @@ void
 begin_program(tchar *argv[])
 {
 	program_invocation_name = get_filename(argv[0]);
+
+#ifdef FREESTANDING
+	/* This allows testing freestanding library builds. */
+	libdeflate_set_memory_allocator(malloc, free);
+#endif
 }
 
 /* Create a copy of 'path' surrounded by double quotes */

@@ -27,8 +27,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <string.h>
-
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 #include "unaligned.h"
