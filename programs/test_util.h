@@ -38,21 +38,21 @@
 # define _noreturn
 #endif
 
-extern void _noreturn
+void _noreturn
 assertion_failed(const char *expr, const char *file, int line);
 
 #define ASSERT(expr) { if (unlikely(!(expr))) \
 	assertion_failed(#expr, __FILE__, __LINE__); }
 
-extern void begin_performance_test(void);
+void begin_performance_test(void);
 
-extern void alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret);
-extern void free_guarded_buffer(u8 *start, u8 *end);
+void alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret);
+void free_guarded_buffer(u8 *start, u8 *end);
 
-extern u64 timer_ticks(void);
-extern u64 timer_ticks_to_ms(u64 ticks);
-extern u64 timer_MB_per_s(u64 bytes, u64 ticks);
-extern u64 timer_KB_per_s(u64 bytes, u64 ticks);
+u64 timer_ticks(void);
+u64 timer_ticks_to_ms(u64 ticks);
+u64 timer_MB_per_s(u64 bytes, u64 ticks);
+u64 timer_KB_per_s(u64 bytes, u64 ticks);
 
 struct output_bitstream {
 	machine_word_t bitbuf;
@@ -61,8 +61,7 @@ struct output_bitstream {
 	u8 *end;
 };
 
-extern bool put_bits(struct output_bitstream *os, machine_word_t bits,
-		     int num_bits);
-extern bool flush_bits(struct output_bitstream *os);
+bool put_bits(struct output_bitstream *os, machine_word_t bits, int num_bits);
+bool flush_bits(struct output_bitstream *os);
 
 #endif /* PROGRAMS_TEST_UTIL_H */

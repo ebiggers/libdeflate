@@ -57,7 +57,7 @@
  */
 
 #include <wchar.h>
-extern int wmain(int argc, wchar_t **argv);
+int wmain(int argc, wchar_t **argv);
 #  define	tmain		wmain
 #  define	tchar		wchar_t
 #  define	_T(text)	L##text
@@ -116,12 +116,12 @@ extern int wmain(int argc, wchar_t **argv);
 
 extern const tchar *program_invocation_name;
 
-extern void _printf(1, 2) msg(const char *fmt, ...);
-extern void _printf(1, 2) msg_errno(const char *fmt, ...);
+void _printf(1, 2) msg(const char *fmt, ...);
+void _printf(1, 2) msg_errno(const char *fmt, ...);
 
-extern void *xmalloc(size_t size);
+void *xmalloc(size_t size);
 
-extern const tchar *get_filename(const tchar *path);
+const tchar *get_filename(const tchar *path);
 
 struct file_stream {
 	int fd;
@@ -132,27 +132,26 @@ struct file_stream {
 	size_t mmap_size;
 };
 
-extern int xopen_for_read(const tchar *path, bool symlink_ok,
-			  struct file_stream *strm);
-extern int xopen_for_write(const tchar *path, bool force,
-			   struct file_stream *strm);
-extern int map_file_contents(struct file_stream *strm, u64 size);
+int xopen_for_read(const tchar *path, bool symlink_ok,
+		   struct file_stream *strm);
+int xopen_for_write(const tchar *path, bool force, struct file_stream *strm);
+int map_file_contents(struct file_stream *strm, u64 size);
 
-extern ssize_t xread(struct file_stream *strm, void *buf, size_t count);
-extern int full_write(struct file_stream *strm, const void *buf, size_t count);
+ssize_t xread(struct file_stream *strm, void *buf, size_t count);
+int full_write(struct file_stream *strm, const void *buf, size_t count);
 
-extern int xclose(struct file_stream *strm);
+int xclose(struct file_stream *strm);
 
-extern int parse_compression_level(tchar opt_char, const tchar *arg);
+int parse_compression_level(tchar opt_char, const tchar *arg);
 
-extern struct libdeflate_compressor *alloc_compressor(int level);
-extern struct libdeflate_decompressor *alloc_decompressor(void);
+struct libdeflate_compressor *alloc_compressor(int level);
+struct libdeflate_decompressor *alloc_decompressor(void);
 
 /* tgetopt.c */
 
 extern tchar *toptarg;
 extern int toptind, topterr, toptopt;
 
-extern int tgetopt(int argc, tchar *argv[], const tchar *optstring);
+int tgetopt(int argc, tchar *argv[], const tchar *optstring);
 
 #endif /* PROGRAMS_PROG_UTIL_H */

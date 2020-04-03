@@ -27,7 +27,7 @@
 
 extern volatile u32 _cpu_features;
 
-extern void setup_cpu_features(void);
+void setup_cpu_features(void);
 
 static inline u32 get_cpu_features(void)
 {
