@@ -29,16 +29,21 @@
 
 #include "lib_common.h"
 
+#include "libdeflate.h"
+
+static void *(*libdeflate_malloc_func)(size_t) = malloc;
+static void (*libdeflate_free_func)(void *) = free;
+
 void *
 libdeflate_malloc(size_t size)
 {
-	return malloc(size);
+	return (*libdeflate_malloc_func)(size);
 }
 
 void
 libdeflate_free(void *ptr)
 {
-	free(ptr);
+	(*libdeflate_free_func)(ptr);
 }
 
 void *
@@ -58,4 +63,12 @@ libdeflate_aligned_free(void *ptr)
 {
 	if (ptr)
 		libdeflate_free(((void **)ptr)[-1]);
+}
+
+LIBDEFLATEEXPORT void LIBDEFLATEAPI
+libdeflate_set_memory_allocator(void *(*malloc_func)(size_t),
+				void (*free_func)(void *))
+{
+	libdeflate_malloc_func = malloc_func;
+	libdeflate_free_func = free_func;
 }

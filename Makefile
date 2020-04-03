@@ -215,6 +215,7 @@ TEST_PROG_COMMON_SRC := programs/test_util.c
 TEST_PROG_SRC        := programs/benchmark.c \
 			programs/checksum.c \
 			programs/test_checksums.c \
+			programs/test_custom_malloc.c \
 			programs/test_incomplete_codes.c \
 			programs/test_slow_decompression.c \
 			programs/test_trailing_bytes.c
