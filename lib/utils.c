@@ -30,7 +30,7 @@
 #include "lib_common.h"
 
 void *
-aligned_malloc(size_t alignment, size_t size)
+libdeflate_aligned_malloc(size_t alignment, size_t size)
 {
 	void *ptr = malloc(sizeof(void *) + alignment - 1 + size);
 	if (ptr) {
@@ -42,7 +42,7 @@ aligned_malloc(size_t alignment, size_t size)
 }
 
 void
-aligned_free(void *ptr)
+libdeflate_aligned_free(void *ptr)
 {
 	if (ptr)
 		free(((void **)ptr)[-1]);

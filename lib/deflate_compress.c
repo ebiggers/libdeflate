@@ -2681,7 +2681,7 @@ libdeflate_alloc_compressor(int compression_level)
 #endif
 		size = offsetof(struct libdeflate_compressor, p) + sizeof(c->p.g);
 
-	c = aligned_malloc(MATCHFINDER_ALIGNMENT, size);
+	c = libdeflate_aligned_malloc(MATCHFINDER_ALIGNMENT, size);
 	if (!c)
 		return NULL;
 
@@ -2765,7 +2765,7 @@ libdeflate_alloc_compressor(int compression_level)
 		break;
 #endif
 	default:
-		aligned_free(c);
+		libdeflate_aligned_free(c);
 		return NULL;
 	}
 
@@ -2801,7 +2801,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
-	aligned_free(c);
+	libdeflate_aligned_free(c);
 }
 
 unsigned int
