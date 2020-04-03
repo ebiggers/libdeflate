@@ -35,7 +35,7 @@
 
 #include <stdlib.h>
 
-#include "aligned_malloc.h"
+#include "lib_common.h"
 
 void *
 aligned_malloc(size_t alignment, size_t size)

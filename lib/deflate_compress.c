@@ -30,7 +30,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "aligned_malloc.h"
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 #include "unaligned.h"
