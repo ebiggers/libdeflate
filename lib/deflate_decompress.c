@@ -45,7 +45,6 @@
  */
 
 #include <limits.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "deflate_constants.h"
@@ -987,11 +986,16 @@ libdeflate_alloc_decompressor(void)
 	 *
 	 * But for simplicity, we currently just zero the whole decompressor.
 	 */
-	return calloc(1, sizeof(struct libdeflate_decompressor));
+	struct libdeflate_decompressor *d = libdeflate_malloc(sizeof(*d));
+
+	if (d == NULL)
+		return NULL;
+	memset(d, 0, sizeof(*d));
+	return d;
 }
 
 LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_decompressor(struct libdeflate_decompressor *d)
 {
-	free(d);
+	libdeflate_free(d);
 }
