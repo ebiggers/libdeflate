@@ -65,7 +65,7 @@ tmain(int argc, tchar *argv[])
 	size_t actual_compressed_nbytes;
 	size_t actual_decompressed_nbytes;
 
-	program_invocation_name = get_filename(argv[0]);
+	begin_program(argv);
 
 	ASSERT(compressed_nbytes_avail < compressed_nbytes_total);
 

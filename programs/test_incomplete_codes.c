@@ -374,7 +374,7 @@ test_singleton_offset_code_notsymzero(void)
 int
 tmain(int argc, tchar *argv[])
 {
-	program_invocation_name = get_filename(argv[0]);
+	begin_program(argv);
 
 	test_empty_offset_code();
 	test_singleton_litrunlen_code();

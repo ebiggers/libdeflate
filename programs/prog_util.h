@@ -119,7 +119,7 @@ void _printf(1, 2) msg_errno(const char *fmt, ...);
 
 void *xmalloc(size_t size);
 
-const tchar *get_filename(const tchar *path);
+void begin_program(tchar *argv[]);
 
 struct file_stream {
 	int fd;

@@ -430,7 +430,7 @@ tmain(int argc, tchar *argv[])
 	u8 out[10000];
 	u64 t, tz;
 
-	program_invocation_name = get_filename(argv[0]);
+	begin_program(argv);
 
 	begin_performance_test();
 

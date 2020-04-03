@@ -112,7 +112,7 @@ xmalloc(size_t size)
  * properly for directories, since a path to a directory might have trailing
  * slashes.
  */
-const tchar *
+static const tchar *
 get_filename(const tchar *path)
 {
 	const tchar *slash = tstrrchr(path, '/');
@@ -124,6 +124,12 @@ get_filename(const tchar *path)
 	if (slash != NULL)
 		return slash + 1;
 	return path;
+}
+
+void
+begin_program(tchar *argv[])
+{
+	program_invocation_name = get_filename(argv[0]);
 }
 
 /* Create a copy of 'path' surrounded by double quotes */

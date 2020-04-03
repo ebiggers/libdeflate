@@ -151,7 +151,7 @@ tmain(int argc, tchar *argv[])
 	u8 *buffer = xmalloc(32768);
 	u8 *guarded_buf_start, *guarded_buf_end;
 
-	program_invocation_name = get_filename(argv[0]);
+	begin_program(argv);
 
 	alloc_guarded_buffer(32768, &guarded_buf_start, &guarded_buf_end);
 

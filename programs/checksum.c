@@ -115,7 +115,7 @@ tmain(int argc, tchar *argv[])
 	int i;
 	int ret;
 
-	program_invocation_name = get_filename(argv[0]);
+	begin_program(argv);
 
 	while ((opt_char = tgetopt(argc, argv, optstring)) != -1) {
 		switch (opt_char) {

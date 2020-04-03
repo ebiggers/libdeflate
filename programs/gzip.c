@@ -528,7 +528,7 @@ tmain(int argc, tchar *argv[])
 	int i;
 	int ret;
 
-	program_invocation_name = get_filename(argv[0]);
+	begin_program(argv);
 
 	options.to_stdout = false;
 	options.decompress = is_gunzip();
