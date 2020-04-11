@@ -263,6 +263,19 @@ libdeflate_zlib_decompress(struct libdeflate_decompressor *decompressor,
 			   size_t *actual_out_nbytes_ret);
 
 /*
+ * Like libdeflate_zlib_decompress(), but adds the 'actual_in_nbytes_ret'
+ * argument.  If 'actual_in_nbytes_ret' is not NULL and the decompression
+ * succeeds, then the actual number of input bytes consumed is written to
+ * actual_in_nbytes_ret.
+ */
+LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
+libdeflate_zlib_decompress_ex(struct libdeflate_decompressor *decompressor,
+			      const void *in, size_t in_nbytes,
+			      void *out, size_t out_nbytes_avail,
+			      size_t *actual_in_nbytes_ret,
+			      size_t *actual_out_nbytes_ret);
+
+/*
  * Like libdeflate_deflate_decompress(), but assumes the gzip wrapper format
  * instead of raw DEFLATE.
  *
