@@ -2,6 +2,9 @@
  * compiler_msc.h - definitions for the Microsoft C Compiler
  */
 
+#include <stdint.h>
+#include <stdlib.h> /* for _byteswap_*() */
+
 #define LIBEXPORT	__declspec(dllexport)
 
 /*
@@ -22,24 +25,6 @@ typedef long long ssize_t;
 typedef int ssize_t;
 #endif
 
-/*
- * Old versions (e.g. VS2010) of MSC have stdint.h but not the C99 header
- * inttypes.h.  Work around this by defining the PRI* macros ourselves.
- */
-#include <stdint.h>
-#define PRIu8  "hhu"
-#define PRIu16 "hu"
-#define PRIu32 "u"
-#define PRIu64 "llu"
-#define PRIi8  "hhi"
-#define PRIi16 "hi"
-#define PRIi32 "i"
-#define PRIi64 "lli"
-#define PRIx8  "hhx"
-#define PRIx16 "hx"
-#define PRIx32 "x"
-#define PRIx64 "llx"
-
 /* Assume a little endian architecture with fast unaligned access */
 #define CPU_IS_LITTLE_ENDIAN()		1
 #define UNALIGNED_ACCESS_IS_FAST	1
@@ -52,7 +37,6 @@ typedef int ssize_t;
 #define forceinline	__forceinline
 
 /* Byte swap functions */
-#include <stdlib.h>
 #define bswap16	_byteswap_ushort
 #define bswap32	_byteswap_ulong
 #define bswap64	_byteswap_uint64
