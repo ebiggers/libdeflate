@@ -255,6 +255,10 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *decompressor,
 /*
  * Like libdeflate_deflate_decompress(), but assumes the zlib wrapper format
  * instead of raw DEFLATE.
+ *
+ * Decompression will stop at the end of the zlib stream, even if it is shorter
+ * than 'in_nbytes'.  If you need to know exactly where the zlib stream ended,
+ * use libdeflate_zlib_decompress_ex().
  */
 LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
 libdeflate_zlib_decompress(struct libdeflate_decompressor *decompressor,
@@ -265,8 +269,9 @@ libdeflate_zlib_decompress(struct libdeflate_decompressor *decompressor,
 /*
  * Like libdeflate_zlib_decompress(), but adds the 'actual_in_nbytes_ret'
  * argument.  If 'actual_in_nbytes_ret' is not NULL and the decompression
- * succeeds, then the actual number of input bytes consumed is written to
- * actual_in_nbytes_ret.
+ * succeeds (indicating that the first zlib-compressed stream in the input
+ * buffer was decompressed), then the actual number of input bytes consumed is
+ * written to *actual_in_nbytes_ret.
  */
 LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
 libdeflate_zlib_decompress_ex(struct libdeflate_decompressor *decompressor,
