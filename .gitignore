@@ -1,6 +1,7 @@
 *.a
 *.def
 *.dll
+*.dllobj
 *.dylib
 *.exe
 *.exp
