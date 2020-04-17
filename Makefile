@@ -216,7 +216,8 @@ TEST_PROG_SRC        := programs/benchmark.c \
 			programs/checksum.c \
 			programs/test_checksums.c \
 			programs/test_incomplete_codes.c \
-			programs/test_slow_decompression.c
+			programs/test_slow_decompression.c \
+			programs/test_zlib.c
 
 NONTEST_PROGRAMS := $(NONTEST_PROG_SRC:programs/%.c=%$(PROG_SUFFIX))
 DEFAULT_TARGETS  += $(NONTEST_PROGRAMS)
