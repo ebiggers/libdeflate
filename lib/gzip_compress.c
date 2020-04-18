@@ -35,7 +35,7 @@
 
 LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_gzip_compress(struct libdeflate_compressor *c,
-			 const void *in, size_t in_size,
+			 const void *in, size_t in_nbytes,
 			 void *out, size_t out_nbytes_avail)
 {
 	u8 *out_next = out;
@@ -69,18 +69,18 @@ libdeflate_gzip_compress(struct libdeflate_compressor *c,
 	*out_next++ = GZIP_OS_UNKNOWN;	/* OS  */
 
 	/* Compressed data  */
-	deflate_size = libdeflate_deflate_compress(c, in, in_size, out_next,
+	deflate_size = libdeflate_deflate_compress(c, in, in_nbytes, out_next,
 					out_nbytes_avail - GZIP_MIN_OVERHEAD);
 	if (deflate_size == 0)
 		return 0;
 	out_next += deflate_size;
 
 	/* CRC32 */
-	put_unaligned_le32(libdeflate_crc32(0, in, in_size), out_next);
+	put_unaligned_le32(libdeflate_crc32(0, in, in_nbytes), out_next);
 	out_next += 4;
 
 	/* ISIZE */
-	put_unaligned_le32((u32)in_size, out_next);
+	put_unaligned_le32((u32)in_nbytes, out_next);
 	out_next += 4;
 
 	return out_next - (u8 *)out;
