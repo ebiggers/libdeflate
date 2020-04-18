@@ -61,9 +61,9 @@ libdeflate_gzip_compress(struct libdeflate_compressor *c,
 	xfl = 0;
 	compression_level = deflate_get_compression_level(c);
 	if (compression_level < 2)
-		xfl |= GZIP_XFL_FASTEST_COMRESSION;
+		xfl |= GZIP_XFL_FASTEST_COMPRESSION;
 	else if (compression_level >= 8)
-		xfl |= GZIP_XFL_SLOWEST_COMRESSION;
+		xfl |= GZIP_XFL_SLOWEST_COMPRESSION;
 	*out_next++ = xfl;
 	/* OS */
 	*out_next++ = GZIP_OS_UNKNOWN;	/* OS  */
