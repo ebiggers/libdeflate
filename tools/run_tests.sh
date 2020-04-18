@@ -178,15 +178,14 @@ freestanding_tests() {
 	test_group_included freestanding || return 0
 
 	WRAPPER= native_build_and_test FREESTANDING=1
-	if nm libdeflate.so | grep ' U ' > "$TMPFILE"; then
+	if nm libdeflate.so | grep -q ' U '; then
 		echo 1>&2 "Freestanding lib links to external functions!:"
 		nm libdeflate.so | grep ' U '
 		return 1
 	fi
-	ldd libdeflate.so > "$TMPFILE"
-	if grep -q -v 'statically linked' "$TMPFILE"; then
+	if ldd libdeflate.so | grep -q -v '\<statically linked\>'; then
 		echo 1>&2 "Freestanding lib links to external libraries!:"
-		cat "$TMPFILE"
+		ldd libdeflate.so
 		return 1
 	fi
 
