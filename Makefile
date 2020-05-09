@@ -45,7 +45,7 @@ cc-option = $(shell if $(CC) $(1) -c -x c /dev/null -o /dev/null \
 	      1>&2 2>/dev/null; then echo $(1); fi)
 
 override CFLAGS :=							\
-	-O2 -fomit-frame-pointer $(CFLAGS) -std=c99 -I. -Icommon	\
+	-O2 -fomit-frame-pointer $(CFLAGS) -std=c99 -I.			\
 	-Wall -Wundef							\
 	$(call cc-option,-Wpedantic)					\
 	$(call cc-option,-Wdeclaration-after-statement)			\

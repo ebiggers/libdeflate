@@ -12,7 +12,7 @@
 
 #define BUILDING_LIBDEFLATE
 
-#include "common_defs.h"
+#include "../common/common_defs.h"
 
 /*
  * Prefix with "_libdeflate_" all global symbols which are not part of the API

@@ -39,7 +39,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common_defs.h"
+#include "../common/common_defs.h"
 
 #ifdef __GNUC__
 # define _printf(str_idx, args_idx)	\

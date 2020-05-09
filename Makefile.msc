@@ -10,7 +10,7 @@
 CC = cl
 LD = link
 AR = lib
-CFLAGS = /MD /O2 -I. -Icommon
+CFLAGS = /MD /O2 -I.
 LDFLAGS =
 
 STATIC_LIB = libdeflatestatic.lib
