@@ -134,25 +134,6 @@
 #  define UNALIGNED_ACCESS_IS_FAST 1
 #endif
 
-/* With gcc, we can access unaligned memory through 'packed' structures. */
-#define DEFINE_UNALIGNED_TYPE(type)				\
-								\
-struct type##unaligned {					\
-	type v;							\
-} __attribute__((packed));					\
-								\
-static forceinline type						\
-load_##type##_unaligned(const void *p)				\
-{								\
-	return ((const struct type##unaligned *)p)->v;		\
-}								\
-								\
-static forceinline void						\
-store_##type##_unaligned(type v, void *p)			\
-{								\
-	((struct type##unaligned *)p)->v = v;			\
-}
-
 #define bsr32(n)	(31 - __builtin_clz(n))
 #define bsr64(n)	(63 - __builtin_clzll(n))
 #define bsf32(n)	__builtin_ctz(n)

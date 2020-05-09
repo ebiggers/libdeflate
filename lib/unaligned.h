@@ -7,12 +7,38 @@
 
 #include "lib_common.h"
 
+/***** Unaligned loads and stores without endianness conversion *****/
+
 /*
- * Naming note:
+ * memcpy() is portable, and it usually gets optimized appropriately by modern
+ * compilers.  I.e., each memcpy() of 1, 2, 4, or WORDBYTES bytes gets compiled
+ * to a load or store instruction, not to an actual function call.
  *
- * {load,store}_*_unaligned() deal with raw bytes without endianness conversion.
- * {get,put}_unaligned_*() deal with a specific endianness.
+ * We no longer use the "packed struct" approach, as that is nonstandard, has
+ * unclear semantics, and doesn't receive enough testing
+ * (see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94994).
+ *
+ * arm32 with __ARM_FEATURE_UNALIGNED in gcc 5 and earlier is a known exception
+ * where memcpy() generates inefficient code
+ * (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=67366).  However, we no longer
+ * consider that one case important enough to maintain different code for.
+ * If you run into it, please just use a newer version of gcc (or use clang).
  */
+
+#define DEFINE_UNALIGNED_TYPE(type)				\
+static forceinline type						\
+load_##type##_unaligned(const void *p)				\
+{								\
+	type v;							\
+	memcpy(&v, p, sizeof(v));				\
+	return v;						\
+}								\
+								\
+static forceinline void						\
+store_##type##_unaligned(type v, void *p)			\
+{								\
+	memcpy(p, &v, sizeof(v));				\
+}
 
 DEFINE_UNALIGNED_TYPE(u16)
 DEFINE_UNALIGNED_TYPE(u32)
@@ -22,7 +48,7 @@ DEFINE_UNALIGNED_TYPE(machine_word_t)
 #define load_word_unaligned	load_machine_word_t_unaligned
 #define store_word_unaligned	store_machine_word_t_unaligned
 
-/***** Unaligned loads  *****/
+/***** Unaligned loads with endianness conversion *****/
 
 static forceinline u16
 get_unaligned_le16(const u8 *p)
@@ -84,7 +110,7 @@ get_unaligned_leword(const u8 *p)
 		return get_unaligned_le64(p);
 }
 
-/***** Unaligned stores  *****/
+/***** Unaligned stores with endianness conversion *****/
 
 static forceinline void
 put_unaligned_le16(u16 v, u8 *p)

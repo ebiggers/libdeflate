@@ -244,39 +244,6 @@ static forceinline u64 bswap64(u64 n)
 #  define UNALIGNED_ACCESS_IS_FAST 0
 #endif
 
-/*
- * DEFINE_UNALIGNED_TYPE(type) - a macro that, given an integer type 'type',
- * defines load_type_unaligned(addr) and store_type_unaligned(v, addr) functions
- * which load and store variables of type 'type' from/to unaligned memory
- * addresses.  If not defined, a fallback is used.
- */
-#ifndef DEFINE_UNALIGNED_TYPE
-
-/*
- * Although memcpy() may seem inefficient, it *usually* gets optimized
- * appropriately by modern compilers.  It's portable and may be the best we can
- * do for a fallback...
- */
-#include <string.h>
-
-#define DEFINE_UNALIGNED_TYPE(type)				\
-								\
-static forceinline type						\
-load_##type##_unaligned(const void *p)				\
-{								\
-	type v;							\
-	memcpy(&v, p, sizeof(v));				\
-	return v;						\
-}								\
-								\
-static forceinline void						\
-store_##type##_unaligned(type v, void *p)			\
-{								\
-	memcpy(p, &v, sizeof(v));				\
-}
-
-#endif /* !DEFINE_UNALIGNED_TYPE */
-
 /* ========================================================================== */
 /*                             Bit scan functions                             */
 /* ========================================================================== */
