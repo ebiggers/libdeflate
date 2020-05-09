@@ -80,9 +80,11 @@ libdeflate_set_memory_allocator(void *(*malloc_func)(size_t),
 
 /*
  * Implementations of libc functions for freestanding library builds.
- * Not optimized yet.  Normal library builds don't use these.
+ * Normal library builds don't use these.  Not optimized yet; usually the
+ * compiler expands these functions and doesn't actually call them anyway.
  */
 #ifdef FREESTANDING
+#undef memset
 void *memset(void *s, int c, size_t n)
 {
 	u8 *p = s;
@@ -93,6 +95,7 @@ void *memset(void *s, int c, size_t n)
 	return s;
 }
 
+#undef memcpy
 void *memcpy(void *dest, const void *src, size_t n)
 {
 	u8 *d = dest;
@@ -104,6 +107,7 @@ void *memcpy(void *dest, const void *src, size_t n)
 	return dest;
 }
 
+#undef memmove
 void *memmove(void *dest, const void *src, size_t n)
 {
 	u8 *d = dest;
@@ -118,6 +122,7 @@ void *memmove(void *dest, const void *src, size_t n)
 	return dest;
 }
 
+#undef memcmp
 int memcmp(const void *s1, const void *s2, size_t n)
 {
 	const u8 *p1 = s1;
