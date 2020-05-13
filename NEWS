@@ -1,3 +1,24 @@
+Version 1.6:
+	Prevented gcc 10 from miscompiling libdeflate (workaround for
+	https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94994).
+
+	Removed workaround for gcc 5 and earlier producing slow code on
+	ARM32.  If this affects you, please upgrade your compiler.
+
+	New API function: libdeflate_zlib_decompress_ex().  It provides
+	the actual size of the stream that was decompressed, like the
+	gzip and DEFLATE equivalents.
+
+	libdeflate_zlib_decompress() now accepts trailing bytes after
+	the end of the stream, like the gzip and DEFLATE equivalents.
+
+	Added support for custom memory allocators.
+	(New API function: libdeflate_set_memory_allocator())
+
+	Added support for building the library in freestanding mode.
+
+	Building libdeflate no longer requires CPPFLAGS=-Icommon.
+
 Version 1.5:
 	Fixed up stdcall support on 32-bit Windows: the functions are
 	now exported using both suffixed and non-suffixed names, and
