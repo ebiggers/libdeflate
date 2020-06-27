@@ -41,6 +41,14 @@ There are also many options which can be set on the `make` command line, e.g. to
 omit library features or to customize the directories into which `make install`
 installs files.  See the Makefile for details.
 
+## For macOS
+
+Prebuilt macOS binaries can be installed with [Homebrew](https://brew.sh):
+
+    brew install libdeflate
+
+But if you need to build the binaries yourself, see the section for UNIX above.
+
 ## For Windows
 
 Prebuilt Windows binaries can be downloaded from
