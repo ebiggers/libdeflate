@@ -26,6 +26,14 @@ use this library are also provided:
 
 # Building
 
+## For macOS
+
+Prebuilt macOS binaries can be installed with [Homebrew](https://brew.sh):
+
+    brew install libdeflate
+
+But if you need to build the binaries yourself, see the section for UNIX below.
+
 ## For UNIX
 
 Just run `make`, then (if desired) `make install`.  You need GNU Make and either
