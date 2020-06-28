@@ -26,14 +26,6 @@ use this library are also provided:
 
 # Building
 
-## For macOS
-
-Prebuilt macOS binaries can be installed with [Homebrew](https://brew.sh):
-
-    brew install libdeflate
-
-But if you need to build the binaries yourself, see the section for UNIX below.
-
 ## For UNIX
 
 Just run `make`, then (if desired) `make install`.  You need GNU Make and either
@@ -48,6 +40,14 @@ display the available build targets.
 There are also many options which can be set on the `make` command line, e.g. to
 omit library features or to customize the directories into which `make install`
 installs files.  See the Makefile for details.
+
+## For macOS
+
+Prebuilt macOS binaries can be installed with [Homebrew](https://brew.sh):
+
+    brew install libdeflate
+
+But if you need to build the binaries yourself, see the section for UNIX above.
 
 ## For Windows
 
