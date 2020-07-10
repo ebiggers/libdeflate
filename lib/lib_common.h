@@ -36,7 +36,7 @@ void libdeflate_free(void *ptr);
 void *libdeflate_aligned_malloc(size_t alignment, size_t size);
 void libdeflate_aligned_free(void *ptr);
 
-#ifdef FREESTANDING
+#if defined(FREESTANDING) && !defined(_MSC_VER)
 /*
  * With -ffreestanding, <string.h> may be missing, and we must provide
  * implementations of memset(), memcpy(), memmove(), and memcmp().

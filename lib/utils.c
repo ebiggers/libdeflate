@@ -25,14 +25,14 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "lib_common.h"
+
 #ifdef FREESTANDING
 #  define malloc NULL
 #  define free NULL
 #else
 #  include <stdlib.h>
 #endif
-
-#include "lib_common.h"
 
 #include "libdeflate.h"
 
