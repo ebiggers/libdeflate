@@ -3,7 +3,7 @@
  */
 
 #include <stdint.h>
-#include <stddef.h> /* for _byteswap_*() */
+#include <stdlib.h> /* for _byteswap_*() */
 
 #define LIBEXPORT	__declspec(dllexport)
 
