@@ -290,8 +290,8 @@ install:all
 	install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR)
 	ln -sf $(SHARED_LIB) $(DESTDIR)$(LIBDIR)/libdeflate.so
 	install -m644 libdeflate.h $(DESTDIR)$(INCDIR)
-	install -m755 gzip $(DESTDIR)$(BINDIR)/libdeflate-gzip
-	ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip $(DESTDIR)$(BINDIR)/libdeflate-gunzip
+	install -m755 gzip$(PROG_SUFFIX) $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)
+	ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX) $(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX)
 
 uninstall:
 	rm -f $(DESTDIR)$(LIBDIR)/$(STATIC_LIB) \
