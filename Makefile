@@ -288,7 +288,7 @@ install:all
 	install -d $(DESTDIR)$(LIBDIR) $(DESTDIR)$(INCDIR) $(DESTDIR)$(BINDIR)
 	install -m644 $(STATIC_LIB) $(DESTDIR)$(LIBDIR)
 	install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR)
-	ln -sf $(SHARED_LIB) $(DESTDIR)$(LIBDIR)/libdeflate.so
+	ln -sf $(SHARED_LIB) $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK)
 	install -m644 libdeflate.h $(DESTDIR)$(INCDIR)
 	install -m755 gzip $(DESTDIR)$(BINDIR)/libdeflate-gzip
 	ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip $(DESTDIR)$(BINDIR)/libdeflate-gunzip
@@ -296,7 +296,7 @@ install:all
 uninstall:
 	rm -f $(DESTDIR)$(LIBDIR)/$(STATIC_LIB) \
 		$(DESTDIR)$(LIBDIR)/$(SHARED_LIB) \
-		$(DESTDIR)$(LIBDIR)/libdeflate.so \
+		$(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK) \
 		$(DESTDIR)$(INCDIR)/libdeflate.h \
 		$(DESTDIR)$(BINDIR)/libdeflate-gzip \
 		$(DESTDIR)$(BINDIR)/libdeflate-gunzip
@@ -319,7 +319,7 @@ help:
 	done
 
 clean:
-	rm -f *.a *.dll *.exe *.exp *.so \
+	rm -f *.a *.dll *.exe *.exp *.dylib *.so \
 		lib/*.o lib/*/*.o \
 		lib/*.obj lib/*/*.obj \
 		lib/*.dllobj lib/*/*.dllobj \
