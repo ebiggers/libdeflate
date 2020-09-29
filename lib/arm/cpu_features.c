@@ -107,7 +107,8 @@ void setup_cpu_features(void)
 		features |= ARM_CPU_FEATURE_PMULL;
 #else
 	STATIC_ASSERT(sizeof(long) == 8);
-	features = ARM_CPU_FEATURE_NEON; /* All aarch64 processors require NEON. */
+	if (hwcap & (1 << 1))	/* HWCAP_ASIMD */
+		features |= ARM_CPU_FEATURE_NEON;
 	if (hwcap & (1 << 4))	/* HWCAP_PMULL */
 		features |= ARM_CPU_FEATURE_PMULL;
 	if (hwcap & (1 << 7))	/* HWCAP_CRC32 */
