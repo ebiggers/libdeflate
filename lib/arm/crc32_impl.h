@@ -57,12 +57,24 @@
 
 #include <arm_acle.h>
 
+#define IMPL_ALIGNMENT		8
 #define IMPL_SEGMENT_SIZE	32
 
 static ATTRIBUTES u32 crc32_instr(u32 remainder, const u8 *buffer, size_t size)
 {
-	const size_t nr_segments = size / IMPL_SEGMENT_SIZE;
-	if (nr_segments >= 1) {
+	if ((uintptr_t)buffer % IMPL_ALIGNMENT) {
+		size_t n = MIN(size, -(uintptr_t)buffer % IMPL_ALIGNMENT);
+
+		for (size_t i = 0; i < n; i++) {
+			remainder = __crc32b(remainder, buffer[i]);
+		}
+
+		buffer += n;
+		size -= n;
+	}
+
+	if (size >= IMPL_SEGMENT_SIZE) {
+		const size_t nr_segments = size / IMPL_SEGMENT_SIZE;
 		const u64 *p = (const u64 *) buffer;
 		for (size_t i = 0; i < nr_segments; i++) {
 			remainder = __crc32d(remainder, p[i * 4 + 0]);
@@ -82,6 +94,7 @@ static ATTRIBUTES u32 crc32_instr(u32 remainder, const u8 *buffer, size_t size)
 	return remainder;
 }
 
+#undef IMPL_ALIGNMENT
 #undef IMPL_SEGMENT_SIZE
 #undef ATTRIBUTES
 
