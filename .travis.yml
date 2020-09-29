@@ -24,6 +24,24 @@ matrix:
       script:
         - tools/run_tests.sh checksum_benchmarks static_analysis edge_case
 
+    - name: Native tests (Linux aarch64)
+      os: linux
+      dist: bionic
+      arch: arm64
+      before_install:
+        - sudo apt-get install -y libz-dev valgrind clang
+      script:
+        - tools/run_tests.sh native freestanding
+
+    - name: Checksum, static analysis, and edge case tests (Linux aarch64)
+      os: linux
+      dist: bionic
+      arch: arm64
+      before_install:
+        - sudo apt-get install -y libz-dev clang python3
+      script:
+        - tools/run_tests.sh checksum_benchmarks static_analysis edge_case
+
     - name: gzip and cross-compile-for-Windows tests (Linux)
       os: linux
       dist: bionic
