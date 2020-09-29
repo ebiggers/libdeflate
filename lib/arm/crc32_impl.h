@@ -29,6 +29,65 @@
 #include "cpu_features.h"
 
 /*
+ * CRC-32 folding with ARM CRC-32 extensions
+ */
+#undef DISPATCH_CRC32
+#if (defined(__ARM_FEATURE_CRC32) ||	\
+     (ARM_CPU_FEATURES_ENABLED &&	\
+      COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS)) && \
+      /* not yet tested on big endian, probably needs changes to work there */ \
+    (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#  ifdef __ARM_FEATURE_CRC32
+#    define ATTRIBUTES
+#    define DEFAULT_IMPL	crc32_instr
+#  else
+#    define __ARM_FEATURE_CRC32	1 /* workaround for Clang */
+#    ifdef __arm__
+#      define ATTRIBUTES	__attribute__((target("arch=armv8-a+crc")))
+#    else
+#      ifdef __clang__
+#        define ATTRIBUTES	__attribute__((target("crc")))
+#      else
+#        define ATTRIBUTES	__attribute__((target("+crc")))
+#      endif
+#    endif
+#    define DISPATCH		1
+#    define DISPATCH_CRC32	1
+#  endif
+
+#include <arm_acle.h>
+
+#define IMPL_SEGMENT_SIZE	32
+
+static ATTRIBUTES u32 crc32_instr(u32 remainder, const u8 *buffer, size_t size)
+{
+	const size_t nr_segments = size / IMPL_SEGMENT_SIZE;
+	if (nr_segments >= 1) {
+		const u64 *p = (const u64 *) buffer;
+		for (size_t i = 0; i < nr_segments; i++) {
+			remainder = __crc32d(remainder, p[i * 4 + 0]);
+			remainder = __crc32d(remainder, p[i * 4 + 1]);
+			remainder = __crc32d(remainder, p[i * 4 + 2]);
+			remainder = __crc32d(remainder, p[i * 4 + 3]);
+		}
+
+		buffer += size - (size % IMPL_SEGMENT_SIZE);
+		size %= IMPL_SEGMENT_SIZE;
+	}
+
+	/* Reduce everything else by single-byte CRC-32 instructions. */
+	for (size_t i = 0; i < size; i++) {
+		remainder = __crc32b(remainder, buffer[i]);
+	}
+	return remainder;
+}
+
+#undef IMPL_SEGMENT_SIZE
+#undef ATTRIBUTES
+
+#endif /* INSTR implementation */
+
+/*
  * CRC-32 folding with ARM Crypto extension-PMULL
  *
  * This works the same way as the x86 PCLMUL version.
@@ -157,6 +216,10 @@ arch_select_crc32_func(void)
 {
 	u32 features = get_cpu_features();
 
+#ifdef DISPATCH_CRC32
+	if (features & ARM_CPU_FEATURE_CRC32)
+		return crc32_instr;
+#endif
 #ifdef DISPATCH_PMULL
 	if (features & ARM_CPU_FEATURE_PMULL)
 		return crc32_pmull;

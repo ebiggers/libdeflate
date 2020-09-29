@@ -106,8 +106,12 @@
 #    ifdef __ARM_NEON
 #      define COMPILER_SUPPORTS_PMULL_TARGET_INTRINSICS	\
 		(GCC_PREREQ(6, 1) || __has_builtin(__builtin_neon_vmull_p64))
+#      define COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS	\
+		(GCC_PREREQ(6, 1) || __has_builtin(__builtin_arm_crc32b))
 #    else
 #      define COMPILER_SUPPORTS_PMULL_TARGET_INTRINSICS	\
+		(GCC_PREREQ(6, 1))
+#      define COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS	\
 		(GCC_PREREQ(6, 1))
 #    endif
 #  endif

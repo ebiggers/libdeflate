@@ -113,6 +113,10 @@ i386|x86_64)
 	fi
 	;;
 arm*|aarch*)
+	if have_cpu_feature crc32; then
+		do_benchmark "native"
+		disable_impl "CRC32" ""
+	fi
 	if have_cpu_feature pmull; then
 		do_benchmark "PMULL"
 		disable_impl "PMULL" ""
