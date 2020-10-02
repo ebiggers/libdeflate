@@ -111,7 +111,7 @@ matchfinder_rebase_avx2(mf_pos_t *data, size_t size)
 #    define DISPATCH					1
 #  endif
 #  define DISPATCH_MATCHFINDER_SSE2	1
-#  define DISPATCH		1
+#  define DISPATCH					1
 #  include <emmintrin.h>
 static forceinline ATTRIBUTES bool
 matchfinder_init_sse2(mf_pos_t *data, size_t size)
