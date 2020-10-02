@@ -25,13 +25,27 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifdef __AVX2__
+#include "cpu_features.h"
+
+#undef DISPATCH_MATCHFINDER_AVX2
+#if (!defined(DEFAULT_MATCHFINDER_INIT) || !defined(DEFAULT_MATCHFINDER_REBASE)) && \
+    (defined(__AVX2__) || (X86_CPU_FEATURES_ENABLED &&	\
+		COMPILER_SUPPORTS_AVX2_TARGET_INTRINSICS))
 #  if MATCHFINDER_ALIGNMENT < 32
 #    undef MATCHFINDER_ALIGNMENT
 #    define MATCHFINDER_ALIGNMENT 32
 #  endif
+#  ifdef __AVX2__
+#    define ATTRIBUTES
+#    define DEFAULT_MATCHFINDER_INIT	matchfinder_init_avx2
+#    define DEFAULT_MATCHFINDER_REBASE	matchfinder_rebase_avx2
+#  else
+#    define ATTRIBUTES					__attribute__((target("avx2")))
+#    define DISPATCH_MATCHFINDER_AVX2	1
+#    define DISPATCH					1
+#  endif
 #  include <immintrin.h>
-static forceinline bool
+static forceinline ATTRIBUTES bool
 matchfinder_init_avx2(mf_pos_t *data, size_t size)
 {
 	__m256i v, *p;
@@ -54,7 +68,7 @@ matchfinder_init_avx2(mf_pos_t *data, size_t size)
 	return true;
 }
 
-static forceinline bool
+static forceinline bool ATTRIBUTES
 matchfinder_rebase_avx2(mf_pos_t *data, size_t size)
 {
 	__m256i v, *p;
@@ -77,15 +91,29 @@ matchfinder_rebase_avx2(mf_pos_t *data, size_t size)
 	} while (--n);
 	return true;
 }
-#endif /* __AVX2__ */
+#endif /* AVX-2 implementation */
 
-#ifdef __SSE2__
+#undef DISPATCH_MATCHFINDER_SSE2
+#if (!defined(DEFAULT_MATCHFINDER_INIT) || !defined(DEFAULT_MATCHFINDER_REBASE)) && \
+	(defined(__SSE2__) || (X86_CPU_FEATURES_ENABLED &&	\
+			       COMPILER_SUPPORTS_SSE2_TARGET_INTRINSICS))
 #  if MATCHFINDER_ALIGNMENT < 16
 #    undef MATCHFINDER_ALIGNMENT
 #    define MATCHFINDER_ALIGNMENT 16
 #  endif
+#  ifdef __AVX2__
+#    define ATTRIBUTES
+#    define DEFAULT_MATCHFINDER_INIT	matchfinder_init_sse2
+#    define DEFAULT_MATCHFINDER_REBASE	matchfinder_rebase_sse2
+#  else
+#    define ATTRIBUTES					__attribute__((target("avx2")))
+#    define DISPATCH_MATCHFINDER_SSE2	1
+#    define DISPATCH					1
+#  endif
+#  define DISPATCH_MATCHFINDER_SSE2	1
+#  define DISPATCH		1
 #  include <emmintrin.h>
-static forceinline bool
+static forceinline ATTRIBUTES bool
 matchfinder_init_sse2(mf_pos_t *data, size_t size)
 {
 	__m128i v, *p;
@@ -108,7 +136,7 @@ matchfinder_init_sse2(mf_pos_t *data, size_t size)
 	return true;
 }
 
-static forceinline bool
+static forceinline ATTRIBUTES bool
 matchfinder_rebase_sse2(mf_pos_t *data, size_t size)
 {
 	__m128i v, *p;
@@ -133,32 +161,36 @@ matchfinder_rebase_sse2(mf_pos_t *data, size_t size)
 }
 #endif /* __SSE2__ */
 
-#undef arch_matchfinder_init
-static forceinline bool
-arch_matchfinder_init(mf_pos_t *data, size_t size)
+#ifdef DISPATCH
+static inline matchfinder_func_t
+arch_select_matchfinder_init(void)
 {
-#ifdef __AVX2__
-	if (matchfinder_init_avx2(data, size))
-		return true;
+	u32 features = get_cpu_features();
+
+#ifdef DISPATCH_MATCHFINDER_AVX2
+	if (features & X86_CPU_FEATURE_AVX2)
+		return matchfinder_init_avx2;
 #endif
-#ifdef __SSE2__
-	if (matchfinder_init_sse2(data, size))
-		return true;
+#ifdef DISPATCH_MATCHFINDER_SSE2
+	if (features & X86_CPU_FEATURE_SSE2)
+		return matchfinder_init_sse2;
 #endif
-	return false;
+	return NULL;
 }
 
-#undef arch_matchfinder_rebase
-static forceinline bool
-arch_matchfinder_rebase(mf_pos_t *data, size_t size)
+static inline matchfinder_func_t
+arch_select_matchfinder_rebase(void)
 {
-#ifdef __AVX2__
-	if (matchfinder_rebase_avx2(data, size))
-		return true;
+	u32 features = get_cpu_features();
+
+#ifdef DISPATCH_MATCHFINDER_AVX2
+	if (features & X86_CPU_FEATURE_AVX2)
+		return matchfinder_rebase_avx2;
 #endif
-#ifdef __SSE2__
-	if (matchfinder_rebase_sse2(data, size))
-		return true;
+#ifdef DISPATCH_MATCHFINDER_SSE2
+	if (features & X86_CPU_FEATURE_SSE2)
+		return matchfinder_rebase_sse2;
 #endif
-	return false;
+	return NULL;
 }
+#endif /* DISPATCH */
