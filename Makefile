@@ -288,18 +288,25 @@ install:all
 	install -d $(DESTDIR)$(LIBDIR) $(DESTDIR)$(INCDIR) $(DESTDIR)$(BINDIR)
 	install -m644 $(STATIC_LIB) $(DESTDIR)$(LIBDIR)
 	install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR)
-	ln -sf $(SHARED_LIB) $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK)
 	install -m644 libdeflate.h $(DESTDIR)$(INCDIR)
-	install -m755 gzip $(DESTDIR)$(BINDIR)/libdeflate-gzip
-	ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip $(DESTDIR)$(BINDIR)/libdeflate-gunzip
+	install -m755 gzip$(PROG_SUFFIX) \
+		$(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)
+	ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)		\
+	      $(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX)
+	if [ -n "$(SHARED_LIB_SYMLINK)" ]; then				\
+		ln -sf $(SHARED_LIB)					\
+		       $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK);	\
+	fi
 
 uninstall:
-	rm -f $(DESTDIR)$(LIBDIR)/$(STATIC_LIB) \
-		$(DESTDIR)$(LIBDIR)/$(SHARED_LIB) \
-		$(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK) \
-		$(DESTDIR)$(INCDIR)/libdeflate.h \
-		$(DESTDIR)$(BINDIR)/libdeflate-gzip \
-		$(DESTDIR)$(BINDIR)/libdeflate-gunzip
+	rm -f $(DESTDIR)$(LIBDIR)/$(STATIC_LIB)				\
+	      $(DESTDIR)$(LIBDIR)/$(SHARED_LIB)				\
+	      $(DESTDIR)$(INCDIR)/libdeflate.h				\
+	      $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)		\
+	      $(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX)
+	if [ -n "$(SHARED_LIB_SYMLINK)" ]; then				\
+		rm -f $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK);	\
+	fi
 
 test_programs:$(TEST_PROGRAMS)
 
