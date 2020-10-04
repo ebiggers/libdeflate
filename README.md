@@ -172,6 +172,22 @@ non-C/C++ language, or dynamically using LoadLibrary(), make sure to use the
 stdcall convention.  Using the wrong convention may crash your application.
 (Note: older versions of libdeflate used the "cdecl" convention instead.)
 
+# Bindings for other programming languages
+
+The libdeflate project itself only provides a C library.  If you need to use
+libdeflate from a programming language other than C or C++, consider using the
+following bindings:
+
+* Go: [go-libdeflate](https://github.com/4kills/go-libdeflate)
+* Java: [libdeflate-java](https://github.com/astei/libdeflate-java)
+* Julia: [LibDeflate.jl](https://github.com/jakobnissen/LibDeflate.jl)
+* Ruby: [libdeflate-ruby](https://github.com/kaorimatz/libdeflate-ruby)
+* Rust: [libdeflater](https://github.com/adamkewley/libdeflater)
+
+Note: these are third-party projects which haven't necessarily been vetted by
+the authors of libdeflate.  Please direct all questions, bugs, and improvements
+for these bindings to their authors.
+
 # DEFLATE vs. zlib vs. gzip
 
 The DEFLATE format ([rfc1951](https://www.ietf.org/rfc/rfc1951.txt)), the zlib
