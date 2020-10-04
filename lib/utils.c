@@ -25,16 +25,16 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "lib_common.h"
+
+#include "libdeflate.h"
+
 #ifdef FREESTANDING
 #  define malloc NULL
 #  define free NULL
 #else
 #  include <stdlib.h>
 #endif
-
-#include "lib_common.h"
-
-#include "libdeflate.h"
 
 static void *(*libdeflate_malloc_func)(size_t) = malloc;
 static void (*libdeflate_free_func)(void *) = free;
