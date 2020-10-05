@@ -60,6 +60,12 @@ override CPPFLAGS += -DFREESTANDING
 LIB_CFLAGS += -ffreestanding -nostdlib
 endif
 
+# Don't use this option except for testing; it isn't a stable interface.
+TEST_SUPPORT__DO_NOT_USE :=
+ifdef TEST_SUPPORT__DO_NOT_USE
+override CPPFLAGS += -DTEST_SUPPORT__DO_NOT_USE
+endif
+
 ##############################################################################
 
 PREFIX ?= /usr/local
