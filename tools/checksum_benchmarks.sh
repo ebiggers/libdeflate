@@ -17,7 +17,12 @@ have_cpu_feature() {
 }
 
 make_and_test() {
-	make "$@" checksum test_checksums > /dev/null
+	# Build the checksum program and tests.  Set the special test support
+	# flag to get support for LIBDEFLATE_DISABLE_CPU_FEATURES.
+	make "$@" TEST_SUPPORT__DO_NOT_USE=1 checksum test_checksums > /dev/null
+
+	# Run the checksum tests, for good measure.  (This isn't actually part
+	# of the benchmarking.)
 	./test_checksums > /dev/null
 }
 
@@ -50,16 +55,15 @@ sort_by_speed() {
 	awk '{print $NF, $0}' | sort -nr | cut -f2- -d' '
 }
 
-disable_impl() {
+disable_cpu_feature() {
 	local name="$1"
 	local extra_cflags="$2"
 
-	sed -i '/^\#ifdef DISPATCH_'"$name"'$/aif (0)' lib/*/{adler,crc}32_impl.h
+	LIBDEFLATE_DISABLE_CPU_FEATURES+=",$name"
 	EXTRA_CFLAGS+=" $extra_cflags"
 }
 
 cleanup() {
-	git checkout -f lib/*/{adler,crc}32_impl.h
 	if $USING_TMPFILE; then
 		rm "$FILE"
 	fi
@@ -70,12 +74,6 @@ USING_TMPFILE=false
 
 if (( $# > 1 )); then
 	echo "Usage: $0 [FILE]" 1>&2
-	exit 1
-fi
-
-if git status -s | grep -E -q 'adler32_impl.h|crc32_impl.h'; then
-	echo "This script will overwrite adler32_impl.h and crc32_impl.h," \
-		"which have uncommitted changes.  Refusing to run." 1>&2
 	exit 1
 fi
 
@@ -100,22 +98,23 @@ EOF
 CKSUM_NAME="CRC-32"
 CKSUM_FLAGS=""
 EXTRA_CFLAGS=""
+export LIBDEFLATE_DISABLE_CPU_FEATURES=""
 {
 case $ARCH in
 i386|x86_64)
 	if have_cpu_feature pclmulqdq && have_cpu_feature avx; then
 		do_benchmark "PCLMUL/AVX"
-		disable_impl "PCLMUL_AVX" "-mno-avx"
+		disable_cpu_feature "avx" "-mno-avx"
 	fi
 	if have_cpu_feature pclmulqdq; then
 		do_benchmark "PCLMUL"
-		disable_impl "PCLMUL" "-mno-pclmul"
+		disable_cpu_feature "pclmul" "-mno-pclmul"
 	fi
 	;;
 arm*|aarch*)
 	if have_cpu_feature pmull; then
 		do_benchmark "PMULL"
-		disable_impl "PMULL" "-march=armv8-a+nocrypto"
+		disable_cpu_feature "pmull" "-march=armv8-a+nocrypto"
 	fi
 	;;
 esac
@@ -127,33 +126,34 @@ do_benchmark "zlib"
 CKSUM_NAME="Adler-32"
 CKSUM_FLAGS="-A"
 EXTRA_CFLAGS=""
+export LIBDEFLATE_DISABLE_CPU_FEATURES=""
 echo
 {
 case $ARCH in
 i386|x86_64)
 	if have_cpu_feature avx512bw; then
 		do_benchmark "AVX-512BW"
-		disable_impl "AVX512BW" "-mno-avx512bw"
+		disable_cpu_feature "avx512bw" "-mno-avx512bw"
 	fi
 	if have_cpu_feature avx2; then
 		do_benchmark "AVX2"
-		disable_impl "AVX2" "-mno-avx2"
+		disable_cpu_feature "avx2" "-mno-avx2"
 	fi
 	if have_cpu_feature sse2; then
 		do_benchmark "SSE2"
-		disable_impl "SSE2" "-mno-sse2"
+		disable_cpu_feature "sse2" "-mno-sse2"
 	fi
 	;;
 arm*)
 	if have_cpu_feature neon; then
 		do_benchmark "NEON"
-		disable_impl "NEON" "-mfpu=vfpv3"
+		disable_cpu_feature "neon" "-mfpu=vfpv3"
 	fi
 	;;
 aarch*)
 	if have_cpu_feature asimd; then
 		do_benchmark "NEON"
-		disable_impl "NEON" "-march=armv8-a+nosimd"
+		disable_cpu_feature "neon" "-march=armv8-a+nosimd"
 	fi
 	;;
 esac
