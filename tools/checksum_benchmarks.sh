@@ -115,7 +115,7 @@ i386|x86_64)
 arm*|aarch*)
 	if have_cpu_feature pmull; then
 		do_benchmark "PMULL"
-		disable_impl "PMULL" ""
+		disable_impl "PMULL" "-march=armv8-a+nocrypto"
 	fi
 	;;
 esac
