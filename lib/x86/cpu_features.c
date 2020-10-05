@@ -97,7 +97,7 @@ void setup_cpu_features(void)
 		features |= X86_CPU_FEATURE_SSE2;
 
 	if (IS_SET(features_2, 1))
-		features |= X86_CPU_FEATURE_PCLMULQDQ;
+		features |= X86_CPU_FEATURE_PCLMUL;
 
 	if (IS_SET(features_2, 27)) { /* OSXSAVE set? */
 		u64 xcr0 = read_xcr(0);
