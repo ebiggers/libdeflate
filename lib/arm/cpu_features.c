@@ -35,6 +35,7 @@
  * added to API level 18 for ARM and level 21 for AArch64.
  */
 
+#include "../cpu_features_common.h" /* must be included first */
 #include "cpu_features.h"
 
 #if ARM_CPU_FEATURES_ENABLED
@@ -91,6 +92,11 @@ out:
 	close(fd);
 }
 
+static const struct cpu_feature arm_cpu_feature_table[] = {
+	{ARM_CPU_FEATURE_NEON,		"neon"},
+	{ARM_CPU_FEATURE_PMULL,		"pmull"},
+};
+
 void setup_cpu_features(void)
 {
 	u32 features = 0;
@@ -112,6 +118,9 @@ void setup_cpu_features(void)
 	if (hwcap & (1 << 4))	/* HWCAP_PMULL */
 		features |= ARM_CPU_FEATURE_PMULL;
 #endif
+
+	disable_cpu_features_for_testing(&features, arm_cpu_feature_table,
+					 ARRAY_LEN(arm_cpu_feature_table));
 
 	_cpu_features = features | ARM_CPU_FEATURES_KNOWN;
 }
