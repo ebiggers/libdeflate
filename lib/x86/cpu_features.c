@@ -34,7 +34,7 @@ volatile u32 _cpu_features = 0;
 /* With old GCC versions we have to manually save and restore the x86_32 PIC
  * register (ebx).  See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47602  */
 #if defined(__i386__) && defined(__PIC__)
-#  define EBX_CONSTRAINT "=r"
+#  define EBX_CONSTRAINT "=&r"
 #else
 #  define EBX_CONSTRAINT "=b"
 #endif
