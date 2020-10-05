@@ -128,9 +128,45 @@ have_python() {
 ###############################################################################
 
 native_build_and_test() {
-	make "$@" -j$NPROC all test_programs > /dev/null
-	WRAPPER="$WRAPPER" SMOKEDATA="$SMOKEDATA" sh ./tools/exec_tests.sh \
-			> /dev/null
+
+	# Build libdeflate, including the test programs.  Set the special test
+	# support flag to get support for LIBDEFLATE_DISABLE_CPU_FEATURES.
+	make "$@" TEST_SUPPORT__DO_NOT_USE=1 \
+		-j$NPROC all test_programs > /dev/null
+
+	# When not using -march=native, run the tests multiple times with
+	# different combinations of CPU features disabled.  This is needed to
+	# test all variants of dynamically-dispatched code.
+	#
+	# For now, we aren't super exhausive in which combinations of features
+	# we test disabling.  We just disable the features roughly in order from
+	# newest to oldest for each architecture, cumulatively.  In practice,
+	# that's good enough to cover all the code.
+	local features=()
+	if ! [[ "$*" =~ "-march=native" ]]; then
+		case "$(uname -m)" in
+		i386|x86_64)
+			features=(avx512bw avx2 avx bmi2 pclmul sse2)
+			;;
+		arm*|aarch*)
+			features=(pmull neon)
+			;;
+		esac
+	fi
+	local disable_str=""
+	local feature
+	for feature in "" "${features[@]}"; do
+		if [ -n "$feature" ]; then
+			if [ -n "$disable_str" ]; then
+				disable_str+=","
+			fi
+			disable_str+="$feature"
+			log "Retrying with CPU features disabled: $disable_str"
+		fi
+		WRAPPER="$WRAPPER" SMOKEDATA="$SMOKEDATA" \
+			LIBDEFLATE_DISABLE_CPU_FEATURES="$disable_str" \
+			sh ./tools/exec_tests.sh > /dev/null
+	done
 }
 
 native_tests() {
