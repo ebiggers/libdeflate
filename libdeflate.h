@@ -62,7 +62,8 @@ struct libdeflate_compressor;
  * DEFLATE, zlib, and gzip compression.  'compression_level' is the compression
  * level on a zlib-like scale but with a higher maximum value (1 = fastest, 6 =
  * medium/default, 9 = slow, 12 = slowest).  The return value is a pointer to
- * the new compressor, or NULL if out of memory.
+ * the new compressor, or NULL if out of memory or if the compression level is
+ * invalid (i.e. outside the range [1, 12]).
  *
  * Note: for compression, the sliding window size is defined at compilation time
  * to 32768, the largest size permissible in the DEFLATE format.  It cannot be
