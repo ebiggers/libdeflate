@@ -1676,7 +1676,7 @@ deflate_write_uncompressed_block(struct deflate_output_bitstream *os,
 
 static void
 deflate_write_uncompressed_blocks(struct deflate_output_bitstream *os,
-				  const u8 *data, u32 data_length,
+				  const u8 *data, size_t data_length,
 				  bool is_final_block)
 {
 	do {
@@ -1955,6 +1955,23 @@ should_end_block(struct block_split_stats *stats,
 }
 
 /******************************************************************************/
+
+/*
+ * This is the level 0 "compressor".  It always outputs uncompressed blocks.
+ */
+static size_t
+deflate_compress_none(struct libdeflate_compressor * restrict c,
+		      const u8 * restrict in, size_t in_nbytes,
+		      u8 * restrict out, size_t out_nbytes_avail)
+{
+	struct deflate_output_bitstream os;
+
+	deflate_init_output(&os, out, out_nbytes_avail);
+
+	deflate_write_uncompressed_blocks(&os, in, in_nbytes, true);
+
+	return deflate_flush_output(&os);
+}
 
 /*
  * This is the "greedy" DEFLATE compressor. It always chooses the longest match.
@@ -2669,20 +2686,26 @@ LIBDEFLATEEXPORT struct libdeflate_compressor * LIBDEFLATEAPI
 libdeflate_alloc_compressor(int compression_level)
 {
 	struct libdeflate_compressor *c;
-	size_t size;
+	size_t size = offsetof(struct libdeflate_compressor, p);
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	if (compression_level >= 8)
-		size = offsetof(struct libdeflate_compressor, p) + sizeof(c->p.n);
-	else
+		size += sizeof(c->p.n);
+	else if (compression_level >= 1)
+		size += sizeof(c->p.g);
+#else
+	if (compression_level >= 1)
+		size += sizeof(c->p.g);
 #endif
-		size = offsetof(struct libdeflate_compressor, p) + sizeof(c->p.g);
 
 	c = libdeflate_aligned_malloc(MATCHFINDER_ALIGNMENT, size);
 	if (!c)
 		return NULL;
 
 	switch (compression_level) {
+	case 0:
+		c->impl = deflate_compress_none;
+		break;
 	case 1:
 		c->impl = deflate_compress_greedy;
 		c->max_search_depth = 2;

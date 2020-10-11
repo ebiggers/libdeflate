@@ -550,7 +550,7 @@ tmain(int argc, tchar *argv[])
 		case '9':
 			options.compression_level =
 				parse_compression_level(opt_char, toptarg);
-			if (options.compression_level == 0)
+			if (options.compression_level < 0)
 				return 1;
 			break;
 		case 'c':
