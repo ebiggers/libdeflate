@@ -1,29 +1,29 @@
 #!/bin/bash
 
-set -eu
+set -eu -o pipefail
 
-ARCH="arm32"
-COMPILER="gcc"
-NDKDIR="/opt/android-ndk"
-ENABLE_NEON=false
+API_LEVEL=28
+ARCH=arm64
+CFLAGS=
+ENABLE_CRC=false
 ENABLE_CRYPTO=false
+NDKDIR=$HOME/android-ndk-r21d
 
 usage() {
 	cat << EOF
-Usage: $0 [OPTION]... -- [BENCHMARK_PROGRAM_ARG]...
-Build the libdeflate test programs for Android
+Usage: $0 [OPTION]... -- [MAKE_TARGET]...
+Build libdeflate for Android.
 
+  --api-level=LEVEL    Android API level to target (default: $API_LEVEL)
   --arch=ARCH          Architecture: arm32|arm64 (default: $ARCH)
-  --compiler=COMPILER  Compiler: gcc|clang (default: $COMPILER)
+  --enable-crc         Enable crc instructions
+  --enable-crypto      Enable crypto instructions
   --ndkdir=NDKDIR      Android NDK directory (default: $NDKDIR)
-  --enable-neon        Enable NEON instructions
-  --enable-crypto      Enable crypto extensions (implies NEON too)
 EOF
 }
-
 if ! options=$(getopt -o '' \
-	-l 'arch:,compiler:,ndkdir:,enable-neon,enable-crypto,help' -- "$@"); then
-	usage
+	-l 'api-level:,arch:,enable-crc,enable-crypto,help,ndkdir:' -- "$@"); then
+	usage 1>&2
 	exit 1
 fi
 
@@ -31,20 +31,16 @@ eval set -- "$options"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
+	--api-level)
+		API_LEVEL="$2"
+		shift
+		;;
 	--arch)
 		ARCH="$2"
 		shift
 		;;
-	--compiler)
-		COMPILER="$2"
-		shift
-		;;
-	--ndkdir)
-		NDKDIR="$2"
-		shift
-		;;
-	--enable-neon)
-		ENABLE_NEON=true
+	--enable-crc)
+		ENABLE_CRC=true
 		;;
 	--enable-crypto)
 		ENABLE_CRYPTO=true
@@ -53,63 +49,60 @@ while [ $# -gt 0 ]; do
 		usage
 		exit 0
 		;;
+	--ndkdir)
+		NDKDIR="$2"
+		shift
+		;;
 	--)
 		shift
 		break
 		;;
 	*)
 		echo 1>&2 "Unknown option \"$1\""
-		usage
+		usage 1>&2
 		exit 1
 	esac
 	shift
 done
 
-CFLAGS="-fPIC"
+BINDIR=$NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/
 
 case "$ARCH" in
 arm|arm32|aarch32)
-	GCC_TOOLCHAIN="arm-linux-androideabi-4.9"
-	CLANG_TARGET="armv7-none-linux-androideabi"
-	if $ENABLE_CRYPTO; then
-		CFLAGS+=" -march=armv7-a -mfloat-abi=softfp -mfpu=crypto-neon-fp-armv8"
-	elif $ENABLE_NEON; then
-		CFLAGS+=" -march=armv7-a -mfloat-abi=softfp -mfpu=neon"
-	else
-		CFLAGS+=" -march=armv6"
+	CC=$BINDIR/armv7a-linux-androideabi$API_LEVEL-clang
+	if $ENABLE_CRC || $ENABLE_CRYPTO; then
+		CFLAGS="-march=armv8-a"
+		if $ENABLE_CRC; then
+			CFLAGS+=" -mcrc"
+		else
+			CFLAGS+=" -mnocrc"
+		fi
+		if $ENABLE_CRYPTO; then
+			CFLAGS+=" -mfpu=crypto-neon-fp-armv8"
+		else
+			CFLAGS+=" -mfpu=neon"
+		fi
 	fi
-	CFLAGS+=" --sysroot=\"$NDKDIR/platforms/android-12/arch-arm\""
 	;;
 arm64|aarch64)
-	GCC_TOOLCHAIN="aarch64-linux-android-4.9"
-	CLANG_TARGET="aarch64-none-linux-android"
-	if $ENABLE_CRYPTO; then
-		CFLAGS+=" -march=armv8-a+crypto"
-	else
-		CFLAGS+=" -march=armv8-a"
+	CC=$BINDIR/aarch64-linux-android$API_LEVEL-clang
+	features=""
+	if $ENABLE_CRC; then
+		features+="+crc"
 	fi
-	CFLAGS+=" --sysroot=\"$NDKDIR/platforms/android-21/arch-arm64\""
+	if $ENABLE_CRYPTO; then
+		features+="+crypto"
+	fi
+	if [ -n "$features" ]; then
+		CFLAGS="-march=armv8-a$features"
+	fi
 	;;
 *)
 	echo 1>&2 "Unknown architecture: \"$ARCH\""
-	usage
+	usage 1>&2
 	exit 1
 esac
 
-case "$COMPILER" in
-gcc)
-	CC="\"$NDKDIR/toolchains/$GCC_TOOLCHAIN/prebuilt/linux-x86_64/bin/${GCC_TOOLCHAIN%-*}-gcc\""
-	;;
-clang)
-	CC="\"$NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/clang\""
-	CFLAGS+=" -target \"$CLANG_TARGET\""
-	CFLAGS+=" -gcc-toolchain \"$NDKDIR/toolchains/$GCC_TOOLCHAIN/prebuilt/linux-x86_64\""
-	;;
-*)
-	echo 1>&2 "Unknown compiler: \"$COMPILER\""
-	usage
-	exit 1
-esac
-
-make -j$(grep -c processor /proc/cpuinfo) test_programs \
-	CC="$CC" CFLAGS="$CFLAGS" LDFLAGS="-pie"
+cmd=(make "-j$(grep -c processor /proc/cpuinfo)" CC="$CC" CFLAGS="$CFLAGS" "$@")
+echo "${cmd[*]}"
+"${cmd[@]}"
