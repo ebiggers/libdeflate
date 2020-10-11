@@ -43,7 +43,7 @@ tmain(int argc, tchar *argv[])
 	ASSERT(malloc_count == 0);
 	ASSERT(free_count == 0);
 
-	for (level = 1; level <= 12; level++) {
+	for (level = 0; level <= 12; level++) {
 		malloc_count = free_count = 0;
 		c = libdeflate_alloc_compressor(level);
 		ASSERT(c != NULL);
@@ -67,7 +67,7 @@ tmain(int argc, tchar *argv[])
 
 	libdeflate_set_memory_allocator(do_fail_malloc, do_free);
 
-	for (level = 1; level <= 12; level++) {
+	for (level = 0; level <= 12; level++) {
 		malloc_count = free_count = 0;
 		c = libdeflate_alloc_compressor(level);
 		ASSERT(c == NULL);

@@ -27,7 +27,7 @@
 
 #include "test_util.h"
 
-static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::C:D:ghs:VYZz");
+static const tchar *const optstring = T("0::1::2::3::4::5::6::7::8::9::C:D:eghs:VYZz");
 
 enum wrapper {
 	NO_WRAPPER,
@@ -52,6 +52,7 @@ struct engine {
 	const tchar *name;
 
 	bool (*init_compressor)(struct compressor *);
+	size_t (*compress_bound)(struct compressor *, size_t);
 	size_t (*compress)(struct compressor *, const void *, size_t,
 			   void *, size_t);
 	void (*destroy_compressor)(struct compressor *);
@@ -69,6 +70,19 @@ libdeflate_engine_init_compressor(struct compressor *c)
 {
 	c->private = alloc_compressor(c->level);
 	return c->private != NULL;
+}
+
+static size_t
+libdeflate_engine_compress_bound(struct compressor *c, size_t in_nbytes)
+{
+	switch (c->wrapper) {
+	case ZLIB_WRAPPER:
+		return libdeflate_zlib_compress_bound(c->private, in_nbytes);
+	case GZIP_WRAPPER:
+		return libdeflate_gzip_compress_bound(c->private, in_nbytes);
+	default:
+		return libdeflate_deflate_compress_bound(c->private, in_nbytes);
+	}
 }
 
 static size_t
@@ -128,6 +142,7 @@ static const struct engine libdeflate_engine = {
 	.name			= T("libdeflate"),
 
 	.init_compressor	= libdeflate_engine_init_compressor,
+	.compress_bound		= libdeflate_engine_compress_bound,
 	.compress		= libdeflate_engine_compress,
 	.destroy_compressor	= libdeflate_engine_destroy_compressor,
 
@@ -182,6 +197,12 @@ libz_engine_init_compressor(struct compressor *c)
 
 	c->private = z;
 	return true;
+}
+
+static size_t
+libz_engine_compress_bound(struct compressor *c, size_t in_nbytes)
+{
+	return deflateBound(c->private, in_nbytes);
 }
 
 static size_t
@@ -265,6 +286,7 @@ static const struct engine libz_engine = {
 	.name			= T("libz"),
 
 	.init_compressor	= libz_engine_init_compressor,
+	.compress_bound		= libz_engine_compress_bound,
 	.compress		= libz_engine_compress,
 	.destroy_compressor	= libz_engine_destroy_compressor,
 
@@ -306,6 +328,12 @@ compressor_init(struct compressor *c, int level, enum wrapper wrapper,
 }
 
 static size_t
+compress_bound(struct compressor *c, size_t in_nbytes)
+{
+	return c->engine->compress_bound(c, in_nbytes);
+}
+
+static size_t
 do_compress(struct compressor *c, const void *in, size_t in_nbytes,
 	    void *out, size_t out_nbytes_avail)
 {
@@ -315,7 +343,8 @@ do_compress(struct compressor *c, const void *in, size_t in_nbytes,
 static void
 compressor_destroy(struct compressor *c)
 {
-	c->engine->destroy_compressor(c);
+	if (c->engine != NULL)
+		c->engine->destroy_compressor(c);
 }
 
 static bool
@@ -337,7 +366,8 @@ do_decompress(struct decompressor *d, const void *in, size_t in_nbytes,
 static void
 decompressor_destroy(struct decompressor *d)
 {
-	d->engine->destroy_decompressor(d);
+	if (d->engine != NULL)
+		d->engine->destroy_decompressor(d);
 }
 
 /******************************************************************************/
@@ -364,11 +394,13 @@ show_usage(FILE *fp)
 "Benchmark DEFLATE compression and decompression on the specified FILEs.\n"
 "\n"
 "Options:\n"
+"  -0        no compression\n"
 "  -1        fastest (worst) compression\n"
 "  -6        medium compression (default)\n"
 "  -12       slowest (best) compression\n"
 "  -C ENGINE compression engine\n"
 "  -D ENGINE decompression engine\n"
+"  -e        allow chunks to be expanded (implied by -0)\n"
 "  -g        use gzip wrapper\n"
 "  -h        print this help\n"
 "  -s SIZE   chunk size\n"
@@ -398,6 +430,7 @@ show_version(void)
 static int
 do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 	     void *decompressed_buf, u32 chunk_size,
+	     bool allow_expansion, size_t compressed_buf_size,
 	     struct compressor *compressor,
 	     struct decompressor *decompressor)
 {
@@ -409,11 +442,23 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 
 	while ((ret = xread(in, original_buf, chunk_size)) > 0) {
 		u32 original_size = ret;
+		size_t out_nbytes_avail;
 		u32 compressed_size;
 		u64 start_time;
 		bool ok;
 
 		total_uncompressed_size += original_size;
+
+		if (allow_expansion) {
+			out_nbytes_avail = compress_bound(compressor,
+							  original_size);
+			if (out_nbytes_avail > compressed_buf_size) {
+				msg("%"TS": bug in compress_bound()", in->name);
+				return -1;
+			}
+		} else {
+			out_nbytes_avail = original_size - 1;
+		}
 
 		/* Compress the chunk of data. */
 		start_time = timer_ticks();
@@ -421,7 +466,7 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 					      original_buf,
 					      original_size,
 					      compressed_buf,
-					      original_size - 1);
+					      out_nbytes_avail);
 		total_compress_time += timer_ticks() - start_time;
 
 		if (compressed_size) {
@@ -451,7 +496,14 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 
 			total_compressed_size += compressed_size;
 		} else {
-			/* Compression did not make the chunk smaller. */
+			/*
+			 * The chunk would have compressed to more than
+			 * out_nbytes_avail bytes.
+			 */
+			if (allow_expansion) {
+				msg("%"TS": bug in compress_bound()", in->name);
+				return -1;
+			}
 			total_compressed_size += original_size;
 		}
 	}
@@ -493,11 +545,13 @@ tmain(int argc, tchar *argv[])
 	enum wrapper wrapper = NO_WRAPPER;
 	const struct engine *compress_engine = &DEFAULT_ENGINE;
 	const struct engine *decompress_engine = &DEFAULT_ENGINE;
+	bool allow_expansion = false;
+	struct compressor compressor = { 0 };
+	struct decompressor decompressor = { 0 };
+	size_t compressed_buf_size;
 	void *original_buf = NULL;
 	void *compressed_buf = NULL;
 	void *decompressed_buf = NULL;
-	struct compressor compressor;
-	struct decompressor decompressor;
 	tchar *default_file_list[] = { NULL };
 	int opt_char;
 	int i;
@@ -507,6 +561,7 @@ tmain(int argc, tchar *argv[])
 
 	while ((opt_char = tgetopt(argc, argv, optstring)) != -1) {
 		switch (opt_char) {
+		case '0':
 		case '1':
 		case '2':
 		case '3':
@@ -517,7 +572,7 @@ tmain(int argc, tchar *argv[])
 		case '8':
 		case '9':
 			level = parse_compression_level(opt_char, toptarg);
-			if (level == 0)
+			if (level < 0)
 				return 1;
 			break;
 		case 'C':
@@ -535,6 +590,9 @@ tmain(int argc, tchar *argv[])
 				show_available_engines(stderr);
 				return 1;
 			}
+			break;
+		case 'e':
+			allow_expansion = true;
 			break;
 		case 'g':
 			wrapper = GZIP_WRAPPER;
@@ -570,20 +628,28 @@ tmain(int argc, tchar *argv[])
 	argc -= toptind;
 	argv += toptind;
 
+	if (level == 0)
+		allow_expansion = true;
+
+	ret = -1;
+	if (!compressor_init(&compressor, level, wrapper, compress_engine))
+		goto out;
+	if (!decompressor_init(&decompressor, wrapper, decompress_engine))
+		goto out;
+
+	if (allow_expansion)
+		compressed_buf_size = compress_bound(&compressor, chunk_size);
+	else
+		compressed_buf_size = chunk_size - 1;
+
 	original_buf = xmalloc(chunk_size);
-	compressed_buf = xmalloc(chunk_size - 1);
+	compressed_buf = xmalloc(compressed_buf_size);
 	decompressed_buf = xmalloc(chunk_size);
 
 	ret = -1;
 	if (original_buf == NULL || compressed_buf == NULL ||
 	    decompressed_buf == NULL)
-		goto out0;
-
-	if (!compressor_init(&compressor, level, wrapper, compress_engine))
-		goto out0;
-
-	if (!decompressor_init(&decompressor, wrapper, decompress_engine))
-		goto out1;
+		goto out;
 
 	if (argc == 0) {
 		argv = default_file_list;
@@ -608,25 +674,24 @@ tmain(int argc, tchar *argv[])
 
 		ret = xopen_for_read(argv[i], true, &in);
 		if (ret != 0)
-			goto out2;
+			goto out;
 
 		printf("Processing %"TS"...\n", in.name);
 
 		ret = do_benchmark(&in, original_buf, compressed_buf,
-				   decompressed_buf, chunk_size, &compressor,
-				   &decompressor);
+				   decompressed_buf, chunk_size,
+				   allow_expansion, compressed_buf_size,
+				   &compressor, &decompressor);
 		xclose(&in);
 		if (ret != 0)
-			goto out2;
+			goto out;
 	}
 	ret = 0;
-out2:
-	decompressor_destroy(&decompressor);
-out1:
-	compressor_destroy(&compressor);
-out0:
+out:
 	free(decompressed_buf);
 	free(compressed_buf);
 	free(original_buf);
+	decompressor_destroy(&decompressor);
+	compressor_destroy(&compressor);
 	return -ret;
 }

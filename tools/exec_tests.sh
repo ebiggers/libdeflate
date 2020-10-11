@@ -18,12 +18,12 @@ for format in '' '-g' '-z'; do
 		run_cmd ./benchmark $format $ref_impl $SMOKEDATA
 	done
 done
-for level in 1 3 7 9; do
+for level in 0 1 3 7 9; do
 	for ref_impl in '' '-Y'; do
 		run_cmd ./benchmark -$level $ref_impl $SMOKEDATA
 	done
 done
-for level in 1 3 7 9 12; do
+for level in 0 1 3 7 9 12; do
 	for ref_impl in '' '-Z'; do
 		run_cmd ./benchmark -$level $ref_impl $SMOKEDATA
 	done
