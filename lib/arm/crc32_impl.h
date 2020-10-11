@@ -28,6 +28,80 @@
 
 #include "cpu_features.h"
 
+/* Implementation using ARM CRC32 instructions */
+#undef DISPATCH_ARM
+#if !defined(DEFAULT_IMPL) && \
+    (defined(__ARM_FEATURE_CRC32) || \
+     (ARM_CPU_FEATURES_ENABLED && COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS))
+#  ifdef __ARM_FEATURE_CRC32
+#    define ATTRIBUTES
+#    define DEFAULT_IMPL	crc32_arm
+#  else
+#    ifdef __arm__
+#      ifdef __clang__
+#        define ATTRIBUTES	__attribute__((target("armv8-a,crc")))
+#      else
+#        define ATTRIBUTES	__attribute__((target("arch=armv8-a+crc")))
+#      endif
+#    else
+#      ifdef __clang__
+#        define ATTRIBUTES	__attribute__((target("crc")))
+#      else
+#        define ATTRIBUTES	__attribute__((target("+crc")))
+#      endif
+#    endif
+#    define DISPATCH		1
+#    define DISPATCH_ARM	1
+#  endif
+
+/*
+ * gcc's (as of 10.1) version of arm_acle.h for arm32, and clang's (as of
+ * 10.0.1) version of arm_acle.h for both arm32 and arm64, have a bug where they
+ * only define the CRC32 functions like __crc32b() when __ARM_FEATURE_CRC32 is
+ * defined.  That prevents them from being used via __attribute__((target)) when
+ * the main target doesn't have CRC32 support enabled.  The actual built-ins
+ * like __builtin_arm_crc32b() are available and work, however; it's just the
+ * wrappers in arm_acle.h like __crc32b() that erroneously don't get defined.
+ * Work around this by manually defining __ARM_FEATURE_CRC32.
+ */
+#ifndef __ARM_FEATURE_CRC32
+#  define __ARM_FEATURE_CRC32	1
+#endif
+#include <arm_acle.h>
+
+static u32 ATTRIBUTES
+crc32_arm(u32 remainder, const u8 *p, size_t size)
+{
+	while (size != 0 && (uintptr_t)p & 7) {
+		remainder = __crc32b(remainder, *p++);
+		size--;
+	}
+
+	while (size >= 32) {
+		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 0)));
+		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 1)));
+		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 2)));
+		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 3)));
+		p += 32;
+		size -= 32;
+	}
+
+	while (size >= 8) {
+		remainder = __crc32d(remainder, le64_bswap(*(u64 *)p));
+		p += 8;
+		size -= 8;
+	}
+
+	while (size != 0) {
+		remainder = __crc32b(remainder, *p++);
+		size--;
+	}
+
+	return remainder;
+}
+#undef ATTRIBUTES
+#endif /* Implementation using ARM CRC32 instructions */
+
 /*
  * CRC-32 folding with ARM Crypto extension-PMULL
  *
@@ -155,6 +229,10 @@ arch_select_crc32_func(void)
 {
 	u32 features = get_cpu_features();
 
+#ifdef DISPATCH_ARM
+	if (features & ARM_CPU_FEATURE_CRC32)
+		return crc32_arm;
+#endif
 #ifdef DISPATCH_PMULL
 	if (features & ARM_CPU_FEATURE_PMULL)
 		return crc32_pmull;

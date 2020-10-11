@@ -112,9 +112,13 @@ i386|x86_64)
 	fi
 	;;
 arm*|aarch*)
+	if have_cpu_feature crc32; then
+		do_benchmark "ARM"
+		disable_cpu_feature "crc32" "-march=armv8-a+nocrc"
+	fi
 	if have_cpu_feature pmull; then
 		do_benchmark "PMULL"
-		disable_cpu_feature "pmull" "-march=armv8-a+nocrypto"
+		disable_cpu_feature "pmull" "-march=armv8-a+nocrc+nocrypto"
 	fi
 	;;
 esac
