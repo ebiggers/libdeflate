@@ -95,6 +95,7 @@ out:
 static const struct cpu_feature arm_cpu_feature_table[] = {
 	{ARM_CPU_FEATURE_NEON,		"neon"},
 	{ARM_CPU_FEATURE_PMULL,		"pmull"},
+	{ARM_CPU_FEATURE_CRC32,		"crc32"},
 };
 
 void setup_cpu_features(void)
@@ -111,12 +112,16 @@ void setup_cpu_features(void)
 		features |= ARM_CPU_FEATURE_NEON;
 	if (hwcap2 & (1 << 1))	/* HWCAP2_PMULL */
 		features |= ARM_CPU_FEATURE_PMULL;
+	if (hwcap2 & (1 << 4))	/* HWCAP2_CRC32 */
+		features |= ARM_CPU_FEATURE_CRC32;
 #else
 	STATIC_ASSERT(sizeof(long) == 8);
 	if (hwcap & (1 << 1))	/* HWCAP_ASIMD */
 		features |= ARM_CPU_FEATURE_NEON;
 	if (hwcap & (1 << 4))	/* HWCAP_PMULL */
 		features |= ARM_CPU_FEATURE_PMULL;
+	if (hwcap & (1 << 7))	/* HWCAP_CRC32 */
+		features |= ARM_CPU_FEATURE_CRC32;
 #endif
 
 	disable_cpu_features_for_testing(&features, arm_cpu_feature_table,

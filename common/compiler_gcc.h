@@ -121,6 +121,20 @@
 #      endif
 #    endif
 
+     /*
+      * Determine whether CRC32 intrinsics are supported.
+      *
+      * With gcc r274827 or later (gcc 10.1+, 9.3+, or 8.4+), or with clang,
+      * they work as expected.  (Well, not quite.  There's still a bug, but we
+      * have to work around it later when including arm_acle.h.)
+      */
+#    if GCC_PREREQ(10, 1) || \
+        (GCC_PREREQ(9, 3) && !GCC_PREREQ(10, 0)) || \
+        (GCC_PREREQ(8, 4) && !GCC_PREREQ(9, 0)) || \
+        (defined(__clang__) && __has_builtin(__builtin_arm_crc32b))
+#      define COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS 1
+#    endif
+
 #  endif /* __arm__ || __aarch64__ */
 
 #endif /* COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE */
