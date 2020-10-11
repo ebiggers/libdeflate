@@ -54,7 +54,7 @@ if [ -z "${SMOKEDATA:-}" ]; then
 		| head -c 1000000 > "$SMOKEDATA"
 fi
 
-NDKDIR="${NDKDIR:=/opt/android-ndk}"
+NDKDIR="${NDKDIR:=$HOME/android-ndk-r21d}"
 
 FILES=("$SMOKEDATA" ./tools/exec_tests.sh benchmark 'test_*')
 EXEC_TESTS_CMD="WRAPPER= SMOKEDATA=\"$(basename $SMOKEDATA)\" sh exec_tests.sh"
@@ -245,7 +245,8 @@ checksum_benchmarks() {
 ###############################################################################
 
 android_build_and_test() {
-	run_cmd ./tools/android_build.sh --ndkdir="$NDKDIR" "$@"
+	run_cmd ./tools/android_build.sh --ndkdir="$NDKDIR" "$@" \
+		all test_programs
 	run_cmd adb push ${FILES[@]} /data/local/tmp/
 
 	# Note: adb shell always returns 0, even if the shell command fails...
@@ -280,12 +281,10 @@ android_tests() {
 		return 0
 	fi
 
-	for compiler in gcc clang; do
-		for flags in "" "--enable-neon" "--enable-crypto"; do
-			for arch in arm32 arm64; do
-				android_build_and_test --arch=$arch \
-					--compiler=$compiler $flags
-			done
+	for arch in arm32 arm64; do
+		for flags in "" "--enable-crc" "--enable-crypto" \
+			     "--enable-crc --enable-crypto"; do
+			android_build_and_test --arch=$arch $flags
 		done
 	done
 }
