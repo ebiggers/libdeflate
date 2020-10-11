@@ -149,7 +149,7 @@ native_build_and_test() {
 			features=(avx512bw avx2 avx bmi2 pclmul sse2)
 			;;
 		arm*|aarch*)
-			features=(pmull neon)
+			features=(crc32 pmull neon)
 			;;
 		esac
 	fi

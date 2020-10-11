@@ -152,6 +152,9 @@ typedef size_t machine_word_t;
 #ifndef COMPILER_SUPPORTS_PMULL_TARGET_INTRINSICS
 #  define COMPILER_SUPPORTS_PMULL_TARGET_INTRINSICS 0
 #endif
+#ifndef COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS
+#  define COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS 0
+#endif
 
 /* _aligned_attribute(n) - declare that the annotated variable, or variables of
  * the annotated type, are to be aligned on n-byte boundaries */
