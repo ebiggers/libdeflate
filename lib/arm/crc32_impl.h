@@ -35,14 +35,12 @@
  * See x86/crc32_pclmul_template.h for an explanation.
  */
 #undef DISPATCH_PMULL
-#if (defined(__ARM_FEATURE_CRYPTO) ||	\
+#if !defined(DEFAULT_IMPL) && \
+    (defined(__ARM_FEATURE_CRYPTO) ||	\
      (ARM_CPU_FEATURES_ENABLED &&	\
       COMPILER_SUPPORTS_PMULL_TARGET_INTRINSICS)) && \
       /* not yet tested on big endian, probably needs changes to work there */ \
-    (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) && \
-      /* clang as of v5.0.1 doesn't allow pmull intrinsics in 32-bit mode, even
-       * when compiling with -mfpu=crypto-neon-fp-armv8 */ \
-    !(defined(__clang__) && defined(__arm__))
+    (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 #  define FUNCNAME		crc32_pmull
 #  define FUNCNAME_ALIGNED	crc32_pmull_aligned
 #  ifdef __ARM_FEATURE_CRYPTO

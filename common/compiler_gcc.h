@@ -91,26 +91,38 @@
 #      define COMPILER_SUPPORTS_AVX512BW_TARGET_INTRINSICS	\
 		COMPILER_SUPPORTS_AVX512BW_TARGET
 #    endif
-#  elif (defined(__arm__) && defined(__ARM_FP)) || defined(__aarch64__)
-	/* arm: including arm_neon.h requires hardware fp support */
 
-	/*
-	 * Prior to gcc 6.1 (r230411 for arm, r226563 for aarch64), NEON
-	 * and crypto intrinsics not available in the main target could not be
-	 * used in 'target' attribute functions.
-	 *
-	 * clang as of 5.0.1 still doesn't allow it.  But, it does seem to allow
-	 * the pmull intrinsics if only __ARM_NEON is enabled.
-	 */
-#    define COMPILER_SUPPORTS_NEON_TARGET_INTRINSICS	GCC_PREREQ(6, 1)
-#    ifdef __ARM_NEON
-#      define COMPILER_SUPPORTS_PMULL_TARGET_INTRINSICS	\
-		(GCC_PREREQ(6, 1) || __has_builtin(__builtin_neon_vmull_p64))
-#    else
-#      define COMPILER_SUPPORTS_PMULL_TARGET_INTRINSICS	\
-		(GCC_PREREQ(6, 1))
+#  elif defined(__arm__) || defined(__aarch64__)
+
+    /*
+     * Determine whether NEON and crypto intrinsics are supported.
+     *
+     * With gcc prior to 6.1, (r230411 for arm32, r226563 for arm64), neither
+     * was available unless enabled in the main target.
+     *
+     * But even after that, to include <arm_neon.h> (which contains both the
+     * basic NEON intrinsics and the crypto intrinsics) the main target still
+     * needs to have:
+     *   - gcc: hardware floating point support
+     *   - clang: NEON support (but not necessarily crypto support)
+     */
+#    if (GCC_PREREQ(6, 1) && defined(__ARM_FP)) || \
+        (defined(__clang__) && defined(__ARM_NEON))
+#      define COMPILER_SUPPORTS_NEON_TARGET_INTRINSICS 1
+       /*
+        * The crypto intrinsics are broken on arm32 with clang, even when using
+        * -mfpu=crypto-neon-fp-armv8, because clang's <arm_neon.h> puts them
+        * behind __aarch64__.  Undefine __ARM_FEATURE_CRYPTO in that case...
+        */
+#      if defined(__clang__) && defined(__arm__)
+#        undef __ARM_FEATURE_CRYPTO
+#      elif __has_builtin(__builtin_neon_vmull_p64) || !defined(__clang__)
+#        define COMPILER_SUPPORTS_PMULL_TARGET_INTRINSICS 1
+#      endif
 #    endif
-#  endif
+
+#  endif /* __arm__ || __aarch64__ */
+
 #endif /* COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE */
 
 /* Newer gcc supports __BYTE_ORDER__.  Older gcc doesn't. */
