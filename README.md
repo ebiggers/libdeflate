@@ -181,6 +181,7 @@ following bindings:
 * Go: [go-libdeflate](https://github.com/4kills/go-libdeflate)
 * Java: [libdeflate-java](https://github.com/astei/libdeflate-java)
 * Julia: [LibDeflate.jl](https://github.com/jakobnissen/LibDeflate.jl)
+* Python: [deflate](https://github.com/dcwatson/deflate)
 * Ruby: [libdeflate-ruby](https://github.com/kaorimatz/libdeflate-ruby)
 * Rust: [libdeflater](https://github.com/adamkewley/libdeflater)
 
