@@ -87,3 +87,12 @@ matrix:
       os: windows
       script:
         - mingw32-make all check
+
+    - name: Native tests (Linux s390x)
+      os: linux
+      dist: bionic
+      arch: s390x
+      before_install:
+        - sudo apt-get install -y libz-dev valgrind clang
+      script:
+        - tools/run_tests.sh native freestanding
