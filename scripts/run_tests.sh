@@ -182,6 +182,20 @@ do_run_tests() {
 	gzip_tests "$@"
 }
 
+check_symbol_prefixes() {
+	log "Checking that all global symbols are prefixed with \"libdeflate_\""
+	$MAKE libdeflate.a
+	if nm libdeflate.a | grep ' T ' | grep -E -v " _?libdeflate_"; then
+		fail "Some global symbols aren't prefixed with \"libdeflate_\""
+	fi
+	log "Checking that all exported symbols are prefixed with \"libdeflate\""
+	$MAKE libdeflate.so
+	if nm libdeflate.so | grep ' T ' \
+			| grep -E -v " (libdeflate_|_init\>|_fini\>)"; then
+		fail "Some exported symbols aren't prefixed with \"libdeflate_\""
+	fi
+}
+
 install_uninstall_tests() {
 	local shell
 
@@ -237,6 +251,7 @@ run_tests() {
 	fi
 
 	install_uninstall_tests
+	check_symbol_prefixes
 }
 
 ###############################################################################
