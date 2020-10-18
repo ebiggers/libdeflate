@@ -14,8 +14,8 @@ if [ -z "${TESTDATA:-}" ]; then
 	# Generate default TESTDATA file.
 	TESTDATA=$(mktemp -t libdeflate_testdata.XXXXXXXXXX)
 	trap 'rm -f "$TESTDATA"' EXIT
-	cat $(find . -name '*.c' -o -name '*.h' -o -name '*.sh') \
-		| head -c 1000000 > "$TESTDATA"
+	find . '(' -name '*.c' -o -name '*.h' -o -name '*.sh' ')' \
+		-exec cat '{}' ';' | head -c 1000000 > "$TESTDATA"
 fi
 
 MAKE="make -j$(getconf _NPROCESSORS_ONLN)"
