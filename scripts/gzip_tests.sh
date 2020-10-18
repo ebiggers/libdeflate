@@ -96,6 +96,24 @@ assert_equals() {
 # Get the filesystem type.
 FSTYPE=$(df -T . | tail -1 | awk '{print $2}')
 
+# If gzip or gunzip is the GNU version, require that it supports the '-k'
+# option.  This option was added in v1.6, released in 2013.
+check_version_prereq() {
+	local prog=$1
+
+	if ! echo | { $prog -k || true; } |& grep -q 'invalid option'; then
+		return 0
+	fi
+	if ! $prog -V |& grep -q 'Free Software Foundation'; then
+		echo 1>&2 "Unexpected case: not GNU $prog, but -k option is invalid"
+		exit 1
+	fi
+	echo "GNU $prog is too old; skipping gzip/gunzip tests"
+	exit 0
+}
+check_version_prereq gzip
+check_version_prereq gunzip
+
 begin_test 'Basic compression and decompression works'
 cp file orig
 gzip file
