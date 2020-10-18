@@ -151,15 +151,19 @@ cmp file.gz 2.gz
 cmp file orig
 
 
+# Note: in some of the commands below, we intentionally use 'cat file | gzip'
+# rather than 'gzip < file', in order to test the use of a pipe.  This produces
+# a shellcheck warning about 'cat' being unnecessary.  Suppress that warning by
+# using { cat file; true; }.
 begin_test 'Reading from stdin works'
 gzip < file > 1.gz
 gzip - < file > 2.gz
-cat file | gzip > 3.gz
-cat file | gzip - > 4.gz
+{ cat file; true; } | gzip > 3.gz
+{ cat file; true; } | gzip - > 4.gz
 cmp file <(gunzip < 1.gz)
 cmp file <(gunzip - < 2.gz)
-cmp file <(cat 3.gz | gunzip)
-cmp file <(cat 4.gz | gunzip -)
+cmp file <({ cat 3.gz; true; } | gunzip)
+cmp file <({ cat 4.gz; true; } | gunzip -)
 
 
 begin_test '-n option is accepted'
@@ -291,23 +295,23 @@ assert_skipped gunzip -f foo.gz
 
 
 begin_test '(gzip) overwriting symlink does not follow symlink'
-echo 1 > 1
-echo 2 > 2
-gzip 1
-ln -s 1.gz 2.gz
-gzip -f 2
-gunzip 1.gz
-cmp <(echo 1) 1
+echo a > a
+echo b > b
+gzip a
+ln -s a.gz b.gz
+gzip -f b
+gunzip a.gz
+cmp <(echo a) a
 
 
 begin_test '(gunzip) overwriting symlink does not follow symlink'
-echo 1 > 1
-echo 2 > 2
-gzip 2
-ln -s 1 2
-gunzip -f 2.gz
-cmp <(echo 1) 1
-cmp <(echo 2) 2
+echo a > a
+echo b > b
+gzip b
+ln -s a b
+gunzip -f b.gz
+cmp <(echo a) a
+cmp <(echo b) b
 
 
 begin_test '(gzip) hard linked file skipped without -f or -c'
@@ -438,10 +442,10 @@ cmp file orig
 
 
 begin_test 'Decompressing multi-member gzip file (final member smaller)'
-echo 'hello world' > 2
-cat file 2 > orig
+echo 'hello world' > hello
+cat file hello > orig
 gzip -c file > file.gz
-gzip -c 2 >> file.gz
+gzip -c hello >> file.gz
 gunzip -f file.gz
 cmp file orig
 
