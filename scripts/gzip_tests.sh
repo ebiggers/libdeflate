@@ -27,7 +27,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-SMOKEDATA="$(realpath "$SMOKEDATA")"
+SMOKEDATA="$(readlink -f "$SMOKEDATA")"
 cd "$TMPDIR"
 
 begin_test() {
