@@ -142,20 +142,20 @@ native_build_and_test() {
 	# we test disabling.  We just disable the features roughly in order from
 	# newest to oldest for each architecture, cumulatively.  In practice,
 	# that's good enough to cover all the code.
-	local features=()
+	local features=('')
 	if ! [[ "$*" =~ "-march=native" ]]; then
 		case "$(uname -m)" in
 		i386|x86_64)
-			features=(avx512bw avx2 avx bmi2 pclmul sse2)
+			features+=(avx512bw avx2 avx bmi2 pclmul sse2)
 			;;
 		arm*|aarch*)
-			features=(crc32 pmull neon)
+			features+=(crc32 pmull neon)
 			;;
 		esac
 	fi
 	local disable_str=""
 	local feature
-	for feature in "" "${features[@]}"; do
+	for feature in "${features[@]}"; do
 		if [ -n "$feature" ]; then
 			if [ -n "$disable_str" ]; then
 				disable_str+=","
