@@ -7,13 +7,13 @@
 # whether the GNU versions or the libdeflate versions, or a combination, of
 # these programs are used.
 #
-# The environmental variable SMOKEDATA must also be set to a file containing
+# The environmental variable TESTDATA must also be set to a file containing
 # test data.
 #
 
 set -eu -o pipefail
 
-export -n GZIP GUNZIP SMOKEDATA
+export -n GZIP GUNZIP TESTDATA
 
 TMPDIR="$(mktemp -d)"
 CURRENT_TEST=
@@ -27,13 +27,13 @@ cleanup() {
 
 trap cleanup EXIT
 
-SMOKEDATA="$(readlink -f "$SMOKEDATA")"
+TESTDATA="$(readlink -f "$TESTDATA")"
 cd "$TMPDIR"
 
 begin_test() {
 	CURRENT_TEST="$1"
 	rm -rf -- "${TMPDIR:?}"/*
-	cp "$SMOKEDATA" file
+	cp "$TESTDATA" file
 }
 
 gzip() {

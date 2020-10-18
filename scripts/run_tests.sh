@@ -35,29 +35,29 @@ fi
 
 
 TMPFILE="$(mktemp)"
-USING_TMP_SMOKEDATA=false
+USING_TMP_TESTDATA=false
 
 cleanup() {
 	rm "$TMPFILE"
-	if $USING_TMP_SMOKEDATA; then
-		rm "$SMOKEDATA"
+	if $USING_TMP_TESTDATA; then
+		rm "$TESTDATA"
 	fi
 }
 
 trap cleanup EXIT
 
-if [ -z "${SMOKEDATA:-}" ]; then
-	# Generate default SMOKEDATA file.
-	SMOKEDATA=$(mktemp -t smokedata.XXXXXXXXXX)
-	USING_TMP_SMOKEDATA=true
+if [ -z "${TESTDATA:-}" ]; then
+	# Generate default TESTDATA file.
+	TESTDATA=$(mktemp -t libdeflate_testdata.XXXXXXXXXX)
+	USING_TMP_TESTDATA=true
 	cat $(find . -name '*.c' -o -name '*.h' -o -name '*.sh') \
-		| head -c 1000000 > "$SMOKEDATA"
+		| head -c 1000000 > "$TESTDATA"
 fi
 
 NDKDIR="${NDKDIR:=$HOME/android-ndk-r21d}"
 
-FILES=("$SMOKEDATA" ./scripts/exec_tests.sh benchmark 'test_*')
-EXEC_TESTS_CMD="WRAPPER= SMOKEDATA=\"$(basename $SMOKEDATA)\" sh exec_tests.sh"
+FILES=("$TESTDATA" ./scripts/exec_tests.sh benchmark 'test_*')
+EXEC_TESTS_CMD="WRAPPER= TESTDATA=\"$(basename $TESTDATA)\" sh exec_tests.sh"
 NPROC=$(grep -c processor /proc/cpuinfo)
 VALGRIND="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all"
 SANITIZE_CFLAGS="-fsanitize=undefined -fno-sanitize-recover=undefined,integer"
@@ -156,7 +156,7 @@ native_build_and_test() {
 			disable_str+="$feature"
 			log "Retrying with CPU features disabled: $disable_str"
 		fi
-		WRAPPER="$WRAPPER" SMOKEDATA="$SMOKEDATA" \
+		WRAPPER="$WRAPPER" TESTDATA="$TESTDATA" \
 			LIBDEFLATE_DISABLE_CPU_FEATURES="$disable_str" \
 			sh ./scripts/exec_tests.sh > /dev/null
 	done
@@ -323,7 +323,7 @@ gzip_tests() {
 		for gunzip in "$PWD/gunzip" /bin/gunzip; do
 			log "Running gzip program tests with GZIP=$gzip," \
 				"GUNZIP=$gunzip"
-			GZIP="$gzip" GUNZIP="$gunzip" SMOKEDATA="$SMOKEDATA" \
+			GZIP="$gzip" GUNZIP="$gunzip" TESTDATA="$TESTDATA" \
 				./scripts/gzip_tests.sh
 		done
 	done
@@ -331,14 +331,14 @@ gzip_tests() {
 	if have_valgrind; then
 		log "Running gzip program tests with Valgrind"
 		GZIP="$VALGRIND $PWD/gzip" GUNZIP="$VALGRIND $PWD/gunzip" \
-			SMOKEDATA="$SMOKEDATA" ./scripts/gzip_tests.sh
+			TESTDATA="$TESTDATA" ./scripts/gzip_tests.sh
 	fi
 
 	if have_ubsan; then
 		log "Running gzip program tests with undefined behavior sanitizer"
 		run_cmd make -j$NPROC CC=clang CFLAGS="$SANITIZE_CFLAGS" gzip gunzip
 		GZIP="$PWD/gzip" GUNZIP="$PWD/gunzip" \
-			SMOKEDATA="$SMOKEDATA" ./scripts/gzip_tests.sh
+			TESTDATA="$TESTDATA" ./scripts/gzip_tests.sh
 	fi
 }
 
@@ -346,7 +346,7 @@ gzip_tests() {
 
 log "Starting libdeflate tests"
 log "	TESTGROUPS=(${TESTGROUPS[@]})"
-log "	SMOKEDATA=$SMOKEDATA"
+log "	TESTDATA=$TESTDATA"
 log "	NDKDIR=$NDKDIR"
 
 native_tests
