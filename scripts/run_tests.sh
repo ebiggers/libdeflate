@@ -35,6 +35,13 @@ CC_VERSION=$($CC --version | head -1)
 
 ARCH=$(uname -m)
 
+# Allow setting DISABLE_ASAN=1 in the environment to disable the ASAN tests.
+if [ "${DISABLE_ASAN:-}" = "1" ]; then
+	DISABLE_ASAN=true
+else
+	DISABLE_ASAN=false
+fi
+
 ###############################################################################
 
 INDENT=0
@@ -248,6 +255,17 @@ run_tests() {
 		end
 	else
 		log "Skipping UBSAN tests because compiler ($CC_VERSION) doesn't support UBSAN"
+	fi
+
+	cflags=("-fsanitize=address" "-fno-sanitize-recover=address")
+	if $DISABLE_ASAN; then
+		log "Skipping ASAN tests because DISABLE_ASAN=1 was set"
+	elif cflags_supported "${cflags[@]}"; then
+		begin "Running tests with ASAN"
+		CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests --quick
+		end
+	else
+		log "Skipping ASAN tests because compiler ($CC_VERSION) doesn't support ASAN"
 	fi
 
 	install_uninstall_tests

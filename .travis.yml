@@ -47,14 +47,20 @@ jobs:
     - dist: xenial
       compiler: clang
       arch: arm64
+      # ASAN fails with internal error
+      env: DISABLE_ASAN=1
 
     - dist: xenial
       compiler: gcc
       arch: ppc64le
+      # ASAN fails with internal error
+      env: DISABLE_ASAN=1
 
     - dist: xenial
       compiler: clang
       arch: ppc64le
+      # ASAN fails with internal error
+      env: DISABLE_ASAN=1
 
     - dist: xenial
       compiler: gcc
