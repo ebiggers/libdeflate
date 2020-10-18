@@ -15,14 +15,14 @@ matrix:
       script:
         - scripts/run_tests.sh native freestanding
 
-    - name: Checksum, static analysis, and edge case tests (Linux)
+    - name: Checksum and static analysis tests (Linux)
       os: linux
       dist: bionic
       before_install:
         - sudo apt-get install -y libz-dev gcc-multilib libz-dev:i386
-          libc6-dev-i386 clang python3
+          libc6-dev-i386 clang
       script:
-        - scripts/run_tests.sh checksum_benchmarks static_analysis edge_case
+        - scripts/run_tests.sh checksum_benchmarks static_analysis
 
     - name: Native tests (Linux aarch64)
       os: linux
@@ -33,14 +33,14 @@ matrix:
       script:
         - scripts/run_tests.sh native freestanding
 
-    - name: Checksum, static analysis, and edge case tests (Linux aarch64)
+    - name: Checksum and static analysis tests (Linux aarch64)
       os: linux
       dist: bionic
       arch: arm64
       before_install:
-        - sudo apt-get install -y libz-dev clang python3
+        - sudo apt-get install -y libz-dev clang
       script:
-        - scripts/run_tests.sh checksum_benchmarks static_analysis edge_case
+        - scripts/run_tests.sh checksum_benchmarks static_analysis
 
     - name: gzip and cross-compile-for-Windows tests (Linux)
       os: linux

@@ -118,13 +118,6 @@ have_ubsan() {
 	fi
 }
 
-have_python() {
-	if ! type -P python3 > /dev/null; then
-		log_skip "Python not found"
-		return 1
-	fi
-}
-
 ###############################################################################
 
 native_build_and_test() {
@@ -351,38 +344,6 @@ gzip_tests() {
 
 ###############################################################################
 
-edge_case_tests() {
-	test_group_included edge_case || return 0
-
-	# Regression test for "deflate_compress: fix corruption with long
-	# literal run".  Try to compress a file longer than 65535 bytes where no
-	# 2-byte sequence (3 would be sufficient) is repeated <= 32768 bytes
-	# apart, and the distribution of bytes remains constant throughout, and
-	# yet not all bytes are used so the data is still slightly compressible.
-	# There will be no matches in this data, but the compressor should still
-	# output a compressed block, and this block should contain more than
-	# 65535 consecutive literals, which triggered the bug.
-	#
-	# Note: on random data, this situation is extremely unlikely if the
-	# compressor uses all matches it finds, since random data will on
-	# average have a 3-byte match every (256**3)/32768 = 512 bytes.
-	if have_python; then
-		python3 > "$TMPFILE" << EOF
-import sys
-for i in range(2):
-    for stride in range(1,251):
-        b = bytes(stride*multiple % 251 for multiple in range(251))
-        sys.stdout.buffer.write(b)
-EOF
-		run_cmd make -j$NPROC benchmark
-		run_cmd ./benchmark -3 "$TMPFILE"
-		run_cmd ./benchmark -6 "$TMPFILE"
-		run_cmd ./benchmark -12 "$TMPFILE"
-	fi
-}
-
-###############################################################################
-
 log "Starting libdeflate tests"
 log "	TESTGROUPS=(${TESTGROUPS[@]})"
 log "	SMOKEDATA=$SMOKEDATA"
@@ -395,7 +356,6 @@ android_tests
 windows_tests
 static_analysis_tests
 gzip_tests
-edge_case_tests
 
 if (( TESTS_SKIPPED )); then
 	log "No tests failed, but some tests were skipped.  See above."
