@@ -45,14 +45,14 @@ cc-option = $(shell if $(CC) $(1) -c -x c /dev/null -o /dev/null \
 	      1>&2 2>/dev/null; then echo $(1); fi)
 
 override CFLAGS :=							\
-	-O2 -fomit-frame-pointer $(CFLAGS) -std=c99 -I.			\
-	-Wall -Wundef							\
+	-O2 -fomit-frame-pointer -std=c99 -I. -Wall -Wundef		\
 	$(call cc-option,-Wpedantic)					\
 	$(call cc-option,-Wdeclaration-after-statement)			\
 	$(call cc-option,-Wmissing-prototypes)				\
 	$(call cc-option,-Wstrict-prototypes)				\
 	$(call cc-option,-Wvla)						\
-	$(call cc-option,-Wimplicit-fallthrough)
+	$(call cc-option,-Wimplicit-fallthrough)			\
+	$(CFLAGS)
 
 FREESTANDING :=
 ifdef FREESTANDING
