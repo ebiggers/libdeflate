@@ -29,9 +29,9 @@ make_and_test() {
 __do_benchmark() {
 	local impl="$1" speed
 	shift
-	local flags="$CKSUM_FLAGS $*"
+	local flags=("$@")
 
-	speed=$(./checksum $flags -t "$FILE" | \
+	speed=$(./checksum "${CKSUM_FLAGS[@]}" "${flags[@]}" -t "$FILE" | \
 		grep -o '[0-9]\+ MB/s' | grep -o '[0-9]\+')
 	printf "%-45s%-10s\n" "$CKSUM_NAME ($impl)" "$speed"
 }
@@ -42,10 +42,10 @@ do_benchmark() {
 	if [ "$impl" = zlib ]; then
 		__do_benchmark "$impl" "-Z"
 	else
-		make_and_test CFLAGS="$EXTRA_CFLAGS"
+		make_and_test CFLAGS="${EXTRA_CFLAGS[*]}"
 		__do_benchmark "libdeflate, $impl"
 		if [ "$ARCH" = x86_64 ]; then
-			make_and_test CFLAGS="-m32 $EXTRA_CFLAGS"
+			make_and_test CFLAGS="-m32 ${EXTRA_CFLAGS[*]}"
 			__do_benchmark "libdeflate, $impl, 32-bit"
 		fi
 	fi
@@ -57,10 +57,11 @@ sort_by_speed() {
 
 disable_cpu_feature() {
 	local name="$1"
-	local extra_cflags="$2"
+	shift
+	local extra_cflags=("$@")
 
 	LIBDEFLATE_DISABLE_CPU_FEATURES+=",$name"
-	EXTRA_CFLAGS+=" $extra_cflags"
+	EXTRA_CFLAGS+=("${extra_cflags[@]}")
 }
 
 cleanup() {
@@ -96,8 +97,8 @@ EOF
 
 # CRC-32
 CKSUM_NAME="CRC-32"
-CKSUM_FLAGS=""
-EXTRA_CFLAGS=""
+CKSUM_FLAGS=()
+EXTRA_CFLAGS=()
 export LIBDEFLATE_DISABLE_CPU_FEATURES=""
 {
 case $ARCH in
@@ -128,8 +129,8 @@ do_benchmark "zlib"
 
 # Adler-32
 CKSUM_NAME="Adler-32"
-CKSUM_FLAGS="-A"
-EXTRA_CFLAGS=""
+CKSUM_FLAGS=(-A)
+EXTRA_CFLAGS=()
 export LIBDEFLATE_DISABLE_CPU_FEATURES=""
 echo
 {
