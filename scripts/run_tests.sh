@@ -47,10 +47,6 @@ SANITIZE_CFLAGS="-fsanitize=undefined -fno-sanitize-recover=undefined,integer"
 
 ###############################################################################
 
-rm -f run_tests.log
-exec >  >(tee -ia run_tests.log)
-exec 2> >(tee -ia run_tests.log >&2)
-
 TESTS_SKIPPED=0
 log_skip() {
 	log "[WARNING, TEST SKIPPED]: $@"
