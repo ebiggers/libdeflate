@@ -243,7 +243,7 @@ ALL_PROG_OBJ	     := $(PROG_COMMON_OBJ) $(NONTEST_PROG_OBJ) \
 			$(TEST_PROG_COMMON_OBJ) $(TEST_PROG_OBJ)
 
 # Generate autodetected configuration header
-programs/config.h:programs/detect.sh .prog-cflags
+programs/config.h:scripts/detect.sh .prog-cflags
 	$(QUIET_GEN) CC="$(CC)" CFLAGS="$(PROG_CFLAGS)" $< > $@
 
 # Compile program object files
