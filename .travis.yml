@@ -13,7 +13,7 @@ matrix:
         - sudo apt-get install -y libz-dev gcc-multilib libz-dev:i386
           libc6-dev-i386 valgrind clang gcc-4.8-multilib gcc-mingw-w64-i686
       script:
-        - tools/run_tests.sh native freestanding
+        - scripts/run_tests.sh native freestanding
 
     - name: Checksum, static analysis, and edge case tests (Linux)
       os: linux
@@ -22,7 +22,7 @@ matrix:
         - sudo apt-get install -y libz-dev gcc-multilib libz-dev:i386
           libc6-dev-i386 clang python3
       script:
-        - tools/run_tests.sh checksum_benchmarks static_analysis edge_case
+        - scripts/run_tests.sh checksum_benchmarks static_analysis edge_case
 
     - name: Native tests (Linux aarch64)
       os: linux
@@ -31,7 +31,7 @@ matrix:
       before_install:
         - sudo apt-get install -y libz-dev valgrind clang
       script:
-        - tools/run_tests.sh native freestanding
+        - scripts/run_tests.sh native freestanding
 
     - name: Checksum, static analysis, and edge case tests (Linux aarch64)
       os: linux
@@ -40,7 +40,7 @@ matrix:
       before_install:
         - sudo apt-get install -y libz-dev clang python3
       script:
-        - tools/run_tests.sh checksum_benchmarks static_analysis edge_case
+        - scripts/run_tests.sh checksum_benchmarks static_analysis edge_case
 
     - name: gzip and cross-compile-for-Windows tests (Linux)
       os: linux
@@ -49,7 +49,7 @@ matrix:
         - sudo apt-get install -y libz-dev valgrind
           gcc-mingw-w64-x86-64 libz-mingw-w64-dev
       script:
-        - tools/run_tests.sh gzip windows
+        - scripts/run_tests.sh gzip windows
 
     - name: Basic tests (old Linux distro, gcc)
       os: linux
@@ -95,4 +95,4 @@ matrix:
       before_install:
         - sudo apt-get install -y libz-dev valgrind clang
       script:
-        - tools/run_tests.sh native freestanding
+        - scripts/run_tests.sh native freestanding
