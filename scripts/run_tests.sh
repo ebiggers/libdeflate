@@ -239,17 +239,6 @@ windows_tests() {
 
 ###############################################################################
 
-static_analysis_tests() {
-	test_group_included static_analysis || return 0
-	if ! type -P scan-build > /dev/null; then
-		log_skip "clang static analyzer (scan-build) not found"
-		return 0
-	fi
-	run_cmd scan-build --status-bugs make -j$NPROC all test_programs
-}
-
-###############################################################################
-
 gzip_tests() {
 	test_group_included gzip || return 0
 
@@ -288,7 +277,6 @@ native_tests
 freestanding_tests
 checksum_benchmarks
 windows_tests
-static_analysis_tests
 gzip_tests
 
 if (( TESTS_SKIPPED )); then
