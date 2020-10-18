@@ -13,7 +13,7 @@ matrix:
         - sudo apt-get install -y libz-dev gcc-multilib libz-dev:i386
           libc6-dev-i386 valgrind clang gcc-4.8-multilib gcc-mingw-w64-i686
       script:
-        - scripts/run_tests.sh native freestanding
+        - scripts/run_tests.sh
 
     - name: clang static analyzer
       os: linux
@@ -30,7 +30,7 @@ matrix:
       before_install:
         - sudo apt-get install -y libz-dev valgrind clang
       script:
-        - scripts/run_tests.sh native freestanding
+        - scripts/run_tests.sh
 
     - name: gzip and cross-compile-for-Windows tests (Linux)
       os: linux
@@ -39,7 +39,6 @@ matrix:
         - sudo apt-get install -y libz-dev valgrind
           gcc-mingw-w64-x86-64 libz-mingw-w64-dev
       script:
-        - scripts/run_tests.sh gzip
         - make CC=i686-w64-mingw32-gcc CFLAGS=-Werror all test_programs
         - make CC=x86_64-w64-mingw32-gcc CFLAGS=-Werror all test_programs
 
@@ -87,4 +86,4 @@ matrix:
       before_install:
         - sudo apt-get install -y libz-dev valgrind clang
       script:
-        - scripts/run_tests.sh native freestanding
+        - scripts/run_tests.sh

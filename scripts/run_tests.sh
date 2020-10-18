@@ -1,36 +1,13 @@
 #!/bin/bash
 #
 # Test script for libdeflate
-#
-#	Usage: ./scripts/run_tests.sh [TESTGROUP]... [-TESTGROUP]...
-#
-# By default all tests are run, but it is possible to explicitly include or
-# exclude specific test groups.
-#
 
 set -eu -o pipefail
 cd "$(dirname "$0")/.."
 
-TESTGROUPS=(all)
-
-set_test_groups() {
-	TESTGROUPS=("$@")
-	local have_exclusion=0
-	local have_all=0
-	for group in "${TESTGROUPS[@]}"; do
-		if [[ $group == -* ]]; then
-			have_exclusion=1
-		elif [[ $group == all ]]; then
-			have_all=1
-		fi
-	done
-	if (( have_exclusion && !have_all )); then
-		TESTGROUPS=(all "${TESTGROUPS[@]}")
-	fi
-}
-
-if [ $# -gt 0 ]; then
-	set_test_groups "$@"
+if [ $# -ne 0 ]; then
+	echo 1>&2 "Usage: $0"
+	exit 2
 fi
 
 if [ -z "${TESTDATA:-}" ]; then
@@ -60,27 +37,6 @@ log() {
 run_cmd() {
 	log "$@"
 	"$@" > /dev/null
-}
-
-test_group_included() {
-	local included=0 group
-	for group in "${TESTGROUPS[@]}"; do
-		if [ "$group" = "$1" ]; then
-			included=1 # explicitly included
-			break
-		fi
-		if [ "$group" = "-$1" ]; then
-			included=0 # explicitly excluded
-			break
-		fi
-		if [ "$group" = "all" ]; then # implicitly included
-			included=1
-		fi
-	done
-	if (( included )); then
-		log "Starting test group: $1"
-	fi
-	(( included ))
 }
 
 have_valgrind() {
@@ -142,7 +98,6 @@ native_build_and_test() {
 }
 
 native_tests() {
-	test_group_included native || return 0
 	local compiler compilers_to_try=(gcc)
 	local cflags cflags_to_try=("")
 	shopt -s nullglob
@@ -183,7 +138,6 @@ native_tests() {
 
 # Test the library built with FREESTANDING=1.
 freestanding_tests() {
-	test_group_included freestanding || return 0
 
 	WRAPPER= native_build_and_test FREESTANDING=1
 	if nm libdeflate.so | grep -q ' U '; then
@@ -210,7 +164,6 @@ freestanding_tests() {
 ###############################################################################
 
 gzip_tests() {
-	test_group_included gzip || return 0
 
 	local gzip gunzip
 	run_cmd make -j$NPROC gzip gunzip
@@ -240,8 +193,6 @@ gzip_tests() {
 ###############################################################################
 
 log "Starting libdeflate tests"
-log "	TESTGROUPS=(${TESTGROUPS[@]})"
-log "	TESTDATA=$TESTDATA"
 
 native_tests
 freestanding_tests
