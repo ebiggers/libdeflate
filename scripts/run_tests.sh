@@ -268,6 +268,16 @@ run_tests() {
 		log "Skipping ASAN tests because compiler ($CC_VERSION) doesn't support ASAN"
 	fi
 
+	cflags=("-fsanitize=cfi" "-fno-sanitize-recover=cfi" "-flto"
+		"-fvisibility=hidden")
+	if cflags_supported "${cflags[@]}"; then
+		begin "Running tests with CFI"
+		CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests --quick
+		end
+	else
+		log "Skipping CFI tests because compiler ($CC_VERSION) doesn't support CFI"
+	fi
+
 	install_uninstall_tests
 	check_symbol_prefixes
 }
