@@ -22,7 +22,8 @@ matrix:
         - sudo apt-get install -y libz-dev gcc-multilib libz-dev:i386
           libc6-dev-i386 clang
       script:
-        - scripts/run_tests.sh checksum_benchmarks static_analysis
+        - scripts/run_tests.sh checksum_benchmarks
+        - make scan-build
 
     - name: Native tests (Linux aarch64)
       os: linux
@@ -40,7 +41,8 @@ matrix:
       before_install:
         - sudo apt-get install -y libz-dev clang
       script:
-        - scripts/run_tests.sh checksum_benchmarks static_analysis
+        - scripts/run_tests.sh checksum_benchmarks
+        - make scan-build
 
     - name: gzip and cross-compile-for-Windows tests (Linux)
       os: linux

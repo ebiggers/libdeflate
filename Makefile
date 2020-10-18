@@ -324,6 +324,10 @@ check:test_programs
 		./$$prog || exit 1;	\
 	done
 
+# Run the clang static analyzer.
+scan-build:
+	scan-build --status-bugs make all test_programs
+
 help:
 	@echo "Available targets:"
 	@echo "------------------"
@@ -346,6 +350,7 @@ realclean: clean
 
 FORCE:
 
-.PHONY: all install uninstall test_programs help clean realclean
+.PHONY: all install uninstall test_programs check scan-build help \
+	clean realclean
 
 .DEFAULT_GOAL = all
