@@ -15,14 +15,12 @@ matrix:
       script:
         - scripts/run_tests.sh native freestanding
 
-    - name: Checksum and static analysis tests (Linux)
+    - name: clang static analyzer
       os: linux
       dist: bionic
       before_install:
-        - sudo apt-get install -y libz-dev gcc-multilib libz-dev:i386
-          libc6-dev-i386 clang
+        - sudo apt-get install -y clang
       script:
-        - scripts/run_tests.sh checksum_benchmarks
         - make scan-build
 
     - name: Native tests (Linux aarch64)
@@ -33,16 +31,6 @@ matrix:
         - sudo apt-get install -y libz-dev valgrind clang
       script:
         - scripts/run_tests.sh native freestanding
-
-    - name: Checksum and static analysis tests (Linux aarch64)
-      os: linux
-      dist: bionic
-      arch: arm64
-      before_install:
-        - sudo apt-get install -y libz-dev clang
-      script:
-        - scripts/run_tests.sh checksum_benchmarks
-        - make scan-build
 
     - name: gzip and cross-compile-for-Windows tests (Linux)
       os: linux
