@@ -209,25 +209,6 @@ freestanding_tests() {
 
 ###############################################################################
 
-windows_tests() {
-	local arch
-
-	test_group_included windows || return 0
-
-	# Windows: currently compiled but not run
-	for arch in i686 x86_64; do
-		local compiler=${arch}-w64-mingw32-gcc
-		if ! type -P $compiler > /dev/null; then
-			log_skip "$compiler not found"
-			continue
-		fi
-		run_cmd make CC=$compiler CFLAGS=-Werror -j$NPROC \
-			all test_programs
-	done
-}
-
-###############################################################################
-
 gzip_tests() {
 	test_group_included gzip || return 0
 
@@ -264,7 +245,6 @@ log "	TESTDATA=$TESTDATA"
 
 native_tests
 freestanding_tests
-windows_tests
 gzip_tests
 
 if (( TESTS_SKIPPED )); then

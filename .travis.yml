@@ -39,7 +39,9 @@ matrix:
         - sudo apt-get install -y libz-dev valgrind
           gcc-mingw-w64-x86-64 libz-mingw-w64-dev
       script:
-        - scripts/run_tests.sh gzip windows
+        - scripts/run_tests.sh gzip
+        - make CC=i686-w64-mingw32-gcc CFLAGS=-Werror all test_programs
+        - make CC=x86_64-w64-mingw32-gcc CFLAGS=-Werror all test_programs
 
     - name: Basic tests (old Linux distro, gcc)
       os: linux
