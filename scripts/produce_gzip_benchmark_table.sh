@@ -1,11 +1,11 @@
 #!/bin/bash
 
-set -e
+set -eu -o pipefail
+topdir="$(dirname "$0")/.."
 
 do_benchmark() {
-	usize=$(stat -c %s "$file")
-	"$HOME/proj/libdeflate/benchmark" -g -s $usize "$@" "$file" \
-			| grep Compressed | cut -f 4 -d ' '
+	"$topdir/benchmark" -g -s "$(stat -c %s "$file")" "$@" "$file" \
+		| grep Compressed | cut -f 4 -d ' '
 }
 
 echo "File | zlib -6 | zlib -9 | libdeflate -6 | libdeflate -9 | libdeflate -12"
@@ -14,11 +14,11 @@ echo "-----|---------|---------|---------------|---------------|---------------"
 for file in "$@"; do
 	echo -n "$(basename "$file")"
 	results=()
-	results+=($(do_benchmark -Y -6))
-	results+=($(do_benchmark -Y -9))
-	results+=($(do_benchmark -6))
-	results+=($(do_benchmark -9))
-	results+=($(do_benchmark -12))
+	results+=("$(do_benchmark -Y -6)")
+	results+=("$(do_benchmark -Y -9)")
+	results+=("$(do_benchmark -6)")
+	results+=("$(do_benchmark -9)")
+	results+=("$(do_benchmark -12)")
 	best=2000000000
 	for result in "${results[@]}"; do
 		if (( result < best)); then
