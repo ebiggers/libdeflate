@@ -24,12 +24,6 @@ SANITIZE_CFLAGS="-fsanitize=undefined -fno-sanitize-recover=undefined,integer"
 
 ###############################################################################
 
-TESTS_SKIPPED=0
-log_skip() {
-	log "[WARNING, TEST SKIPPED]: $@"
-	TESTS_SKIPPED=1
-}
-
 log() {
 	echo "[$(date)] $@"
 }
@@ -37,20 +31,6 @@ log() {
 run_cmd() {
 	log "$@"
 	"$@" > /dev/null
-}
-
-have_valgrind() {
-	if ! type -P valgrind > /dev/null; then
-		log_skip "valgrind not found; can't run tests with valgrind"
-		return 1
-	fi
-}
-
-have_ubsan() {
-	if ! type -P clang > /dev/null; then
-		log_skip "clang not found; can't run tests with UBSAN"
-		return 1
-	fi
 }
 
 ###############################################################################
@@ -125,15 +105,11 @@ native_tests() {
 		done
 	done
 
-	if have_valgrind; then
-		log "Running tests with Valgrind"
-		WRAPPER="$VALGRIND" native_build_and_test
-	fi
+	log "Running tests with Valgrind"
+	WRAPPER="$VALGRIND" native_build_and_test
 
-	if have_ubsan; then
-		log "Running tests with undefined behavior sanitizer"
-		WRAPPER= native_build_and_test CC=clang CFLAGS="$SANITIZE_CFLAGS"
-	fi
+	log "Running tests with undefined behavior sanitizer"
+	WRAPPER= native_build_and_test CC=clang CFLAGS="$SANITIZE_CFLAGS"
 }
 
 # Test the library built with FREESTANDING=1.
@@ -151,14 +127,10 @@ freestanding_tests() {
 		return 1
 	fi
 
-	if have_valgrind; then
-		WRAPPER="$VALGRIND" native_build_and_test FREESTANDING=1
-	fi
+	WRAPPER="$VALGRIND" native_build_and_test FREESTANDING=1
 
-	if have_ubsan; then
-		WRAPPER= native_build_and_test FREESTANDING=1 \
-			CC=clang CFLAGS="$SANITIZE_CFLAGS"
-	fi
+	WRAPPER= native_build_and_test FREESTANDING=1 \
+		CC=clang CFLAGS="$SANITIZE_CFLAGS"
 }
 
 ###############################################################################
@@ -176,30 +148,20 @@ gzip_tests() {
 		done
 	done
 
-	if have_valgrind; then
-		log "Running gzip program tests with Valgrind"
-		GZIP="$VALGRIND $PWD/gzip" GUNZIP="$VALGRIND $PWD/gunzip" \
-			TESTDATA="$TESTDATA" ./scripts/gzip_tests.sh
-	fi
+	log "Running gzip program tests with Valgrind"
+	GZIP="$VALGRIND $PWD/gzip" GUNZIP="$VALGRIND $PWD/gunzip" \
+		TESTDATA="$TESTDATA" ./scripts/gzip_tests.sh
 
-	if have_ubsan; then
-		log "Running gzip program tests with undefined behavior sanitizer"
-		run_cmd make -j$NPROC CC=clang CFLAGS="$SANITIZE_CFLAGS" gzip gunzip
-		GZIP="$PWD/gzip" GUNZIP="$PWD/gunzip" \
-			TESTDATA="$TESTDATA" ./scripts/gzip_tests.sh
-	fi
+	log "Running gzip program tests with undefined behavior sanitizer"
+	run_cmd make -j$NPROC CC=clang CFLAGS="$SANITIZE_CFLAGS" gzip gunzip
+	GZIP="$PWD/gzip" GUNZIP="$PWD/gunzip" \
+		TESTDATA="$TESTDATA" ./scripts/gzip_tests.sh
 }
 
 ###############################################################################
 
 log "Starting libdeflate tests"
-
 native_tests
 freestanding_tests
 gzip_tests
-
-if (( TESTS_SKIPPED )); then
-	log "No tests failed, but some tests were skipped.  See above."
-else
-	log "All tests passed!"
-fi
+log "All tests passed!"
