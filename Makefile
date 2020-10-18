@@ -317,7 +317,7 @@ uninstall:
 test_programs:$(TEST_PROGRAMS)
 
 # A minimal 'make check' target.  This only runs some quick tests;
-# use tools/run_tests.sh if you want to run the full tests.
+# use scripts/run_tests.sh if you want to run the full tests.
 check:test_programs
 	./benchmark$(PROG_SUFFIX) < ./benchmark$(PROG_SUFFIX)
 	for prog in test_*; do		\

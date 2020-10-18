@@ -2,7 +2,7 @@
 #
 # Test script for libdeflate
 #
-#	Usage: ./tools/run_tests.sh [TESTGROUP]... [-TESTGROUP]...
+#	Usage: ./scripts/run_tests.sh [TESTGROUP]... [-TESTGROUP]...
 #
 # By default all tests are run, but it is possible to explicitly include or
 # exclude specific test groups.
@@ -56,7 +56,7 @@ fi
 
 NDKDIR="${NDKDIR:=$HOME/android-ndk-r21d}"
 
-FILES=("$SMOKEDATA" ./tools/exec_tests.sh benchmark 'test_*')
+FILES=("$SMOKEDATA" ./scripts/exec_tests.sh benchmark 'test_*')
 EXEC_TESTS_CMD="WRAPPER= SMOKEDATA=\"$(basename $SMOKEDATA)\" sh exec_tests.sh"
 NPROC=$(grep -c processor /proc/cpuinfo)
 VALGRIND="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all"
@@ -165,7 +165,7 @@ native_build_and_test() {
 		fi
 		WRAPPER="$WRAPPER" SMOKEDATA="$SMOKEDATA" \
 			LIBDEFLATE_DISABLE_CPU_FEATURES="$disable_str" \
-			sh ./tools/exec_tests.sh > /dev/null
+			sh ./scripts/exec_tests.sh > /dev/null
 	done
 }
 
@@ -239,13 +239,13 @@ freestanding_tests() {
 
 checksum_benchmarks() {
 	test_group_included checksum_benchmarks || return 0
-	./tools/checksum_benchmarks.sh
+	./scripts/checksum_benchmarks.sh
 }
 
 ###############################################################################
 
 android_build_and_test() {
-	run_cmd ./tools/android_build.sh --ndkdir="$NDKDIR" "$@" \
+	run_cmd ./scripts/android_build.sh --ndkdir="$NDKDIR" "$@" \
 		all test_programs
 	run_cmd adb push ${FILES[@]} /data/local/tmp/
 
@@ -301,7 +301,7 @@ mips_tests() {
 		log_skip "Can't run MIPS tests: dd-wrt system not available"
 		return 0
 	fi
-	run_cmd ./tools/mips_build.sh
+	run_cmd ./scripts/mips_build.sh
 	run_cmd scp ${FILES[@]} root@dd-wrt:
 	run_cmd ssh root@dd-wrt "$EXEC_TESTS_CMD"
 
@@ -364,21 +364,21 @@ gzip_tests() {
 			log "Running gzip program tests with GZIP=$gzip," \
 				"GUNZIP=$gunzip"
 			GZIP="$gzip" GUNZIP="$gunzip" SMOKEDATA="$SMOKEDATA" \
-				./tools/gzip_tests.sh
+				./scripts/gzip_tests.sh
 		done
 	done
 
 	if have_valgrind; then
 		log "Running gzip program tests with Valgrind"
 		GZIP="$VALGRIND $PWD/gzip" GUNZIP="$VALGRIND $PWD/gunzip" \
-			SMOKEDATA="$SMOKEDATA" ./tools/gzip_tests.sh
+			SMOKEDATA="$SMOKEDATA" ./scripts/gzip_tests.sh
 	fi
 
 	if have_ubsan; then
 		log "Running gzip program tests with undefined behavior sanitizer"
 		run_cmd make -j$NPROC CC=clang CFLAGS="$SANITIZE_CFLAGS" gzip gunzip
 		GZIP="$PWD/gzip" GUNZIP="$PWD/gunzip" \
-			SMOKEDATA="$SMOKEDATA" ./tools/gzip_tests.sh
+			SMOKEDATA="$SMOKEDATA" ./scripts/gzip_tests.sh
 	fi
 }
 
