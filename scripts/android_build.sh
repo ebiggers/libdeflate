@@ -103,6 +103,6 @@ arm64|aarch64)
 	exit 1
 esac
 
-cmd=(make "-j$(grep -c processor /proc/cpuinfo)" CC="$CC" CFLAGS="$CFLAGS" "$@")
+cmd=(make "-j$(grep -c processor /proc/cpuinfo)" "CC=$CC" "CFLAGS=$CFLAGS" "$@")
 echo "${cmd[*]}"
 "${cmd[@]}"
