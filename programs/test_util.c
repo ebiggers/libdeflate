@@ -62,11 +62,9 @@ assertion_failed(const char *expr, const char *file, int line)
 void
 begin_performance_test(void)
 {
-	if (getenv("INCLUDE_PERF_TESTS") == NULL) {
-		printf("Skipping '%"TS"' since it's a performance test, which may be flaky.\n",
-		       program_invocation_name);
+	/* Skip performance tests by default, since they can be flaky. */
+	if (getenv("INCLUDE_PERF_TESTS") == NULL)
 		exit(0);
-	}
 }
 
 static size_t
