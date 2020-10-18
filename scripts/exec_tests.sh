@@ -1,6 +1,7 @@
 #!/bin/sh
 #
-# Helper script used by run_tests.sh, not intended to be run directly
+# Helper script used by run_tests.sh and android_tests.sh,
+# not intended to be run directly
 #
 
 set -eu
