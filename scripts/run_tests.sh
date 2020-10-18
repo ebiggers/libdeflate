@@ -33,31 +33,14 @@ if [ $# -gt 0 ]; then
 	set_test_groups "$@"
 fi
 
-
-TMPFILE="$(mktemp)"
-USING_TMP_TESTDATA=false
-
-cleanup() {
-	rm "$TMPFILE"
-	if $USING_TMP_TESTDATA; then
-		rm "$TESTDATA"
-	fi
-}
-
-trap cleanup EXIT
-
 if [ -z "${TESTDATA:-}" ]; then
 	# Generate default TESTDATA file.
 	TESTDATA=$(mktemp -t libdeflate_testdata.XXXXXXXXXX)
-	USING_TMP_TESTDATA=true
+	trap 'rm -f "$TESTDATA"' EXIT
 	cat $(find . -name '*.c' -o -name '*.h' -o -name '*.sh') \
 		| head -c 1000000 > "$TESTDATA"
 fi
 
-NDKDIR="${NDKDIR:=$HOME/android-ndk-r21d}"
-
-FILES=("$TESTDATA" ./scripts/exec_tests.sh benchmark 'test_*')
-EXEC_TESTS_CMD="WRAPPER= TESTDATA=\"$(basename $TESTDATA)\" sh exec_tests.sh"
 NPROC=$(grep -c processor /proc/cpuinfo)
 VALGRIND="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all"
 SANITIZE_CFLAGS="-fsanitize=undefined -fno-sanitize-recover=undefined,integer"
@@ -237,53 +220,6 @@ checksum_benchmarks() {
 
 ###############################################################################
 
-android_build_and_test() {
-	run_cmd ./scripts/android_build.sh --ndkdir="$NDKDIR" "$@" \
-		all test_programs
-	run_cmd adb push ${FILES[@]} /data/local/tmp/
-
-	# Note: adb shell always returns 0, even if the shell command fails...
-	log "adb shell \"cd /data/local/tmp && $EXEC_TESTS_CMD\""
-	adb shell "cd /data/local/tmp && $EXEC_TESTS_CMD" > "$TMPFILE"
-	if ! grep -q "exec_tests finished successfully" "$TMPFILE"; then
-		log "Android test failure!  adb shell output:"
-		cat "$TMPFILE"
-		return 1
-	fi
-}
-
-android_tests() {
-	local compiler
-
-	test_group_included android || return 0
-	if [ ! -e $NDKDIR ]; then
-		log_skip "Android NDK was not found in NDKDIR=$NDKDIR!" \
-		         "If you want to run the Android tests, set the" \
-			 "environmental variable NDKDIR to the location of" \
-			 "your Android NDK installation"
-		return 0
-	fi
-
-	if ! type -P adb > /dev/null; then
-		log_skip "adb (android-tools) is not installed"
-		return 0
-	fi
-
-	if ! adb devices | grep -q 'device$'; then
-		log_skip "No Android device is currently attached"
-		return 0
-	fi
-
-	for arch in arm32 arm64; do
-		for flags in "" "--enable-crc" "--enable-crypto" \
-			     "--enable-crc --enable-crypto"; do
-			android_build_and_test --arch=$arch $flags
-		done
-	done
-}
-
-###############################################################################
-
 windows_tests() {
 	local arch
 
@@ -347,12 +283,10 @@ gzip_tests() {
 log "Starting libdeflate tests"
 log "	TESTGROUPS=(${TESTGROUPS[@]})"
 log "	TESTDATA=$TESTDATA"
-log "	NDKDIR=$NDKDIR"
 
 native_tests
 freestanding_tests
 checksum_benchmarks
-android_tests
 windows_tests
 static_analysis_tests
 gzip_tests
