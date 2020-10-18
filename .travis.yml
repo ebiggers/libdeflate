@@ -70,6 +70,10 @@ jobs:
       before_install: sudo apt-get install -y clang
       script: make scan-build
 
+    - name: shellcheck
+      before_install: sudo apt-get install -y shellcheck
+      script: make shellcheck
+
     - name: Cross compile for Windows
       before_install:
         - sudo apt-get install -y gcc-mingw-w64-x86-64 libz-mingw-w64-dev
