@@ -188,7 +188,6 @@ for level in $(seq 1 $max_level); do
 	cmp file <(gunzip -c "file$level")
 done
 rm file command_output
-cmp <(ls -S) <(ls -v) # file,file{1..max_level} have decreasing size
 
 
 begin_test 'Overwriting output file requires -f'
