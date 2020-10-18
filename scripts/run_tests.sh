@@ -209,13 +209,6 @@ freestanding_tests() {
 
 ###############################################################################
 
-checksum_benchmarks() {
-	test_group_included checksum_benchmarks || return 0
-	./scripts/checksum_benchmarks.sh
-}
-
-###############################################################################
-
 windows_tests() {
 	local arch
 
@@ -271,7 +264,6 @@ log "	TESTDATA=$TESTDATA"
 
 native_tests
 freestanding_tests
-checksum_benchmarks
 windows_tests
 gzip_tests
 
