@@ -1,3 +1,4 @@
+#!/bin/sh
 #
 # Helper script used by run_tests.sh, not intended to be run directly
 #
@@ -5,12 +6,12 @@
 set -eu
 
 run_cmd() {
-	echo "$WRAPPER $@"
+	echo "$WRAPPER $*"
 	$WRAPPER "$@" > /dev/null
 }
 
 for prog in ./test_*; do
-	run_cmd $prog
+	run_cmd "$prog"
 done
 
 for format in '' '-g' '-z'; do
