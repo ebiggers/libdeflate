@@ -1,24 +1,25 @@
 #!/bin/sh
 
-if [ -z "$CC" ]; then
-	CC=cc
-fi
+set -eu
+
+# Use CC if specified in environment, else default to "cc".
+: "${CC:=cc}"
+
+# Use CFLAGS if specified in environment.
+: "${CFLAGS:=}"
 
 echo "/* THIS FILE WAS AUTOMATICALLY GENERATED.  DO NOT EDIT. */"
 echo "#ifndef CONFIG_H"
 echo "#define CONFIG_H"
 
-tmpfile="$(mktemp -t libdeflate_config.XXXXXXXX)"
-trap "rm -f \"$tmpfile\"" EXIT
-
 program_compiles() {
-	echo "$1" > "$tmpfile"
-	$CC $CFLAGS -Wno-error -x c "$tmpfile" -o /dev/null > /dev/null 2>&1
+	echo "$1" | $CC $CFLAGS -Wno-error -x c - -o /dev/null > /dev/null 2>&1
 }
 
 check_function() {
-	funcname="$1"
-	macro="HAVE_$(echo $funcname | tr a-z A-Z)"
+	funcname=$1
+	macro="HAVE_$(echo "$funcname" | tr '[:lower:]' '[:upper:]')"
+
 	echo
 	echo "/* Is the $funcname() function available? */"
 	if program_compiles "int main() { $funcname(); }"; then
