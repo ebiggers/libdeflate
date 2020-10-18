@@ -190,8 +190,6 @@ tmain(int argc, tchar *argv[])
 		buffer[rand() % 32768] = 0xFE;
 	}
 
-	printf("Adler-32 and CRC-32 checksum tests passed!\n");
-
 	free(buffer);
 	free_guarded_buffer(guarded_buf_start, guarded_buf_end);
 	return 0;
