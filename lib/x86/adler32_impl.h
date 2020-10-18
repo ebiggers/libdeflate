@@ -40,12 +40,12 @@
 
 #define ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2)		    \
 {									    \
-	__v4si s1_last = (v_s1), s2_last = (v_s2);			    \
+	__v4su s1_last = (v_s1), s2_last = (v_s2);			    \
 									    \
 	/* 128 => 32 bits */						    \
-	s2_last += (__v4si)_mm_shuffle_epi32((__m128i)s2_last, 0x31);	    \
-	s1_last += (__v4si)_mm_shuffle_epi32((__m128i)s1_last, 0x02);	    \
-	s2_last += (__v4si)_mm_shuffle_epi32((__m128i)s2_last, 0x02);	    \
+	s2_last += (__v4su)_mm_shuffle_epi32((__m128i)s2_last, 0x31);	    \
+	s1_last += (__v4su)_mm_shuffle_epi32((__m128i)s1_last, 0x02);	    \
+	s2_last += (__v4su)_mm_shuffle_epi32((__m128i)s2_last, 0x02);	    \
 									    \
 	*(s1) += (u32)_mm_cvtsi128_si32((__m128i)s1_last);		    \
 	*(s2) += (u32)_mm_cvtsi128_si32((__m128i)s2_last);		    \
@@ -53,26 +53,26 @@
 
 #define ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2)		    \
 {									    \
-	__v4si s1_128bit, s2_128bit;					    \
+	__v4su s1_128bit, s2_128bit;					    \
 									    \
 	/* 256 => 128 bits */						    \
-	s1_128bit = (__v4si)_mm256_extracti128_si256((__m256i)(v_s1), 0) +  \
-		    (__v4si)_mm256_extracti128_si256((__m256i)(v_s1), 1);   \
-	s2_128bit = (__v4si)_mm256_extracti128_si256((__m256i)(v_s2), 0) +  \
-		    (__v4si)_mm256_extracti128_si256((__m256i)(v_s2), 1);   \
+	s1_128bit = (__v4su)_mm256_extracti128_si256((__m256i)(v_s1), 0) +  \
+		    (__v4su)_mm256_extracti128_si256((__m256i)(v_s1), 1);   \
+	s2_128bit = (__v4su)_mm256_extracti128_si256((__m256i)(v_s2), 0) +  \
+		    (__v4su)_mm256_extracti128_si256((__m256i)(v_s2), 1);   \
 									    \
 	ADLER32_FINISH_VEC_CHUNK_128((s1), (s2), s1_128bit, s2_128bit);	    \
 }
 
 #define ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1, v_s2)		    \
 {									    \
-	__v8si s1_256bit, s2_256bit;					    \
+	__v8su s1_256bit, s2_256bit;					    \
 									    \
 	/* 512 => 256 bits */						    \
-	s1_256bit = (__v8si)_mm512_extracti64x4_epi64((__m512i)(v_s1), 0) + \
-		    (__v8si)_mm512_extracti64x4_epi64((__m512i)(v_s1), 1);  \
-	s2_256bit = (__v8si)_mm512_extracti64x4_epi64((__m512i)(v_s2), 0) + \
-		    (__v8si)_mm512_extracti64x4_epi64((__m512i)(v_s2), 1);  \
+	s1_256bit = (__v8su)_mm512_extracti64x4_epi64((__m512i)(v_s1), 0) + \
+		    (__v8su)_mm512_extracti64x4_epi64((__m512i)(v_s1), 1);  \
+	s2_256bit = (__v8su)_mm512_extracti64x4_epi64((__m512i)(v_s2), 0) + \
+		    (__v8su)_mm512_extracti64x4_epi64((__m512i)(v_s2), 1);  \
 									    \
 	ADLER32_FINISH_VEC_CHUNK_256((s1), (s2), s1_256bit, s2_256bit);	    \
 }
@@ -175,14 +175,14 @@ static forceinline ATTRIBUTES void
 adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 {
 	const __m256i zeroes = _mm256_setzero_si256();
-	const __v32qi multipliers = (__v32qi){
+	const __v32qu multipliers = (__v32qu){
 		32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
 		16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,
 	};
-	const __v16hi ones = (__v16hi)_mm256_set1_epi16(1);
-	__v8si v_s1 = (__v8si)zeroes;
-	__v8si v_s1_sums = (__v8si)zeroes;
-	__v8si v_s2 = (__v8si)zeroes;
+	const __v16hu ones = (__v16hu)_mm256_set1_epi16(1);
+	__v8su v_s1 = (__v8su)zeroes;
+	__v8su v_s1_sums = (__v8su)zeroes;
+	__v8su v_s2 = (__v8su)zeroes;
 
 	do {
 		/* Load the next 32-byte segment */
@@ -190,7 +190,7 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 
 		/* Multiply the bytes by 32...1 (the number of times they need
 		 * to be added to s2) and add adjacent products */
-		__v16hi sums = (__v16hi)_mm256_maddubs_epi16(
+		__v16hu sums = (__v16hu)_mm256_maddubs_epi16(
 						bytes, (__m256i)multipliers);
 
 		/* Keep sum of all previous s1 counters, for adding to s2 later.
@@ -199,16 +199,16 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 
 		/* Add the sum of each group of 8 bytes to the corresponding s1
 		 * counter */
-		v_s1 += (__v8si)_mm256_sad_epu8(bytes, zeroes);
+		v_s1 += (__v8su)_mm256_sad_epu8(bytes, zeroes);
 
 		/* Add the sum of each group of 4 products of the bytes by
 		 * 32...1 to the corresponding s2 counter */
-		v_s2 += (__v8si)_mm256_madd_epi16((__m256i)sums, (__m256i)ones);
+		v_s2 += (__v8su)_mm256_madd_epi16((__m256i)sums, (__m256i)ones);
 	} while (p != end);
 
 	/* Finish the s2 counters by adding the sum of the s1 values at the
 	 * beginning of each segment, multiplied by the segment size (32) */
-	v_s2 += (__v8si)_mm256_slli_epi32((__m256i)v_s1_sums, 5);
+	v_s2 += (__v8su)_mm256_slli_epi32((__m256i)v_s1_sums, 5);
 
 	/* Add the counters to the real s1 and s2 */
 	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2);
@@ -246,20 +246,20 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 	const __m128i zeroes = _mm_setzero_si128();
 
 	/* s1 counters: 32-bit, sum of bytes */
-	__v4si v_s1 = (__v4si)zeroes;
+	__v4su v_s1 = (__v4su)zeroes;
 
 	/* s2 counters: 32-bit, sum of s1 values */
-	__v4si v_s2 = (__v4si)zeroes;
+	__v4su v_s2 = (__v4su)zeroes;
 
 	/*
 	 * Thirty-two 16-bit counters for byte sums.  Each accumulates the bytes
 	 * that eventually need to be multiplied by a number 32...1 for addition
 	 * into s2.
 	 */
-	__v8hi v_byte_sums_a = (__v8hi)zeroes;
-	__v8hi v_byte_sums_b = (__v8hi)zeroes;
-	__v8hi v_byte_sums_c = (__v8hi)zeroes;
-	__v8hi v_byte_sums_d = (__v8hi)zeroes;
+	__v8hu v_byte_sums_a = (__v8hu)zeroes;
+	__v8hu v_byte_sums_b = (__v8hu)zeroes;
+	__v8hu v_byte_sums_c = (__v8hu)zeroes;
+	__v8hu v_byte_sums_d = (__v8hu)zeroes;
 
 	do {
 		/* Load the next 32 bytes */
@@ -278,30 +278,30 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 		 * the bytes horizontally with 8 bytes per sum.  Then add the
 		 * sums to the s1 counters.
 		 */
-		v_s1 += (__v4si)_mm_sad_epu8(bytes1, zeroes);
-		v_s1 += (__v4si)_mm_sad_epu8(bytes2, zeroes);
+		v_s1 += (__v4su)_mm_sad_epu8(bytes1, zeroes);
+		v_s1 += (__v4su)_mm_sad_epu8(bytes2, zeroes);
 
 		/*
 		 * Also accumulate the bytes into 32 separate counters that have
 		 * 16-bit precision.
 		 */
-		v_byte_sums_a += (__v8hi)_mm_unpacklo_epi8(bytes1, zeroes);
-		v_byte_sums_b += (__v8hi)_mm_unpackhi_epi8(bytes1, zeroes);
-		v_byte_sums_c += (__v8hi)_mm_unpacklo_epi8(bytes2, zeroes);
-		v_byte_sums_d += (__v8hi)_mm_unpackhi_epi8(bytes2, zeroes);
+		v_byte_sums_a += (__v8hu)_mm_unpacklo_epi8(bytes1, zeroes);
+		v_byte_sums_b += (__v8hu)_mm_unpackhi_epi8(bytes1, zeroes);
+		v_byte_sums_c += (__v8hu)_mm_unpacklo_epi8(bytes2, zeroes);
+		v_byte_sums_d += (__v8hu)_mm_unpackhi_epi8(bytes2, zeroes);
 
 	} while (p != end);
 
 	/* Finish calculating the s2 counters */
-	v_s2 = (__v4si)_mm_slli_epi32((__m128i)v_s2, 5);
-	v_s2 += (__v4si)_mm_madd_epi16((__m128i)v_byte_sums_a,
-				       (__m128i)(__v8hi){ 32, 31, 30, 29, 28, 27, 26, 25 });
-	v_s2 += (__v4si)_mm_madd_epi16((__m128i)v_byte_sums_b,
-				       (__m128i)(__v8hi){ 24, 23, 22, 21, 20, 19, 18, 17 });
-	v_s2 += (__v4si)_mm_madd_epi16((__m128i)v_byte_sums_c,
-				       (__m128i)(__v8hi){ 16, 15, 14, 13, 12, 11, 10, 9 });
-	v_s2 += (__v4si)_mm_madd_epi16((__m128i)v_byte_sums_d,
-				       (__m128i)(__v8hi){ 8,  7,  6,  5,  4,  3,  2,  1 });
+	v_s2 = (__v4su)_mm_slli_epi32((__m128i)v_s2, 5);
+	v_s2 += (__v4su)_mm_madd_epi16((__m128i)v_byte_sums_a,
+				       (__m128i)(__v8hu){ 32, 31, 30, 29, 28, 27, 26, 25 });
+	v_s2 += (__v4su)_mm_madd_epi16((__m128i)v_byte_sums_b,
+				       (__m128i)(__v8hu){ 24, 23, 22, 21, 20, 19, 18, 17 });
+	v_s2 += (__v4su)_mm_madd_epi16((__m128i)v_byte_sums_c,
+				       (__m128i)(__v8hu){ 16, 15, 14, 13, 12, 11, 10, 9 });
+	v_s2 += (__v4su)_mm_madd_epi16((__m128i)v_byte_sums_d,
+				       (__m128i)(__v8hu){ 8,  7,  6,  5,  4,  3,  2,  1 });
 
 	/* Add the counters to the real s1 and s2 */
 	ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2);

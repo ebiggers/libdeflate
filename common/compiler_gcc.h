@@ -139,6 +139,25 @@
 
 #endif /* COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE */
 
+/*
+ * Prior to gcc 5.1 and clang 3.9, emmintrin.h only defined vectors of signed
+ * integers (e.g. __v4si), not vectors of unsigned integers (e.g.  __v4su).  But
+ * we need the unsigned ones in order to avoid signed integer overflow, which is
+ * undefined behavior.  Add the missing definitions for the unsigned ones if
+ * needed.
+ */
+#if (GCC_PREREQ(4, 0) && !GCC_PREREQ(5, 1)) || \
+    (defined(__clang__) && !CLANG_PREREQ(3, 9, 8020000))
+typedef unsigned long long  __v2du __attribute__((__vector_size__(16)));
+typedef unsigned int        __v4su __attribute__((__vector_size__(16)));
+typedef unsigned short      __v8hu __attribute__((__vector_size__(16)));
+typedef unsigned char      __v16qu __attribute__((__vector_size__(16)));
+typedef unsigned long long  __v4du __attribute__((__vector_size__(32)));
+typedef unsigned int        __v8su __attribute__((__vector_size__(32)));
+typedef unsigned short     __v16hu __attribute__((__vector_size__(32)));
+typedef unsigned char      __v32qu __attribute__((__vector_size__(32)));
+#endif
+
 /* Newer gcc supports __BYTE_ORDER__.  Older gcc doesn't. */
 #ifdef __BYTE_ORDER__
 #  define CPU_IS_LITTLE_ENDIAN() (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
