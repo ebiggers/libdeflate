@@ -346,7 +346,7 @@ clean:
 		.lib-cflags .prog-cflags
 
 realclean: clean
-	rm -f tags cscope* run_tests.log
+	rm -f tags cscope*
 
 FORCE:
 

@@ -17,7 +17,6 @@
 /checksum
 /gzip
 /gunzip
-/run_tests.log
 /test_*
 tags
 cscope*
