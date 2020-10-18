@@ -143,8 +143,6 @@ tmain(int argc, tchar *argv[])
 		ASSERT(memcmp(decompressed, original, original_nbytes) == 0);
 	}
 
-	printf("Trailing bytes decompression tests passed!\n");
-
 	free(original);
 	free(compressed);
 	free(decompressed);
