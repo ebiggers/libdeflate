@@ -18,7 +18,8 @@ if [ -z "${TESTDATA:-}" ]; then
 		| head -c 1000000 > "$TESTDATA"
 fi
 
-NPROC=$(grep -c processor /proc/cpuinfo)
+MAKE="make -j$(getconf _NPROCESSORS_ONLN)"
+
 VALGRIND="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all"
 SANITIZE_CFLAGS="-fsanitize=undefined -fno-sanitize-recover=undefined,integer"
 
@@ -39,8 +40,7 @@ native_build_and_test() {
 
 	# Build libdeflate, including the test programs.  Set the special test
 	# support flag to get support for LIBDEFLATE_DISABLE_CPU_FEATURES.
-	make "$@" TEST_SUPPORT__DO_NOT_USE=1 \
-		-j$NPROC all test_programs > /dev/null
+	$MAKE "$@" TEST_SUPPORT__DO_NOT_USE=1 all test_programs > /dev/null
 
 	# When not using -march=native, run the tests multiple times with
 	# different combinations of CPU features disabled.  This is needed to
@@ -138,7 +138,7 @@ freestanding_tests() {
 gzip_tests() {
 
 	local gzip gunzip
-	run_cmd make -j$NPROC gzip gunzip
+	run_cmd $MAKE gzip gunzip
 	for gzip in "$PWD/gzip" /bin/gzip; do
 		for gunzip in "$PWD/gunzip" /bin/gunzip; do
 			log "Running gzip program tests with GZIP=$gzip," \
@@ -153,7 +153,7 @@ gzip_tests() {
 		TESTDATA="$TESTDATA" ./scripts/gzip_tests.sh
 
 	log "Running gzip program tests with undefined behavior sanitizer"
-	run_cmd make -j$NPROC CC=clang CFLAGS="$SANITIZE_CFLAGS" gzip gunzip
+	run_cmd $MAKE CC=clang CFLAGS="$SANITIZE_CFLAGS" gzip gunzip
 	GZIP="$PWD/gzip" GUNZIP="$PWD/gunzip" \
 		TESTDATA="$TESTDATA" ./scripts/gzip_tests.sh
 }
