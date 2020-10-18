@@ -26,6 +26,9 @@ if [ -z "${TESTDATA:-}" ]; then
 		-exec cat '{}' ';' | head -c 1000000 > "$TESTDATA"
 fi
 
+TMPDIR=$(mktemp -d -t libdeflate_test.XXXXXXXXX)
+trap 'rm -r "$TMPDIR"' EXIT
+
 MAKE="make -j$(getconf _NPROCESSORS_ONLN)"
 
 CC_VERSION=$($CC --version | head -1)
@@ -54,6 +57,17 @@ end() {
 run_cmd() {
 	log "$@"
 	"$@" > /dev/null
+}
+
+fail() {
+	echo 1>&2 "$@"
+	exit 1
+}
+
+file_count() {
+	local dir=$1
+
+	find "$dir" -type f -o -type l | wc -l
 }
 
 cflags_supported() {
@@ -168,6 +182,26 @@ do_run_tests() {
 	gzip_tests "$@"
 }
 
+install_uninstall_tests() {
+	local shell
+
+	begin "Testing 'make install' and 'make uninstall'"
+	for shell in '/bin/bash' '/bin/dash'; do
+		log "Trying SHELL=$shell"
+		$MAKE SHELL=$shell clean > /dev/null
+		$MAKE SHELL=$shell DESTDIR="$TMPDIR/inst" install > /dev/null
+		if (( "$(file_count "$TMPDIR/inst")" == 0 )); then
+			fail "'make install' didn't install any files"
+		fi
+		make SHELL=$shell DESTDIR="$TMPDIR/inst" uninstall > /dev/null
+		if (( "$(file_count "$TMPDIR/inst")" != 0 )); then
+			fail "'make uninstall' didn't uninstall all files"
+		fi
+		rm -r "$TMPDIR/inst"
+	done
+	end
+}
+
 run_tests() {
 	export WRAPPER="" # no wrapper by default; overridden by valgrind tests
 	local cflags
@@ -201,6 +235,8 @@ run_tests() {
 	else
 		log "Skipping UBSAN tests because compiler ($CC_VERSION) doesn't support UBSAN"
 	fi
+
+	install_uninstall_tests
 }
 
 ###############################################################################
