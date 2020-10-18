@@ -328,6 +328,10 @@ check:test_programs
 scan-build:
 	scan-build --status-bugs make all test_programs
 
+# Run shellcheck on all shell scripts.
+shellcheck:
+	shellcheck scripts/*.sh
+
 help:
 	@echo "Available targets:"
 	@echo "------------------"
@@ -350,7 +354,7 @@ realclean: clean
 
 FORCE:
 
-.PHONY: all install uninstall test_programs check scan-build help \
+.PHONY: all install uninstall test_programs check scan-build shellcheck help \
 	clean realclean
 
 .DEFAULT_GOAL = all
