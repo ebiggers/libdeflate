@@ -331,7 +331,7 @@ libdeflate_free_decompressor(struct libdeflate_decompressor *decompressor);
  * 'buffer' is specified as NULL.
  */
 LIBDEFLATEEXPORT uint32_t LIBDEFLATEAPI
-libdeflate_adler32(uint32_t adler32, const void *buffer, size_t len);
+libdeflate_adler32(uint32_t adler, const void *buffer, size_t len);
 
 
 /*
