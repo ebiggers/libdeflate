@@ -20,15 +20,60 @@ typedef s16 mf_pos_t;
 
 #define MATCHFINDER_ALIGNMENT 8
 
-#define arch_matchfinder_init(data, size)	false
-#define arch_matchfinder_rebase(data, size)	false
+typedef bool (*matchfinder_func_t)(mf_pos_t *, size_t);
 
+/** No-op dispatch function. **/
+static inline bool arch_matchfinder_noop(mf_pos_t *pos, size_t size)
+{
+	return false;
+}
+
+#undef DEFAULT_MATCHFINDER_INIT
+#undef DEFAULT_MATCHFINDER_REBASE
+#undef DISPATCH
 #ifdef _aligned_attribute
 #  if defined(__arm__) || defined(__aarch64__)
 #    include "arm/matchfinder_impl.h"
 #  elif defined(__i386__) || defined(__x86_64__)
 #    include "x86/matchfinder_impl.h"
 #  endif
+#endif
+
+#if defined(DEFAULT_MATCHFINDER_INIT) && defined(DEFAULT_MATCHFINDER_REBASE)
+#  define matchfinder_init_impl 	DEFAULT_MATCHFINDER_INIT 
+#  define matchfinder_rebase_impl	DEFAULT_MATCHFINDER_REBASE
+#elif defined(DISPATCH)
+static bool dispatch_init(mf_pos_t *, size_t);
+static bool dispatch_rebase(mf_pos_t *, size_t);
+
+static volatile matchfinder_func_t matchfinder_init_impl = dispatch_init;
+static volatile matchfinder_func_t matchfinder_rebase_impl = dispatch_rebase;
+
+/* Choose the fastest implementation at runtime */
+static bool dispatch_init(mf_pos_t *pos, size_t size)
+{
+	matchfinder_func_t f = arch_select_matchfinder_init();
+
+	if (f == NULL)
+		f = arch_matchfinder_noop;
+
+	matchfinder_init_impl = f;
+	return matchfinder_init_impl(pos, size);
+}
+
+static bool dispatch_rebase(mf_pos_t *pos, size_t size)
+{
+	matchfinder_func_t f = arch_select_matchfinder_rebase();
+
+	if (f == NULL)
+		f = arch_matchfinder_noop;
+
+	matchfinder_rebase_impl = f;
+	return matchfinder_rebase_impl(pos, size);
+}
+#else
+#  define matchfinder_init_impl 	arch_matchfinder_noop 
+#  define matchfinder_rebase_impl	arch_matchfinder_noop
 #endif
 
 /*
@@ -43,7 +88,7 @@ matchfinder_init(mf_pos_t *data, size_t num_entries)
 {
 	size_t i;
 
-	if (arch_matchfinder_init(data, num_entries * sizeof(data[0])))
+	if (matchfinder_init_impl(data, num_entries * sizeof(data[0])))
 		return;
 
 	for (i = 0; i < num_entries; i++)
@@ -76,7 +121,7 @@ matchfinder_rebase(mf_pos_t *data, size_t num_entries)
 {
 	size_t i;
 
-	if (arch_matchfinder_rebase(data, num_entries * sizeof(data[0])))
+	if (matchfinder_rebase_impl(data, num_entries * sizeof(data[0])))
 		return;
 
 	if (MATCHFINDER_WINDOW_SIZE == 32768) {

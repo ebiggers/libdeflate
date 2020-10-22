@@ -25,11 +25,15 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "cpu_features.h"
+
 #ifdef __ARM_NEON
 #  if MATCHFINDER_ALIGNMENT < 16
 #    undef MATCHFINDER_ALIGNMENT
 #    define MATCHFINDER_ALIGNMENT 16
 #  endif
+#  define DEFAULT_MATCHFINDER_INIT		matchfinder_init_neon
+#  define DEFAULT_MATCHFINDER_REBASE	matchfinder_rebase_neon
 #  include <arm_neon.h>
 static forceinline bool
 matchfinder_init_neon(mf_pos_t *data, size_t size)
@@ -91,3 +95,29 @@ matchfinder_rebase_neon(mf_pos_t *data, size_t size)
 #define arch_matchfinder_rebase matchfinder_rebase_neon
 
 #endif /* __ARM_NEON */
+
+#ifdef DISPATCH
+static inline matchfinder_func_t
+arch_select_matchfinder_init(void)
+{
+	u32 features = get_cpu_features();
+
+#ifdef __ARM_NEON
+	if (features & ARM_CPU_FEATURE_NEON)
+		return matchfinder_init_neon;
+#endif
+	return NULL;
+}
+
+static inline matchfinder_func_t
+arch_select_matchfinder_rebase(void)
+{
+	u32 features = get_cpu_features();
+
+#ifdef __ARM_NEON
+	if (features & ARM_CPU_FEATURE_NEON)
+		return matchfinder_rebase_neon;
+#endif
+	return NULL;
+}
+#endif /* DISPATCH */
