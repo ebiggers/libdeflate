@@ -67,7 +67,7 @@ show_usage(FILE *fp)
 "  -k        don't delete input files\n"
 "  -S SUF    use suffix SUF instead of .gz\n"
 "  -V        show version and legal information\n",
-	program_invocation_name);
+	prog_invocation_name);
 }
 
 static void
@@ -87,14 +87,14 @@ show_version(void)
 static bool
 is_gunzip(void)
 {
-	if (tstrxcmp(program_invocation_name, T("gunzip")) == 0)
+	if (tstrxcmp(prog_invocation_name, T("gunzip")) == 0)
 		return true;
-	if (tstrxcmp(program_invocation_name, T("libdeflate-gunzip")) == 0)
+	if (tstrxcmp(prog_invocation_name, T("libdeflate-gunzip")) == 0)
 		return true;
 #ifdef _WIN32
-	if (tstrxcmp(program_invocation_name, T("gunzip.exe")) == 0)
+	if (tstrxcmp(prog_invocation_name, T("gunzip.exe")) == 0)
 		return true;
-	if (tstrxcmp(program_invocation_name, T("libdeflate-gunzip.exe")) == 0)
+	if (tstrxcmp(prog_invocation_name, T("libdeflate-gunzip.exe")) == 0)
 		return true;
 #endif
 	return false;

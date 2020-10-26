@@ -133,7 +133,7 @@ int wmain(int argc, wchar_t **argv);
 
 #endif /* !_WIN32 */
 
-extern const tchar *program_invocation_name;
+extern const tchar *prog_invocation_name;
 
 void _printf(1, 2) msg(const char *fmt, ...);
 void _printf(1, 2) msg_errno(const char *fmt, ...);

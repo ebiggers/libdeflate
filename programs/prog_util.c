@@ -54,14 +54,14 @@
 #endif
 
 /* The invocation name of the program (filename component only) */
-const tchar *program_invocation_name;
+const tchar *prog_invocation_name;
 
 static void
 do_msg(const char *format, bool with_errno, va_list va)
 {
 	int saved_errno = errno;
 
-	fprintf(stderr, "%"TS": ", program_invocation_name);
+	fprintf(stderr, "%"TS": ", prog_invocation_name);
 	vfprintf(stderr, format, va);
 	if (with_errno)
 		fprintf(stderr, ": %s\n", strerror(saved_errno));
@@ -129,7 +129,7 @@ get_filename(const tchar *path)
 void
 begin_program(tchar *argv[])
 {
-	program_invocation_name = get_filename(argv[0]);
+	prog_invocation_name = get_filename(argv[0]);
 
 #ifdef FREESTANDING
 	/* This allows testing freestanding library builds. */
@@ -233,7 +233,7 @@ retry:
 			}
 			fprintf(stderr, "%"TS": %"TS" already exists; "
 				"overwrite? (y/n) ",
-				program_invocation_name, strm->name);
+				prog_invocation_name, strm->name);
 			if (getchar() != 'y') {
 				msg("Not overwriting.");
 				goto err;
