@@ -75,6 +75,9 @@ matchfinder_init(mf_pos_t *data, size_t size)
  * hash bucket.  Note that in the latter table, the links are 1-ary in the case
  * of "hash chains", and 2-ary in the case of "binary trees".  In either case,
  * the links need to be rebased in the same way.
+ *
+ * 'data' must be aligned to a MATCHFINDER_MEM_ALIGNMENT boundary, and
+ * 'size' must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
  */
 #ifndef matchfinder_rebase
 static forceinline void
