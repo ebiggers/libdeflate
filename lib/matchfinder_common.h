@@ -25,8 +25,10 @@ typedef s16 mf_pos_t;
 #define MATCHFINDER_MEM_ALIGNMENT	32
 #define MATCHFINDER_SIZE_ALIGNMENT	128
 
-#undef matchfinder_init
-#undef matchfinder_rebase
+typedef void (*mf_init_func_t)(mf_pos_t *data, size_t size);
+typedef void (*mf_rebase_func_t)(mf_pos_t *data, size_t size);
+
+#undef DISPATCH
 #ifdef _aligned_attribute
 #  define MATCHFINDER_ALIGNED _aligned_attribute(MATCHFINDER_MEM_ALIGNMENT)
 #  if defined(__arm__) || defined(__aarch64__)
@@ -38,6 +40,91 @@ typedef s16 mf_pos_t;
 #  define MATCHFINDER_ALIGNED
 #endif
 
+#ifndef matchfinder_init_default
+static inline void
+matchfinder_init_default(mf_pos_t *data, size_t size)
+{
+	size_t num_entries = size / sizeof(*data);
+	size_t i;
+
+	for (i = 0; i < num_entries; i++)
+		data[i] = MATCHFINDER_INITVAL;
+}
+
+static inline void
+matchfinder_rebase_default(mf_pos_t *data, size_t size)
+{
+	size_t num_entries = size / sizeof(*data);
+	size_t i;
+
+	if (MATCHFINDER_WINDOW_SIZE == 32768) {
+		/*
+		 * Branchless version for 32768 byte windows.  If the value was
+		 * already negative, clear all bits except the sign bit; this
+		 * changes the value to -32768.  Otherwise, set the sign bit;
+		 * this is equivalent to subtracting 32768.
+		 */
+		for (i = 0; i < num_entries; i++) {
+			u16 v = data[i];
+			u16 sign_bit = v & 0x8000;
+
+			v &= sign_bit - ((sign_bit >> 15) ^ 1);
+			v |= 0x8000;
+			data[i] = v;
+		}
+		return;
+	}
+
+	for (i = 0; i < num_entries; i++) {
+		if (data[i] >= 0)
+			data[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
+		else
+			data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
+	}
+}
+#endif /* !matchfinder_init_default */
+
+#ifdef DISPATCH
+static void dispatch_matchfinder_init(mf_pos_t *data, size_t size);
+static void dispatch_matchfinder_rebase(mf_pos_t *data, size_t size);
+
+static volatile mf_init_func_t matchfinder_init_impl =
+	dispatch_matchfinder_init;
+static volatile mf_rebase_func_t matchfinder_rebase_impl =
+	dispatch_matchfinder_rebase;
+
+/* Choose the fastest implementation at runtime */
+static void
+dispatch_matchfinder_init(mf_pos_t *data, size_t size)
+{
+	mf_init_func_t f = arch_select_matchfinder_init_func();
+
+	if (f == NULL)
+		f = matchfinder_init_default;
+
+	matchfinder_init_impl = f;
+	(*f)(data, size);
+}
+
+/* Choose the fastest implementation at runtime */
+static void
+dispatch_matchfinder_rebase(mf_pos_t *data, size_t size)
+{
+	mf_rebase_func_t f = arch_select_matchfinder_rebase_func();
+
+	if (f == NULL)
+		f = matchfinder_rebase_default;
+
+	matchfinder_rebase_impl = f;
+	(*f)(data, size);
+}
+#else
+   /* only one implementation, use it */
+#  define matchfinder_init_impl matchfinder_init_default
+#  define matchfinder_rebase_impl matchfinder_rebase_default
+#endif
+#undef DISPATCH
+
 /*
  * Initialize the hash table portion of the matchfinder.
  *
@@ -46,17 +133,11 @@ typedef s16 mf_pos_t;
  * 'data' must be aligned to a MATCHFINDER_MEM_ALIGNMENT boundary, and
  * 'size' must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
  */
-#ifndef matchfinder_init
 static forceinline void
 matchfinder_init(mf_pos_t *data, size_t size)
 {
-	size_t num_entries = size / sizeof(*data);
-	size_t i;
-
-	for (i = 0; i < num_entries; i++)
-		data[i] = MATCHFINDER_INITVAL;
+	matchfinder_init_impl(data, size);
 }
-#endif
 
 /*
  * Slide the matchfinder by WINDOW_SIZE bytes.
@@ -82,36 +163,11 @@ matchfinder_init(mf_pos_t *data, size_t size)
  * 'data' must be aligned to a MATCHFINDER_MEM_ALIGNMENT boundary, and
  * 'size' must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
  */
-#ifndef matchfinder_rebase
 static forceinline void
 matchfinder_rebase(mf_pos_t *data, size_t size)
 {
-	size_t num_entries = size / sizeof(*data);
-	size_t i;
-
-	if (MATCHFINDER_WINDOW_SIZE == 32768) {
-		/* Branchless version for 32768 byte windows.  If the value was
-		 * already negative, clear all bits except the sign bit; this
-		 * changes the value to -32768.  Otherwise, set the sign bit;
-		 * this is equivalent to subtracting 32768.  */
-		for (i = 0; i < num_entries; i++) {
-			u16 v = data[i];
-			u16 sign_bit = v & 0x8000;
-			v &= sign_bit - ((sign_bit >> 15) ^ 1);
-			v |= 0x8000;
-			data[i] = v;
-		}
-		return;
-	}
-
-	for (i = 0; i < num_entries; i++) {
-		if (data[i] >= 0)
-			data[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
-		else
-			data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
-	}
+	matchfinder_rebase_impl(data, size);
 }
-#endif
 
 /*
  * The hash function: given a sequence prefix held in the low-order bits of a

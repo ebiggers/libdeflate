@@ -28,9 +28,27 @@
 #ifndef LIB_ARM_MATCHFINDER_IMPL_H
 #define LIB_ARM_MATCHFINDER_IMPL_H
 
-#ifdef __ARM_NEON
+#include "cpu_features.h"
+
+#undef DISPATCH_NEON
+#if !defined(matchfinder_init_default) &&	\
+	(defined(__ARM_NEON) || (ARM_CPU_FEATURES_ENABLED &&	\
+				 COMPILER_SUPPORTS_NEON_TARGET_INTRINSICS))
+#  ifdef __ARM_NEON
+#    define ATTRIBUTES
+#    define matchfinder_init_default	matchfinder_init_neon
+#    define matchfinder_rebase_default	matchfinder_rebase_neon
+#  else
+#    ifdef __arm__
+#      define ATTRIBUTES	__attribute__((target("fpu=neon")))
+#    else
+#      define ATTRIBUTES	__attribute__((target("+simd")))
+#    endif
+#    define DISPATCH		1
+#    define DISPATCH_NEON	1
+#  endif
 #  include <arm_neon.h>
-static forceinline void
+static void ATTRIBUTES
 matchfinder_init_neon(mf_pos_t *data, size_t size)
 {
 	int16x8_t *p = (int16x8_t *)data;
@@ -53,9 +71,8 @@ matchfinder_init_neon(mf_pos_t *data, size_t size)
 		size -= 4 * sizeof(*p);
 	} while (size != 0);
 }
-#define matchfinder_init matchfinder_init_neon
 
-static forceinline void
+static void ATTRIBUTES
 matchfinder_rebase_neon(mf_pos_t *data, size_t size)
 {
 	int16x8_t *p = (int16x8_t *)data;
@@ -79,8 +96,33 @@ matchfinder_rebase_neon(mf_pos_t *data, size_t size)
 		size -= 4 * sizeof(*p);
 	} while (size != 0);
 }
-#define matchfinder_rebase matchfinder_rebase_neon
+#undef ATTRIBUTES
+#endif /* NEON implementation */
 
-#endif /* __ARM_NEON */
+#ifdef DISPATCH
+static inline mf_init_func_t
+arch_select_matchfinder_init_func(void)
+{
+	u32 features = get_cpu_features();
+
+#ifdef DISPATCH_NEON
+	if (features & ARM_CPU_FEATURE_NEON)
+		return matchfinder_init_neon;
+#endif
+	return NULL;
+}
+
+static inline mf_rebase_func_t
+arch_select_matchfinder_rebase_func(void)
+{
+	u32 features = get_cpu_features();
+
+#ifdef DISPATCH_NEON
+	if (features & ARM_CPU_FEATURE_NEON)
+		return matchfinder_rebase_neon;
+#endif
+	return NULL;
+}
+#endif /* DISPATCH */
 
 #endif /* LIB_ARM_MATCHFINDER_IMPL_H */
