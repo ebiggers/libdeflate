@@ -3,6 +3,9 @@
 #
 # Define V=1 to enable "verbose" mode, showing all executed commands.
 #
+# Define USE_SHARED_LIB to link the binaries to the shared library version of
+# libdeflate rather than to the static library version.
+#
 # Define DECOMPRESSION_ONLY to omit all compression code, building a
 # decompression-only library.  If doing this, you must also build a specific
 # library target such as 'libdeflate.a', as the programs will no longer compile.
@@ -138,6 +141,7 @@ endif
 # Rebuild if a user-specified setting that affects the build changed.
 .build-config: FORCE
 	@flags=$$(							\
+		echo 'USE_SHARED_LIB=$(USE_SHARED_LIB)';		\
 		echo 'DECOMPRESSION_ONLY=$(DECOMPRESSION_ONLY)';	\
 		echo 'DISABLE_GZIP=$(DISABLE_GZIP)';			\
 		echo 'DISABLE_ZLIB=$(DISABLE_ZLIB)';			\
@@ -267,12 +271,17 @@ $(ALL_PROG_OBJ): %.o: %.c $(ALL_PROG_COMMON_HEADERS) $(COMMON_HEADERS) \
 # Note: the test programs are not compiled by default.  One reason is that the
 # test programs must be linked with zlib for doing comparisons.
 
-$(NONTEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) \
-			$(STATIC_LIB)
+ifdef USE_SHARED_LIB
+LIB := $(SHARED_LIB)
+else
+LIB := $(STATIC_LIB)
+endif
+
+$(NONTEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) $(LIB)
 	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(PROG_CFLAGS) $+
 
 $(TEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) \
-			$(TEST_PROG_COMMON_OBJ) $(STATIC_LIB)
+			$(TEST_PROG_COMMON_OBJ) $(LIB)
 	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(PROG_CFLAGS) $+ -lz
 
 ifdef HARD_LINKS
@@ -322,9 +331,9 @@ test_programs:$(TEST_PROGRAMS)
 # A minimal 'make check' target.  This only runs some quick tests;
 # use scripts/run_tests.sh if you want to run the full tests.
 check:test_programs
-	./benchmark$(PROG_SUFFIX) < ./benchmark$(PROG_SUFFIX)
+	LD_LIBRARY_PATH=. ./benchmark$(PROG_SUFFIX) < ./benchmark$(PROG_SUFFIX)
 	for prog in test_*; do		\
-		./$$prog || exit 1;	\
+		LD_LIBRARY_PATH=. ./$$prog || exit 1;	\
 	done
 
 # Run the clang static analyzer.
