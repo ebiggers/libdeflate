@@ -191,12 +191,12 @@ do_run_tests() {
 
 check_symbol_prefixes() {
 	log "Checking that all global symbols are prefixed with \"libdeflate_\""
-	$MAKE libdeflate.a
+	$MAKE libdeflate.a > /dev/null
 	if nm libdeflate.a | grep ' T ' | grep -E -v " _?libdeflate_"; then
 		fail "Some global symbols aren't prefixed with \"libdeflate_\""
 	fi
 	log "Checking that all exported symbols are prefixed with \"libdeflate\""
-	$MAKE libdeflate.so
+	$MAKE libdeflate.so > /dev/null
 	if nm libdeflate.so | grep ' T ' \
 			| grep -E -v " (libdeflate_|_init\>|_fini\>)"; then
 		fail "Some exported symbols aren't prefixed with \"libdeflate_\""
@@ -205,11 +205,11 @@ check_symbol_prefixes() {
 
 test_use_shared_lib() {
 	log "Testing USE_SHARED_LIB=1"
-	$MAKE gzip
+	$MAKE gzip > /dev/null
 	if ldd gzip | grep -q 'libdeflate.so'; then
 		fail "Binary should be statically linked by default"
 	fi
-	$MAKE USE_SHARED_LIB=1 all check
+	$MAKE USE_SHARED_LIB=1 all check > /dev/null
 	if ! ldd gzip | grep -q 'libdeflate.so'; then
 		fail "Binary isn't dynamically linked"
 	fi
