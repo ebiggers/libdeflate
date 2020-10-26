@@ -10,8 +10,7 @@
 *.obj
 *.so
 *.so.*
-/.lib-cflags
-/.prog-cflags
+/.build-config
 /programs/config.h
 /benchmark
 /checksum
