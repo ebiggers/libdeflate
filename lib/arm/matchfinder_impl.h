@@ -26,68 +26,56 @@
  */
 
 #ifdef __ARM_NEON
-#  if MATCHFINDER_ALIGNMENT < 16
-#    undef MATCHFINDER_ALIGNMENT
-#    define MATCHFINDER_ALIGNMENT 16
-#  endif
 #  include <arm_neon.h>
-static forceinline bool
+static forceinline void
 matchfinder_init_neon(mf_pos_t *data, size_t size)
 {
-	int16x8_t v, *p;
-	size_t n;
-
-	if (size % (sizeof(int16x8_t) * 4) != 0)
-		return false;
-
-	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
-	v = (int16x8_t) {
+	int16x8_t *p = (int16x8_t *)data;
+	int16x8_t v = (int16x8_t) {
 		MATCHFINDER_INITVAL, MATCHFINDER_INITVAL, MATCHFINDER_INITVAL,
 		MATCHFINDER_INITVAL, MATCHFINDER_INITVAL, MATCHFINDER_INITVAL,
 		MATCHFINDER_INITVAL, MATCHFINDER_INITVAL,
 	};
-	p = (int16x8_t *)data;
-	n = size / (sizeof(int16x8_t) * 4);
+
+	STATIC_ASSERT(MATCHFINDER_MEM_ALIGNMENT % sizeof(*p) == 0);
+	STATIC_ASSERT(MATCHFINDER_SIZE_ALIGNMENT % (4 * sizeof(*p)) == 0);
+	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
+
 	do {
 		p[0] = v;
 		p[1] = v;
 		p[2] = v;
 		p[3] = v;
 		p += 4;
-	} while (--n);
-	return true;
+		size -= 4 * sizeof(*p);
+	} while (size != 0);
 }
-#undef arch_matchfinder_init
-#define arch_matchfinder_init matchfinder_init_neon
+#define matchfinder_init matchfinder_init_neon
 
-static forceinline bool
+static forceinline void
 matchfinder_rebase_neon(mf_pos_t *data, size_t size)
 {
-	int16x8_t v, *p;
-	size_t n;
-
-	if (size % (sizeof(int16x8_t) * 4) != 0)
-		return false;
-
-	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
-	v = (int16x8_t) {
+	int16x8_t *p = (int16x8_t *)data;
+	int16x8_t v = (int16x8_t) {
 		(u16)-MATCHFINDER_WINDOW_SIZE, (u16)-MATCHFINDER_WINDOW_SIZE,
 		(u16)-MATCHFINDER_WINDOW_SIZE, (u16)-MATCHFINDER_WINDOW_SIZE,
 		(u16)-MATCHFINDER_WINDOW_SIZE, (u16)-MATCHFINDER_WINDOW_SIZE,
 		(u16)-MATCHFINDER_WINDOW_SIZE, (u16)-MATCHFINDER_WINDOW_SIZE,
 	};
-	p = (int16x8_t *)data;
-	n = size / (sizeof(int16x8_t) * 4);
+
+	STATIC_ASSERT(MATCHFINDER_MEM_ALIGNMENT % sizeof(*p) == 0);
+	STATIC_ASSERT(MATCHFINDER_SIZE_ALIGNMENT % (4 * sizeof(*p)) == 0);
+	STATIC_ASSERT(sizeof(mf_pos_t) == 2);
+
 	do {
 		p[0] = vqaddq_s16(p[0], v);
 		p[1] = vqaddq_s16(p[1], v);
 		p[2] = vqaddq_s16(p[2], v);
 		p[3] = vqaddq_s16(p[3], v);
 		p += 4;
-	} while (--n);
-	return true;
+		size -= 4 * sizeof(*p);
+	} while (size != 0);
 }
-#undef arch_matchfinder_rebase
-#define arch_matchfinder_rebase matchfinder_rebase_neon
+#define matchfinder_rebase matchfinder_rebase_neon
 
 #endif /* __ARM_NEON */

@@ -71,9 +71,9 @@
 #define BT_MATCHFINDER_HASH3_WAYS  2
 #define BT_MATCHFINDER_HASH4_ORDER 16
 
-#define BT_MATCHFINDER_TOTAL_HASH_LENGTH		\
-	((1UL << BT_MATCHFINDER_HASH3_ORDER) * BT_MATCHFINDER_HASH3_WAYS + \
-	 (1UL << BT_MATCHFINDER_HASH4_ORDER))
+#define BT_MATCHFINDER_TOTAL_HASH_SIZE		\
+	(((1UL << BT_MATCHFINDER_HASH3_ORDER) * BT_MATCHFINDER_HASH3_WAYS + \
+	  (1UL << BT_MATCHFINDER_HASH4_ORDER)) * sizeof(mf_pos_t))
 
 /* Representation of a match found by the bt_matchfinder  */
 struct lz_match {
@@ -101,7 +101,7 @@ struct bt_matchfinder {
 
 }
 #ifdef _aligned_attribute
-_aligned_attribute(MATCHFINDER_ALIGNMENT)
+_aligned_attribute(MATCHFINDER_MEM_ALIGNMENT)
 #endif
 ;
 
@@ -109,14 +109,18 @@ _aligned_attribute(MATCHFINDER_ALIGNMENT)
 static forceinline void
 bt_matchfinder_init(struct bt_matchfinder *mf)
 {
-	matchfinder_init((mf_pos_t *)mf, BT_MATCHFINDER_TOTAL_HASH_LENGTH);
+	STATIC_ASSERT(BT_MATCHFINDER_TOTAL_HASH_SIZE %
+		      MATCHFINDER_SIZE_ALIGNMENT == 0);
+
+	matchfinder_init((mf_pos_t *)mf, BT_MATCHFINDER_TOTAL_HASH_SIZE);
 }
 
 static forceinline void
 bt_matchfinder_slide_window(struct bt_matchfinder *mf)
 {
-	matchfinder_rebase((mf_pos_t *)mf,
-			   sizeof(struct bt_matchfinder) / sizeof(mf_pos_t));
+	STATIC_ASSERT(sizeof(*mf) % MATCHFINDER_SIZE_ALIGNMENT == 0);
+
+	matchfinder_rebase((mf_pos_t *)mf, sizeof(*mf));
 }
 
 static forceinline mf_pos_t *
