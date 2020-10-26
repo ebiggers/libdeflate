@@ -203,6 +203,18 @@ check_symbol_prefixes() {
 	fi
 }
 
+test_use_shared_lib() {
+	log "Testing USE_SHARED_LIB=1"
+	$MAKE gzip
+	if ldd gzip | grep -q 'libdeflate.so'; then
+		fail "Binary should be statically linked by default"
+	fi
+	$MAKE USE_SHARED_LIB=1 all check
+	if ! ldd gzip | grep -q 'libdeflate.so'; then
+		fail "Binary isn't dynamically linked"
+	fi
+}
+
 install_uninstall_tests() {
 	local shell
 
@@ -280,6 +292,7 @@ run_tests() {
 
 	install_uninstall_tests
 	check_symbol_prefixes
+	test_use_shared_lib
 }
 
 ###############################################################################
