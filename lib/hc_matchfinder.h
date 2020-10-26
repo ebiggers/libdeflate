@@ -111,9 +111,9 @@
 #define HC_MATCHFINDER_HASH3_ORDER	15
 #define HC_MATCHFINDER_HASH4_ORDER	16
 
-#define HC_MATCHFINDER_TOTAL_HASH_LENGTH		\
-	((1UL << HC_MATCHFINDER_HASH3_ORDER) +		\
-	 (1UL << HC_MATCHFINDER_HASH4_ORDER))
+#define HC_MATCHFINDER_TOTAL_HASH_SIZE			\
+	(((1UL << HC_MATCHFINDER_HASH3_ORDER) +		\
+	  (1UL << HC_MATCHFINDER_HASH4_ORDER)) * sizeof(mf_pos_t))
 
 struct hc_matchfinder {
 
@@ -130,7 +130,7 @@ struct hc_matchfinder {
 
 }
 #ifdef _aligned_attribute
-  _aligned_attribute(MATCHFINDER_ALIGNMENT)
+  _aligned_attribute(MATCHFINDER_MEM_ALIGNMENT)
 #endif
 ;
 
@@ -138,14 +138,18 @@ struct hc_matchfinder {
 static forceinline void
 hc_matchfinder_init(struct hc_matchfinder *mf)
 {
-	matchfinder_init((mf_pos_t *)mf, HC_MATCHFINDER_TOTAL_HASH_LENGTH);
+	STATIC_ASSERT(HC_MATCHFINDER_TOTAL_HASH_SIZE %
+		      MATCHFINDER_SIZE_ALIGNMENT == 0);
+
+	matchfinder_init((mf_pos_t *)mf, HC_MATCHFINDER_TOTAL_HASH_SIZE);
 }
 
 static forceinline void
 hc_matchfinder_slide_window(struct hc_matchfinder *mf)
 {
-	matchfinder_rebase((mf_pos_t *)mf,
-			   sizeof(struct hc_matchfinder) / sizeof(mf_pos_t));
+	STATIC_ASSERT(sizeof(*mf) % MATCHFINDER_SIZE_ALIGNMENT == 0);
+
+	matchfinder_rebase((mf_pos_t *)mf, sizeof(*mf));
 }
 
 /*

@@ -18,11 +18,15 @@ typedef s16 mf_pos_t;
 
 #define MATCHFINDER_INITVAL ((mf_pos_t)-MATCHFINDER_WINDOW_SIZE)
 
-#define MATCHFINDER_ALIGNMENT 8
+/*
+ * Required alignment of the matchfinder buffer pointer and size.  The values
+ * here come from the AVX-2 implementation, which is the worst case.
+ */
+#define MATCHFINDER_MEM_ALIGNMENT	32
+#define MATCHFINDER_SIZE_ALIGNMENT	128
 
-#define arch_matchfinder_init(data, size)	false
-#define arch_matchfinder_rebase(data, size)	false
-
+#undef matchfinder_init
+#undef matchfinder_rebase
 #ifdef _aligned_attribute
 #  if defined(__arm__) || defined(__aarch64__)
 #    include "arm/matchfinder_impl.h"
@@ -36,19 +40,20 @@ typedef s16 mf_pos_t;
  *
  * Essentially, this is an optimized memset().
  *
- * 'data' must be aligned to a MATCHFINDER_ALIGNMENT boundary.
+ * 'data' must be aligned to a MATCHFINDER_MEM_ALIGNMENT boundary, and
+ * 'size' must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
  */
+#ifndef matchfinder_init
 static forceinline void
-matchfinder_init(mf_pos_t *data, size_t num_entries)
+matchfinder_init(mf_pos_t *data, size_t size)
 {
+	size_t num_entries = size / sizeof(*data);
 	size_t i;
-
-	if (arch_matchfinder_init(data, num_entries * sizeof(data[0])))
-		return;
 
 	for (i = 0; i < num_entries; i++)
 		data[i] = MATCHFINDER_INITVAL;
 }
+#endif
 
 /*
  * Slide the matchfinder by WINDOW_SIZE bytes.
@@ -71,13 +76,12 @@ matchfinder_init(mf_pos_t *data, size_t num_entries)
  * of "hash chains", and 2-ary in the case of "binary trees".  In either case,
  * the links need to be rebased in the same way.
  */
+#ifndef matchfinder_rebase
 static forceinline void
-matchfinder_rebase(mf_pos_t *data, size_t num_entries)
+matchfinder_rebase(mf_pos_t *data, size_t size)
 {
+	size_t num_entries = size / sizeof(*data);
 	size_t i;
-
-	if (arch_matchfinder_rebase(data, num_entries * sizeof(data[0])))
-		return;
 
 	if (MATCHFINDER_WINDOW_SIZE == 32768) {
 		/* Branchless version for 32768 byte windows.  If the value was
@@ -101,6 +105,7 @@ matchfinder_rebase(mf_pos_t *data, size_t num_entries)
 			data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
 	}
 }
+#endif
 
 /*
  * The hash function: given a sequence prefix held in the low-order bits of a
