@@ -42,7 +42,7 @@ show_usage(FILE *fp)
 "  -s SIZE   chunk size\n"
 "  -t        show checksum speed, excluding I/O\n"
 "  -Z        use zlib implementation instead of libdeflate\n",
-	program_invocation_name);
+	prog_invocation_name);
 }
 
 typedef u32 (*cksum_fn_t)(u32, const void *, size_t);

@@ -406,7 +406,7 @@ show_usage(FILE *fp)
 "  -s SIZE   chunk size\n"
 "  -V        show version and legal information\n"
 "  -z        use zlib wrapper\n"
-"\n", program_invocation_name);
+"\n", prog_invocation_name);
 
 	show_available_engines(fp);
 }
