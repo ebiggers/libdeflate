@@ -30,7 +30,7 @@
 # doesn't link to any libc functions like malloc(), free(), and memcpy().
 # All users will need to call libdeflate_set_memory_allocator().
 #
-# You can also specify custom CFLAGS, CPPFLAGS, and/or LDFLAGS.
+# You can also specify a custom CC, CFLAGS, CPPFLAGS, and/or LDFLAGS.
 #
 ##############################################################################
 
@@ -135,6 +135,25 @@ endif
 
 ##############################################################################
 
+# Rebuild if a user-specified setting that affects the build changed.
+.build-config: FORCE
+	@flags=$$(							\
+		echo 'DECOMPRESSION_ONLY=$(DECOMPRESSION_ONLY)';	\
+		echo 'DISABLE_GZIP=$(DISABLE_GZIP)';			\
+		echo 'DISABLE_ZLIB=$(DISABLE_ZLIB)';			\
+		echo 'FREESTANDING=$(FREESTANDING)';			\
+		echo 'CC=$(CC)';					\
+		echo 'CFLAGS=$(CFLAGS)';				\
+		echo 'CPPFLAGS=$(CPPFLAGS)';				\
+		echo 'LDFLAGS=$(LDFLAGS)';				\
+	);								\
+	if [ "$$flags" != "`cat $@ 2>/dev/null`" ]; then		\
+		[ -e $@ ] && echo "Rebuilding due to new settings";	\
+		echo "$$flags" > $@;					\
+	fi
+
+##############################################################################
+
 COMMON_HEADERS := $(wildcard common/*.h) libdeflate.h
 DEFAULT_TARGETS :=
 
@@ -174,11 +193,11 @@ STATIC_LIB_OBJ := $(LIB_SRC:.c=.o)
 SHARED_LIB_OBJ := $(LIB_SRC:.c=.shlib.o)
 
 # Compile static library object files
-$(STATIC_LIB_OBJ): %.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
+$(STATIC_LIB_OBJ): %.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .build-config
 	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(LIB_CFLAGS) $<
 
 # Compile shared library object files
-$(SHARED_LIB_OBJ): %.shlib.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .lib-cflags
+$(SHARED_LIB_OBJ): %.shlib.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .build-config
 	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(LIB_CFLAGS) \
 		$(SHARED_LIB_CFLAGS) -DLIBDEFLATE_DLL $<
 
@@ -201,14 +220,6 @@ $(SHARED_LIB_SYMLINK):$(SHARED_LIB)
 	$(QUIET_LN) ln -sf $+ $@
 DEFAULT_TARGETS += $(SHARED_LIB_SYMLINK)
 endif
-
-# Rebuild if CC, LIB_CFLAGS, or CPPFLAGS changed
-.lib-cflags: FORCE
-	@flags='$(CC):$(LIB_CFLAGS):$(CPPFLAGS)'; \
-	if [ "$$flags" != "`cat $@ 2>/dev/null`" ]; then \
-		[ -e $@ ] && echo "Rebuilding library due to new compiler flags"; \
-		echo "$$flags" > $@; \
-	fi
 
 ##############################################################################
 
@@ -243,12 +254,12 @@ ALL_PROG_OBJ	     := $(PROG_COMMON_OBJ) $(NONTEST_PROG_OBJ) \
 			$(TEST_PROG_COMMON_OBJ) $(TEST_PROG_OBJ)
 
 # Generate autodetected configuration header
-programs/config.h:scripts/detect.sh .prog-cflags
+programs/config.h:scripts/detect.sh .build-config
 	$(QUIET_GEN) CC="$(CC)" CFLAGS="$(PROG_CFLAGS)" $< > $@
 
 # Compile program object files
 $(ALL_PROG_OBJ): %.o: %.c $(ALL_PROG_COMMON_HEADERS) $(COMMON_HEADERS) \
-			.prog-cflags
+			.build-config
 	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(PROG_CFLAGS) $<
 
 # Link the programs.
@@ -275,14 +286,6 @@ gunzip$(PROG_SUFFIX):gzip$(PROG_SUFFIX)
 endif
 
 DEFAULT_TARGETS += gunzip$(PROG_SUFFIX)
-
-# Rebuild if CC, PROG_CFLAGS, or CPPFLAGS changed
-.prog-cflags: FORCE
-	@flags='$(CC):$(PROG_CFLAGS):$(CPPFLAGS)'; \
-	if [ "$$flags" != "`cat $@ 2>/dev/null`" ]; then \
-		[ -e $@ ] && echo "Rebuilding programs due to new compiler flags"; \
-		echo "$$flags" > $@; \
-	fi
 
 ##############################################################################
 
@@ -347,7 +350,7 @@ clean:
 		programs/*.o programs/*.obj \
 		$(DEFAULT_TARGETS) $(TEST_PROGRAMS) programs/config.h \
 		libdeflate.lib libdeflate.def libdeflatestatic.lib \
-		.lib-cflags .prog-cflags
+		.build-config
 
 realclean: clean
 	rm -f tags cscope*
