@@ -210,9 +210,12 @@ test_use_shared_lib() {
 		fail "Binary should be statically linked by default"
 	fi
 	$MAKE USE_SHARED_LIB=1 all check > /dev/null
-	if ! ldd gzip | grep -q 'libdeflate.so'; then
+	ldd gzip > "$TMPDIR/ldd.out"
+	if ! grep -q 'libdeflate.so' "$TMPDIR/ldd.out"; then
+		cat 1>&2 "$TMPDIR/ldd.out"
 		fail "Binary isn't dynamically linked"
 	fi
+	rm "$TMPDIR/ldd.out"
 }
 
 install_uninstall_tests() {
