@@ -24,6 +24,22 @@ use this library are also provided:
   yet support very large files
 * benchmark, a program for benchmarking in-memory compression and decompression
 
+## Table of Contents
+
+- [Building](#building)
+  - [For UNIX](#for-unix)
+  - [For macOS](#for-macos)
+  - [For Windows](#for-windows)
+    - [Using Cygwin](#using-cygwin)
+    - [Using MSYS2](#using-msys2)
+- [API](#api)
+- [Bindings for other programming languages](#bindings-for-other-programming-languages)
+- [DEFLATE vs. zlib vs. gzip](#deflate-vs-zlib-vs-gzip)
+- [Compression levels](#compression-levels)
+- [Motivation](#motivation)
+- [License](#license)
+
+
 # Building
 
 ## For UNIX
