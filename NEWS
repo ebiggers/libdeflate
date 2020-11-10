@@ -1,3 +1,29 @@
+Version 1.7:
+	Added support for compression level 0, "no compression".
+
+	Added an ARM CRC32 instruction accelerated implementation of CRC32.
+
+	Added support for linking the programs to the shared library version of
+	libdeflate rather than to the static library version.
+
+	Made the compression level affect the minimum input size at which
+	compression is attempted.
+
+	Fixed undefined behavior in x86 Adler32 implementation.
+	(No miscompilations were observed in practice.)
+
+	Fixed undefined behavior in x86 CPU feature code.
+	(No miscompilations were observed in practice.)
+
+	Fixed installing shared lib symlink on macOS.
+
+	Documented third-party bindings.
+
+	Made a lot of improvements to the testing scripts and the CI
+	configuration file.
+
+	Lots of other small improvements and cleanups.
+
 Version 1.6:
 	Prevented gcc 10 from miscompiling libdeflate (workaround for
 	https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94994).
