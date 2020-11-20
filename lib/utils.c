@@ -85,7 +85,8 @@ libdeflate_set_memory_allocator(void *(*malloc_func)(size_t),
  */
 #ifdef FREESTANDING
 #undef memset
-void *memset(void *s, int c, size_t n)
+void * __attribute__((weak))
+memset(void *s, int c, size_t n)
 {
 	u8 *p = s;
 	size_t i;
@@ -96,7 +97,8 @@ void *memset(void *s, int c, size_t n)
 }
 
 #undef memcpy
-void *memcpy(void *dest, const void *src, size_t n)
+void * __attribute__((weak))
+memcpy(void *dest, const void *src, size_t n)
 {
 	u8 *d = dest;
 	const u8 *s = src;
@@ -108,7 +110,8 @@ void *memcpy(void *dest, const void *src, size_t n)
 }
 
 #undef memmove
-void *memmove(void *dest, const void *src, size_t n)
+void * __attribute__((weak))
+memmove(void *dest, const void *src, size_t n)
 {
 	u8 *d = dest;
 	const u8 *s = src;
@@ -123,7 +126,8 @@ void *memmove(void *dest, const void *src, size_t n)
 }
 
 #undef memcmp
-int memcmp(const void *s1, const void *s2, size_t n)
+int __attribute__((weak))
+memcmp(const void *s1, const void *s2, size_t n)
 {
 	const u8 *p1 = s1;
 	const u8 *p2 = s2;
