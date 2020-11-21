@@ -21,19 +21,26 @@ EOF
 	exit 1
 fi
 
+CLEANUP_CMDS=()
+cleanup() {
+	for cmd in "${CLEANUP_CMDS[@]}"; do
+		eval "$cmd"
+	done
+}
+trap cleanup EXIT
+
 # Use TESTDATA if specified in environment, else generate it.
 if [ -z "${TESTDATA:-}" ]; then
 	# Generate default TESTDATA file.
-	TESTDATA=$(mktemp -t libdeflate_testdata.XXXXXXX)
+	TESTDATA=$(mktemp -t libdeflate_testdata.XXXXXXXXXX)
 	export TESTDATA
-	trap 'rm -f "$TESTDATA"' EXIT
+	CLEANUP_CMDS+=("rm -f '$TESTDATA'")
 	find . '(' -name '*.c' -o -name '*.h' -o -name '*.sh' ')' \
 		-exec cat '{}' ';' | head -c 1000000 > "$TESTDATA"
 fi
 
-# Create a temporary file.
-TMPFILE=$(mktemp -t libdeflate_tmpfile.XXXXXX)
-trap 'rm -f "$TMPFILE"' EXIT
+TMPDIR=$(mktemp -d -t libdeflate_test.XXXXXXXXX)
+CLEANUP_CMDS+=("rm -r '$TMPDIR'")
 
 android_build_and_test() {
 	echo "Running Android tests with $*"
@@ -45,10 +52,10 @@ android_build_and_test() {
 
 	# Note: adb shell always returns 0, even if the shell command fails...
 	adb shell "cd /data/local/tmp && WRAPPER= TESTDATA=$(basename "$TESTDATA") sh exec_tests.sh" \
-		> "$TMPFILE"
-	if ! grep -q "exec_tests finished successfully" "$TMPFILE"; then
+		> "$TMPDIR/adb.out"
+	if ! grep -q "exec_tests finished successfully" "$TMPDIR/adb.out"; then
 		echo 1>&2 "Android test failure!  adb shell output:"
-		cat "$TMPFILE"
+		cat "$TMPDIR/adb.out"
 		exit 1
 	fi
 }
