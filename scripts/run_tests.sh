@@ -16,18 +16,26 @@ fi
 # Use CFLAGS if specified in environment.
 : "${CFLAGS:=}"
 
+CLEANUP_CMDS=()
+cleanup() {
+	for cmd in "${CLEANUP_CMDS[@]}"; do
+		eval "$cmd"
+	done
+}
+trap cleanup EXIT
+
 # Use TESTDATA if specified in environment, else generate it.
 if [ -z "${TESTDATA:-}" ]; then
 	# Generate default TESTDATA file.
 	TESTDATA=$(mktemp -t libdeflate_testdata.XXXXXXXXXX)
 	export TESTDATA
-	trap 'rm -f "$TESTDATA"' EXIT
+	CLEANUP_CMDS+=("rm -f '$TESTDATA'")
 	find . '(' -name '*.c' -o -name '*.h' -o -name '*.sh' ')' \
 		-exec cat '{}' ';' | head -c 1000000 > "$TESTDATA"
 fi
 
 TMPDIR=$(mktemp -d -t libdeflate_test.XXXXXXXXX)
-trap 'rm -r "$TMPDIR"' EXIT
+CLEANUP_CMDS+=("rm -r '$TMPDIR'")
 
 MAKE="make -j$(getconf _NPROCESSORS_ONLN)"
 
