@@ -363,19 +363,21 @@ assert_skipped gunzip 1.gz 2.gz
 cmp 2 file
 
 
-begin_test 'Multiple files, continue on error'
-cp file 1
-cp file 2
-chmod a-r 1
-assert_error 'Permission denied' gzip 1 2
-[ ! -e 1.gz ]
-cmp file <(gunzip -c 2.gz)
-rm -f 1
-cp 2.gz 1.gz
-chmod a-r 1.gz
-assert_error 'Permission denied' gunzip 1.gz 2.gz
-[ ! -e 1 ]
-cmp 2 file
+if (( $(id -u) != 0 )); then
+	begin_test 'Multiple files, continue on error'
+	cp file 1
+	cp file 2
+	chmod a-r 1
+	assert_error 'Permission denied' gzip 1 2
+	[ ! -e 1.gz ]
+	cmp file <(gunzip -c 2.gz)
+	rm -f 1
+	cp 2.gz 1.gz
+	chmod a-r 1.gz
+	assert_error 'Permission denied' gunzip 1.gz 2.gz
+	[ ! -e 1 ]
+	cmp 2 file
+fi
 
 
 begin_test 'Compressing empty file'
