@@ -287,7 +287,7 @@ run_tests() {
 		"-fvisibility=hidden")
 	if cflags_supported "${cflags[@]}"; then
 		begin "Running tests with CFI"
-		CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests --quick
+		CFLAGS="$CFLAGS ${cflags[*]}" AR=llvm-ar do_run_tests --quick
 		end
 	else
 		log "Skipping CFI tests because compiler ($CC_VERSION) doesn't support CFI"
