@@ -395,10 +395,8 @@ echo 1 > foo.gz
 assert_error '\<not in gzip format\>' gunzip foo.gz
 echo abcdefgh > foo.gz
 assert_error '\<not in gzip format\>' gunzip foo.gz
-xxd -r > foo.gz <<-EOF
-00000000: 1f8b 0800 0000 0000 00ff 4b4c 4a4e 4924  ..........KLJNI$
-00000010: 1673 0100 6c5b a262 2e00 0000            .s..l[.b....
-EOF
+echo -ne '\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x4b\x4c\x4a\x4e\x49\x24\x16\x73\x01\x00\x6c\x5b\xa2\x62\x2e\x00\x00\x00' \
+	> foo.gz
 assert_error '\<(not in gzip format|crc error)\>' gunzip foo.gz
 
 
