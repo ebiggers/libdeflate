@@ -43,12 +43,14 @@ CC_VERSION=$($CC --version | head -1)
 
 ARCH=$(uname -m)
 
-# Allow setting DISABLE_ASAN=1 in the environment to disable the ASAN tests.
-if [ "${DISABLE_ASAN:-}" = "1" ]; then
-	DISABLE_ASAN=true
-else
-	DISABLE_ASAN=false
-fi
+for skip in SKIP_FREESTANDING SKIP_VALGRIND SKIP_UBSAN SKIP_ASAN SKIP_CFI \
+	    SKIP_SHARED_LIB; do
+	if [ "${!skip:-}" = "1" ]; then
+		eval $skip=true
+	else
+		eval $skip=false
+	fi
+done
 
 ###############################################################################
 
@@ -191,8 +193,12 @@ gzip_tests() {
 do_run_tests() {
 	build_and_run_tests "$@"
 	if [ "${1:-}" != "--quick" ]; then
-		build_and_run_tests FREESTANDING=1
-		verify_freestanding_build
+		if $SKIP_FREESTANDING; then
+			log "Skipping freestanding build tests due to SKIP_FREESTANDING=1"
+		else
+			build_and_run_tests FREESTANDING=1
+			verify_freestanding_build
+		fi
 	fi
 	gzip_tests "$@"
 }
@@ -212,6 +218,10 @@ check_symbol_prefixes() {
 }
 
 test_use_shared_lib() {
+	if $SKIP_SHARED_LIB; then
+		log "Skipping USE_SHARED_LIB=1 tests due to SKIP_SHARED_LIB=1"
+		return
+	fi
 	log "Testing USE_SHARED_LIB=1"
 	$MAKE gzip > /dev/null
 	if ldd gzip | grep -q 'libdeflate.so'; then
@@ -264,7 +274,9 @@ run_tests() {
 
 	# Need valgrind 3.9.0 for '--errors-for-leak-kinds=all'
 	# Need valgrind 3.12.0 for armv8 crypto and crc instructions
-	if valgrind_version_at_least 3.12.0; then
+	if $SKIP_VALGRIND; then
+		log "Skipping valgrind tests due to SKIP_VALGRIND=1"
+	elif valgrind_version_at_least 3.12.0; then
 		begin "Running tests with Valgrind"
 		WRAPPER="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all" \
 			do_run_tests --quick
@@ -272,7 +284,9 @@ run_tests() {
 	fi
 
 	cflags=("-fsanitize=undefined" "-fno-sanitize-recover=undefined")
-	if cflags_supported "${cflags[@]}"; then
+	if $SKIP_UBSAN; then
+		log "Skipping UBSAN tests due to SKIP_UBSAN=1"
+	elif cflags_supported "${cflags[@]}"; then
 		begin "Running tests with UBSAN"
 		CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests --quick
 		end
@@ -281,8 +295,8 @@ run_tests() {
 	fi
 
 	cflags=("-fsanitize=address" "-fno-sanitize-recover=address")
-	if $DISABLE_ASAN; then
-		log "Skipping ASAN tests because DISABLE_ASAN=1 was set"
+	if $SKIP_ASAN; then
+		log "Skipping ASAN tests due to SKIP_ASAN=1"
 	elif cflags_supported "${cflags[@]}"; then
 		begin "Running tests with ASAN"
 		CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests --quick
@@ -293,7 +307,9 @@ run_tests() {
 
 	cflags=("-fsanitize=cfi" "-fno-sanitize-recover=cfi" "-flto"
 		"-fvisibility=hidden")
-	if cflags_supported "${cflags[@]}"; then
+	if $SKIP_CFI; then
+		log "Skipping CFI tests due to SKIP_CFI=1"
+	elif cflags_supported "${cflags[@]}"; then
 		begin "Running tests with CFI"
 		CFLAGS="$CFLAGS ${cflags[*]}" AR=llvm-ar do_run_tests --quick
 		end
