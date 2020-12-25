@@ -21,7 +21,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get install -y clang llvm libz-dev valgrind
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang llvm libz-dev valgrind
     - run: scripts/run_tests.sh
 
   other-arch-build-and-test:
@@ -88,7 +90,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get install -y clang-tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-tools
     - name: Run clang static analyzer
       run: make scan-build
 
@@ -98,7 +102,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get install -y shellcheck
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
     - name: Run shellcheck
       run: make shellcheck
 
@@ -108,7 +114,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get install -y gcc-mingw-w64-i686 gcc-mingw-w64-x86-64 libz-mingw-w64-dev
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-mingw-w64-i686 gcc-mingw-w64-x86-64 libz-mingw-w64-dev
     - name: 32-bit build
       run: make CC=i686-w64-mingw32-gcc all test_programs
     - name: 64-bit build
