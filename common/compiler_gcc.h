@@ -175,7 +175,16 @@ typedef unsigned char      __v32qu __attribute__((__vector_size__(32)));
 #  define bswap64	__builtin_bswap64
 #endif
 
-#if defined(__x86_64__) || defined(__i386__) || defined(__ARM_FEATURE_UNALIGNED) || defined(__powerpc64__)
+#if defined(__x86_64__) || defined(__i386__) || \
+    defined(__ARM_FEATURE_UNALIGNED) || defined(__powerpc64__) || \
+    /*
+     * For all compilation purposes, WebAssembly behaves like any other CPU
+     * instruction set. Even though WebAssembly engine might be running on top
+     * of different actual CPU architectures, the WebAssembly spec itself
+     * permits unaligned access and it will be fast on most of those platforms,
+     * and simulated at the engine level on others, so it's worth treating it
+     * as a CPU architecture with fast unaligned access.
+    */ defined(__wasm__)
 #  define UNALIGNED_ACCESS_IS_FAST 1
 #endif
 
