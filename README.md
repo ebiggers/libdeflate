@@ -192,6 +192,7 @@ The libdeflate project itself only provides a C library.  If you need to use
 libdeflate from a programming language other than C or C++, consider using the
 following bindings:
 
+* C#: [LibDeflate.NET](https://github.com/jzebedee/LibDeflate.NET)
 * Go: [go-libdeflate](https://github.com/4kills/go-libdeflate)
 * Java: [libdeflate-java](https://github.com/astei/libdeflate-java)
 * Julia: [LibDeflate.jl](https://github.com/jakobnissen/LibDeflate.jl)
