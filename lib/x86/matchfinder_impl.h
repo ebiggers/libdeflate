@@ -25,6 +25,9 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef LIB_X86_MATCHFINDER_IMPL_H
+#define LIB_X86_MATCHFINDER_IMPL_H
+
 #ifdef __AVX2__
 #  include <immintrin.h>
 static forceinline void
@@ -115,3 +118,5 @@ matchfinder_rebase_sse2(mf_pos_t *data, size_t size)
 }
 #define matchfinder_rebase matchfinder_rebase_sse2
 #endif /* __SSE2__ */
+
+#endif /* LIB_X86_MATCHFINDER_IMPL_H */

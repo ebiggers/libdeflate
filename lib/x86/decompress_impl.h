@@ -1,3 +1,6 @@
+#ifndef LIB_X86_DECOMPRESS_IMPL_H
+#define LIB_X86_DECOMPRESS_IMPL_H
+
 #include "cpu_features.h"
 
 /* Include the BMI2-optimized version? */
@@ -24,3 +27,5 @@ arch_select_decompress_func(void)
 	return NULL;
 }
 #endif /* DISPATCH */
+
+#endif /* LIB_X86_DECOMPRESS_IMPL_H */

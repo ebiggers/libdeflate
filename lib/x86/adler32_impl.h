@@ -25,6 +25,9 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef LIB_X86_ADLER32_IMPL_H
+#define LIB_X86_ADLER32_IMPL_H
+
 #include "cpu_features.h"
 
 /*
@@ -330,3 +333,5 @@ arch_select_adler32_func(void)
 	return NULL;
 }
 #endif /* DISPATCH */
+
+#endif /* LIB_X86_ADLER32_IMPL_H */

@@ -25,6 +25,9 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef LIB_ARM_ADLER32_IMPL_H
+#define LIB_ARM_ADLER32_IMPL_H
+
 #include "cpu_features.h"
 
 /* NEON implementation */
@@ -118,3 +121,5 @@ arch_select_adler32_func(void)
 	return NULL;
 }
 #endif /* DISPATCH */
+
+#endif /* LIB_ARM_ADLER32_IMPL_H */
