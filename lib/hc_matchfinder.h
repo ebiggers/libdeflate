@@ -106,6 +106,9 @@
  * ----------------------------------------------------------------------------
  */
 
+#ifndef LIB_HC_MATCHFINDER_H
+#define LIB_HC_MATCHFINDER_H
+
 #include "matchfinder_common.h"
 
 #define HC_MATCHFINDER_HASH3_ORDER	15
@@ -405,3 +408,5 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 
 	return in_next;
 }
+
+#endif /* LIB_HC_MATCHFINDER_H */

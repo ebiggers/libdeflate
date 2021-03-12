@@ -64,6 +64,8 @@
  * ----------------------------------------------------------------------------
  */
 
+#ifndef LIB_BT_MATCHFINDER_H
+#define LIB_BT_MATCHFINDER_H
 
 #include "matchfinder_common.h"
 
@@ -357,3 +359,5 @@ bt_matchfinder_skip_position(struct bt_matchfinder *mf,
 					NULL,
 					false);
 }
+
+#endif /* LIB_BT_MATCHFINDER_H */
