@@ -186,7 +186,7 @@ xopen_for_read(const tchar *path, bool symlink_ok, struct file_stream *strm)
 	}
 
 #if defined(HAVE_POSIX_FADVISE) && (O_SEQUENTIAL == 0)
-	posix_fadvise(strm->fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+	(void)posix_fadvise(strm->fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 #endif
 
 	return 0;
@@ -347,7 +347,7 @@ map_file_contents(struct file_stream *strm, u64 size)
 	}
 
 #ifdef HAVE_POSIX_MADVISE
-	posix_madvise(strm->mmap_mem, size, POSIX_MADV_SEQUENTIAL);
+	(void)posix_madvise(strm->mmap_mem, size, POSIX_MADV_SEQUENTIAL);
 #endif
 	strm->mmap_token = strm; /* anything that's not NULL */
 
