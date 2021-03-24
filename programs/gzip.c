@@ -43,11 +43,12 @@ struct options {
 	bool decompress;
 	bool force;
 	bool keep;
+	bool test;
 	int compression_level;
 	const tchar *suffix;
 };
 
-static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhknS:V");
+static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhkntS:V");
 
 static void
 show_usage(FILE *fp)
@@ -65,6 +66,7 @@ show_usage(FILE *fp)
 "  -f        overwrite existing output files\n"
 "  -h        print this help\n"
 "  -k        don't delete input files\n"
+"  -t        test file integrity\n"
 "  -S SUF    use suffix SUF instead of .gz\n"
 "  -V        show version and legal information\n",
 	prog_invocation_name);
@@ -258,7 +260,13 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 			goto out;
 		}
 
-		ret = full_write(out, uncompressed_data, actual_out_nbytes);
+		if (out != NULL) {
+			ret = full_write(out, uncompressed_data, actual_out_nbytes);
+		}
+		else { /// NULL means test mode: don't write output
+			ret = uncompressed_size; /// as do_decompress() finished successfully it means file was decompressed fine
+		}
+
 		if (ret != 0)
 			goto out;
 
@@ -416,6 +424,9 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	if (ret != 0)
 		goto out_close_in;
 
+	if (!options->test) { /// indicate empty output file name, mock use of stdout
+		newpath = NULL;
+	}
 	ret = xopen_for_write(newpath, options->force, &out);
 	if (ret != 0)
 		goto out_close_in;
@@ -425,7 +436,10 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	if (ret != 0)
 		goto out_close_out;
 
-	ret = do_decompress(decompressor, &in, &out);
+	if (options->test) /// decompress file, if it succeeds, test went ok, if fails, library generates message anyways
+		ret = do_decompress(decompressor, &in, NULL); /// NULL as output stream address indicates test in `do_decompress()'
+	else
+		ret = do_decompress(decompressor, &in, &out); /// decompress and use normal output
 	if (ret != 0)
 		goto out_close_out;
 
@@ -534,6 +548,7 @@ tmain(int argc, tchar *argv[])
 	options.decompress = is_gunzip();
 	options.force = false;
 	options.keep = false;
+	options.test = false; /// don't test by default
 	options.compression_level = 6;
 	options.suffix = T(".gz");
 
@@ -576,6 +591,11 @@ tmain(int argc, tchar *argv[])
 			 *  option as a no-op.
 			 */
 			break;
+		case 't': /// test
+			options.test = true;
+			options.decompress = true;
+			options.to_stdout = true;
+			break;
 		case 'S':
 			options.suffix = toptarg;
 			if (options.suffix[0] == T('\0')) {
@@ -605,7 +625,7 @@ tmain(int argc, tchar *argv[])
 	}
 
 	ret = 0;
-	if (options.decompress) {
+	if (options.decompress || options.test) {
 		struct libdeflate_decompressor *d;
 
 		d = alloc_decompressor();
