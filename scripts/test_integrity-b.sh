@@ -3,6 +3,8 @@
 # test integrity of few basic files
 # pass gzip program you want to test as first argument ("$1")
 #
+# this script if POSIX compliant, without arrays, echo flags, standalone ((..))
+# and whatever build test complained about
 
 # check if GZIP is exported
 #if [ -z $GZIP ]; then
@@ -57,15 +59,12 @@ k=0
 errors_good=0
 
 for N in ${TEST_FILES_GOOD_NAMES}; do
-    #echo -n ${N}": "
-    #echo "N: i=$i, k=$k"
     for M in ${TEST_FILES_GOOD}; do
         #echo "M: i=$i, k=$k"
         if [ $i -eq $k ]; then
-            echo -n "$N"": "
+            printf "%s: " "$N"
             echo $M | base64 -d | $GZIP -t
             exit_status=$?
-
             if [ $exit_status -gt 0 ]; then
                 echo "error!"
                 errors_good=$((errors_good+1))
@@ -85,15 +84,12 @@ k=0
 errors_bad=0
 
 for N in ${TEST_FILES_BAD_NAMES}; do
-    #echo -n ${N}": "
-    #echo "N: i=$i, k=$k"
     for M in ${TEST_FILES_BAD}; do
         #echo "M: i=$i, k=$k"
         if [ $i -eq $k ]; then
-            echo -n "$N"": "
+            printf "%s: " "$N"
             echo $M | base64 -d | $GZIP -t
             exit_status=$?
-
             if [ $exit_status -gt 0 ]; then
                 echo "error!"
                 errors_bad=$((errors_good+1))
