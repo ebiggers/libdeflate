@@ -63,7 +63,7 @@ for N in ${TEST_FILES_GOOD_NAMES}; do
         #echo "M: i=$i, k=$k"
         if [ $i -eq $k ]; then
             printf "%s: " "$N"
-            echo $M | base64 -d | $GZIP -t
+            echo "$M" | base64 -d | $GZIP -t
             exit_status=$?
             if [ $exit_status -gt 0 ]; then
                 echo "error!"
@@ -88,7 +88,7 @@ for N in ${TEST_FILES_BAD_NAMES}; do
         #echo "M: i=$i, k=$k"
         if [ $i -eq $k ]; then
             printf "%s: " "$N"
-            echo $M | base64 -d | $GZIP -t
+            echo "$M" | base64 -d | $GZIP -t
             exit_status=$?
             if [ $exit_status -gt 0 ]; then
                 echo "error!"
@@ -105,7 +105,7 @@ done # N
 
 
 
-echo -n "Test of file/s integrity: "
+printf "Test of file/s integrity: "
 
 if [ $errors_good -eq  $TEST_COUNT_GOOD ] || [ $errors_bad -eq  $TEST_COUNT_BAD ]; then
     echo "passed."
