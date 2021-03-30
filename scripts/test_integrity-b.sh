@@ -24,64 +24,89 @@ fi
 echo ""
 echo "testing files integrity with '$GZIP'"
 
-TEST_FILES_GOOD_NAMES=(
-"ala1-1.gz"
-"fox2-1.gz"
-)
-TEST_FILES_GOOD=(
-"H4sIAAAAAAAAA3PMSVTITVTIzi9JVABTIJ5jzpGZelwAX+86ehsAAAA="
-"H4sIAAAAAAAAAwvJSFUoLM1MzlZIKsovz1NIy69QyCrNLShWyC9LLVIoAUrnJFZVKqTkp+txAQBqzFDrLQAAAA=="
-)
+export TEST_FILES_GOOD_NAMES="\
+ala1-1.gz \
+fox2-1.gz"
+
+export TEST_FILES_GOOD="\
+H4sIAAAAAAAAA3PMSVTITVTIzi9JVABTIJ5jzpGZelwAX+86ehsAAAA= \
+H4sIAAAAAAAAAwvJSFUoLM1MzlZIKsovz1NIy69QyCrNLShWyC9LLVIoAUrnJFZVKqTkp+txAQBqzFDrLQAAAA=="
+
 TEST_COUNT_GOOD=0
 
-TEST_FILES_BAD_NAMES=(
-"ala1-bad-crc.gz"
-"ala1-bad-flip.gz"
-"ala1-bad-len.gz"
-"fox2-bad-flip.gz"
-"fox2-bad-truncated.gz"
-)
-TEST_FILES_BAD=(
-"H4sIAO1YYmAAA3PMSVTITVTIzi9JVABTIJ5jzpGZelwAX+46ehsAAAA="
-"H4sIAO1YYmAAA3PMSVTITVTIzi85VABTIJ5jzpGZelwAX+86ehsAAAA="
-"H4sIAAAAAAAAA3PMSVTITVTIzi9JVABTIJ5jzpGZelwAX+86ehsBAAA="
-"H4sIAAAAAAAAAwvJSFUoLM1MzlZIKsovz1NIy69QyCrNLShWyC9LLVIogUrnJFZVKqTkp+txAQBqzFDrLQAAAA=="
-"H4sIAAAAAAAAAwvJSFUoLM1MzlZIKsovz1NIy69QyCrNLShWyC9L"
-)
+export TEST_FILES_BAD_NAMES="\
+ala1-bad-crc.gz \
+ala1-bad-flip.gz \
+ala1-bad-len.gz \
+fox2-bad-flip.gz \
+fox2-bad-truncated.gz"
+
+export TEST_FILES_BAD="\
+H4sIAO1YYmAAA3PMSVTITVTIzi9JVABTIJ5jzpGZelwAX+46ehsAAAA= \
+H4sIAO1YYmAAA3PMSVTITVTIzi85VABTIJ5jzpGZelwAX+86ehsAAAA= \
+H4sIAAAAAAAAA3PMSVTITVTIzi9JVABTIJ5jzpGZelwAX+86ehsBAAA= \
+H4sIAAAAAAAAAwvJSFUoLM1MzlZIKsovz1NIy69QyCrNLShWyC9LLVIogUrnJFZVKqTkp+txAQBqzFDrLQAAAA== \
+H4sIAAAAAAAAAwvJSFUoLM1MzlZIKsovz1NIy69QyCrNLShWyC9L"
+
 TEST_COUNT_BAD=5
 
 
-test_files_b64()
-{
-    local _1=$1[@]
-    local NAMES=(${!_1})
-    local _2=$2[@]
-    local FILES=(${!_2})
+## good files
+i=0
+k=0
+errors_good=0
 
-    i=0
-    errors=0
-    for f in ${NAMES[@]}; do
-        echo -n ${NAMES[$i]}": "
-        echo ${FILES[$i]} | base64 -d | $GZIP -t
-        exit_status=$?
+for N in ${TEST_FILES_GOOD_NAMES}; do
+    #echo -n ${N}": "
+    #echo "N: i=$i, k=$k"
+    for M in ${TEST_FILES_GOOD}; do
+        #echo "M: i=$i, k=$k"
+        if [ $i -eq $k ]; then
+            echo -n "$N"": "
+            echo $M | base64 -d | $GZIP -t
+            exit_status=$?
 
-        if [ $exit_status -gt 0 ]; then
-            echo "error!"
-            ((errors=errors+1))
-        else
-            echo "ok."
-        fi
-        ((i=i+1))
-    done
+            if [ $exit_status -gt 0 ]; then
+                echo "error!"
+                errors_good=$((errors_good+1))
+            else
+                echo "ok."
+            fi
+        fi # i==k
+        k=$((k+1))
+    done # M
+    i=$((i+1))
+    k=0
+done # N
 
-    return $errors
-}
+## corruped files
+i=0
+k=0
+errors_bad=0
 
-test_files_b64 TEST_FILES_GOOD_NAMES TEST_FILES_GOOD
-errors_good=$?
+for N in ${TEST_FILES_BAD_NAMES}; do
+    #echo -n ${N}": "
+    #echo "N: i=$i, k=$k"
+    for M in ${TEST_FILES_BAD}; do
+        #echo "M: i=$i, k=$k"
+        if [ $i -eq $k ]; then
+            echo -n "$N"": "
+            echo $M | base64 -d | $GZIP -t
+            exit_status=$?
 
-test_files_b64 TEST_FILES_BAD_NAMES TEST_FILES_BAD
-errors_bad=$?
+            if [ $exit_status -gt 0 ]; then
+                echo "error!"
+                errors_bad=$((errors_good+1))
+            else
+                echo "ok."
+            fi
+        fi # i==k
+        k=$((k+1))
+    done # M
+    i=$((i+1))
+    k=0
+done # N
+
 
 
 echo -n "Test of file/s integrity: "
