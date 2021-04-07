@@ -43,12 +43,11 @@ struct options {
 	bool decompress;
 	bool force;
 	bool keep;
-	bool test;
 	int compression_level;
 	const tchar *suffix;
 };
 
-static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhknS:tV");
+static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhknS:V");
 
 static void
 show_usage(FILE *fp)
@@ -67,7 +66,6 @@ show_usage(FILE *fp)
 "  -h        print this help\n"
 "  -k        don't delete input files\n"
 "  -S SUF    use suffix SUF instead of .gz\n"
-"  -t        test file integrity\n"
 "  -V        show version and legal information\n",
 	prog_invocation_name);
 }
@@ -185,8 +183,7 @@ load_u32_gzip(const u8 *p)
 
 static int
 do_decompress(struct libdeflate_decompressor *decompressor,
-	      struct file_stream *in, struct file_stream *out,
-	      const struct options *options)
+	      struct file_stream *in, struct file_stream *out)
 {
 	const u8 *compressed_data = in->mmap_mem;
 	size_t compressed_size = in->mmap_size;
@@ -261,11 +258,9 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 			goto out;
 		}
 
-		if (!options->test) {
-			ret = full_write(out, uncompressed_data, actual_out_nbytes);
-			if (ret != 0)
-				goto out;
-		}
+		ret = full_write(out, uncompressed_data, actual_out_nbytes);
+		if (ret != 0)
+			goto out;
 
 		compressed_data += actual_in_nbytes;
 		compressed_size -= actual_in_nbytes;
@@ -430,7 +425,7 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	if (ret != 0)
 		goto out_close_out;
 
-	ret = do_decompress(decompressor, &in, &out, options);
+	ret = do_decompress(decompressor, &in, &out);
 	if (ret != 0)
 		goto out_close_out;
 
@@ -539,7 +534,6 @@ tmain(int argc, tchar *argv[])
 	options.decompress = is_gunzip();
 	options.force = false;
 	options.keep = false;
-	options.test = false;
 	options.compression_level = 6;
 	options.suffix = T(".gz");
 
@@ -588,17 +582,6 @@ tmain(int argc, tchar *argv[])
 				msg("invalid suffix");
 				return 1;
 			}
-			break;
-		case 't':
-			options.test = true;
-			options.decompress = true;
-			options.to_stdout = true;
-			/*
-			 * -t behaves just like the more commonly used -c
-			 * option, except that -t doesn't actually write
-			 * anything.  For ease of implementation, just pretend
-			 * that -c was specified too.
-			 */
 			break;
 		case 'V':
 			show_version();
