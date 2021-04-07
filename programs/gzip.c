@@ -265,7 +265,7 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 			ret = full_write(out, uncompressed_data, actual_out_nbytes);
 			if (ret != 0)
 				goto out;
-		} /* "else" (test): as do_decompress() finished successfully it means file was decompressed properly */
+		}
 
 		compressed_data += actual_in_nbytes;
 		compressed_size -= actual_in_nbytes;
@@ -594,8 +594,10 @@ tmain(int argc, tchar *argv[])
 			options.decompress = true;
 			options.to_stdout = true;
 			/*
-			 *  test utilises to_stdout (-c) option
-			 *  except that it doesn't write anything out
+			 * -t behaves just like the more commonly used -c
+			 * option, except that -t doesn't actually write
+			 * anything.  For ease of implementation, just pretend
+			 * that -c was specified too.
 			 */
 			break;
 		case 'V':
@@ -620,7 +622,7 @@ tmain(int argc, tchar *argv[])
 	}
 
 	ret = 0;
-	if (options.decompress) { /* also test */
+	if (options.decompress) {
 		struct libdeflate_decompressor *d;
 
 		d = alloc_decompressor();
