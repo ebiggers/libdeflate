@@ -463,6 +463,26 @@ for prog in gzip gunzip; do
 done
 
 
+begin_test '-t (test) option works'
+good_files=(
+'H4sIAAAAAAAAA3PMSVTITVTIzi9JVABTIJ5jzpGZelwAX+86ehsAAAA='
+'H4sIAAAAAAAAAwvJSFUoLM1MzlZIKsovz1NIy69QyCrNLShWyC9LLVIoAUrnJFZVKqTkp+txAQBqzFDrLQAAAA==')
+bad_files=(
+'H4sIAO1YYmAAA3PMSVTITVTIzi9JVABTIJ5jzpGZelwAX+46ehsAAAA='
+'H4sIAO1YYmAAA3PMSVTITVTIzi85VABTIJ5jzpGZelwAX+86ehsAAAA='
+'H4sIAAAAAAAAA3PMSVTITVTIzi9JVABTIJ5jzpGZelwAX+86ehsBAAA='
+'H4sIAAAAAAAAAwvJSFUoLM1MzlZIKsovz1NIy69QyCrNLShWyC9LLVIogUrnJFZVKqTkp+txAQBqzFDrLQAAAA=='
+'H4sIAAAAAAAAAwvJSFUoLM1MzlZIKsovz1NIy69QyCrNLShWyC9L')
+for contents in "${good_files[@]}"; do
+	echo "$contents" | base64 -d | gzip -t
+done
+for contents in "${bad_files[@]}"; do
+	echo "$contents" | base64 -d > file
+	assert_error '\<invalid compressed data|file corrupt|unexpected end of file|Out of memory\>' \
+		gzip -t file
+done
+
+
 begin_test 'Version information'
 gzip -V | grep -q Copyright
 gunzip -V | grep -q Copyright
