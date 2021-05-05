@@ -25,7 +25,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <wmmintrin.h>
+#include <immintrin.h>
 
 /*
  * CRC-32 folding with PCLMULQDQ.
