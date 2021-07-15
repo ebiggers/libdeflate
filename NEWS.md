@@ -1,5 +1,19 @@
 # libdeflate release notes
 
+## Version 1.8
+
+* Added `-t` (test) option to `libdeflate-gunzip`.
+
+* Unaligned access optimizations are now enabled on WebAssembly builds.
+
+* Fixed a build error when building with the Intel C Compiler (ICC).
+
+* Fixed a build error when building with uClibc.
+
+* libdeflate's CI system has switched from Travis CI to GitHub Actions.
+
+* Made some improvements to test scripts.
+
 ## Version 1.7
 
 * Added support for compression level 0, "no compression".
