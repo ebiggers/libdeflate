@@ -22,6 +22,8 @@ use this library are also provided:
   yet support very large files
 * benchmark, a program for benchmarking in-memory compression and decompression
 
+For the release notes, see the [NEWS file](NEWS.md).
+
 ## Table of Contents
 
 - [Building](#building)
