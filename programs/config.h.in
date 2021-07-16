@@ -1,0 +1,28 @@
+/* THIS FILE WAS AUTOMATICALLY GENERATED.  DO NOT EDIT. */
+#ifndef CONFIG_H
+#define CONFIG_H
+
+/* Is the clock_gettime() function available? */
+#cmakedefine HAVE_CLOCK_GETTIME
+
+/* Is the futimens() function available? */
+#cmakedefine HAVE_FUTIMENS
+
+/* Is the futimes() function available? */
+#cmakedefine HAVE_FUTIMES
+
+/* Is the posix_fadvise() function available? */
+#cmakedefine HAVE_POSIX_FADVISE
+
+/* Is the posix_madvise() function available? */
+#cmakedefine HAVE_POSIX_MADVISE
+
+/* Does stat() provide nanosecond-precision timestamps? */
+#cmakedefine HAVE_STAT_NANOSECOND_PRECISION
+
+/* Nonstandard field names used by macOS */
+#cmakedefine st_atim st_atimensec
+#cmakedefine st_mtim st_mtimensec
+#cmakedefine st_ctim st_ctimensec
+
+#endif /* CONFIG_H */
