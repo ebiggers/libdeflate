@@ -212,6 +212,7 @@ $(STATIC_LIB):$(STATIC_LIB_OBJ)
 DEFAULT_TARGETS += $(STATIC_LIB)
 
 # Create shared library
+ifndef DONTBUILD_SHARED_LIBS
 $(SHARED_LIB):$(SHARED_LIB_OBJ)
 	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(LIB_CFLAGS) \
 		$(SHARED_LIB_LDFLAGS) -shared $+
@@ -223,6 +224,7 @@ ifdef SHARED_LIB_SYMLINK
 $(SHARED_LIB_SYMLINK):$(SHARED_LIB)
 	$(QUIET_LN) ln -sf $+ $@
 DEFAULT_TARGETS += $(SHARED_LIB_SYMLINK)
+endif
 endif
 
 ##############################################################################
@@ -271,10 +273,14 @@ $(ALL_PROG_OBJ): %.o: %.c $(ALL_PROG_COMMON_HEADERS) $(COMMON_HEADERS) \
 # Note: the test programs are not compiled by default.  One reason is that the
 # test programs must be linked with zlib for doing comparisons.
 
+ifdef DONTBUILD_SHARED_LIBS
+LIB := $(STATIC_LIB)
+else
 ifdef USE_SHARED_LIB
 LIB := $(SHARED_LIB)
 else
 LIB := $(STATIC_LIB)
+endif
 endif
 
 $(NONTEST_PROGRAMS): %$(PROG_SUFFIX): programs/%.o $(PROG_COMMON_OBJ) $(LIB)
@@ -305,25 +311,31 @@ all:$(DEFAULT_TARGETS)
 install:all
 	install -d $(DESTDIR)$(LIBDIR) $(DESTDIR)$(INCDIR) $(DESTDIR)$(BINDIR)
 	install -m644 $(STATIC_LIB) $(DESTDIR)$(LIBDIR)
-	install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR)
+	if [ -z $(DONTBUILD_SHARED_LIBS) ]; then				\
+		install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR);      \
+	fi
 	install -m644 libdeflate.h $(DESTDIR)$(INCDIR)
 	install -m755 gzip$(PROG_SUFFIX) \
 		$(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)
 	ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)		\
 	      $(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX)
-	if [ -n "$(SHARED_LIB_SYMLINK)" ]; then				\
-		ln -sf $(SHARED_LIB)					\
-		       $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK);	\
+	if [ -z $(DONTBUILD_SHARED_LIBS) ]; then				\
+		if [ -n "$(SHARED_LIB_SYMLINK)" ]; then				\
+			ln -sf $(SHARED_LIB)					\
+				   $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK);	\
+		fi \
 	fi
 
 uninstall:
 	rm -f $(DESTDIR)$(LIBDIR)/$(STATIC_LIB)				\
-	      $(DESTDIR)$(LIBDIR)/$(SHARED_LIB)				\
 	      $(DESTDIR)$(INCDIR)/libdeflate.h				\
 	      $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)		\
 	      $(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX)
-	if [ -n "$(SHARED_LIB_SYMLINK)" ]; then				\
-		rm -f $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK);	\
+	if [ -z $(DONTBUILD_SHARED_LIBS) ]; then				\
+	      $(DESTDIR)$(LIBDIR)/$(SHARED_LIB);				\
+		if [ -n "$(SHARED_LIB_SYMLINK)" ]; then				\
+			rm -f $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK);	\
+		fi
 	fi
 
 test_programs:$(TEST_PROGRAMS)
