@@ -6,6 +6,9 @@
 # Define USE_SHARED_LIB to link the binaries to the shared library version of
 # libdeflate rather than to the static library version.
 #
+# Define DISABLE_SHARED to disable building and installing of shared library.
+# Defining this variable undefines USE_SHARED_LIB.
+#
 # Define DECOMPRESSION_ONLY to omit all compression code, building a
 # decompression-only library.  If doing this, you must also build a specific
 # library target such as 'libdeflate.a', as the programs will no longer compile.
@@ -142,6 +145,7 @@ endif
 .build-config: FORCE
 	@flags=$$(							\
 		echo 'USE_SHARED_LIB=$(USE_SHARED_LIB)';		\
+		echo 'DISABLE_SHARED=$(DISABLE_SHARED)';		\
 		echo 'DECOMPRESSION_ONLY=$(DECOMPRESSION_ONLY)';	\
 		echo 'DISABLE_GZIP=$(DISABLE_GZIP)';			\
 		echo 'DISABLE_ZLIB=$(DISABLE_ZLIB)';			\
@@ -216,7 +220,11 @@ $(SHARED_LIB):$(SHARED_LIB_OBJ)
 	$(QUIET_CCLD) $(CC) -o $@ $(LDFLAGS) $(LIB_CFLAGS) \
 		$(SHARED_LIB_LDFLAGS) -shared $+
 
+ifdef DISABLE_SHARED
+undefine SHARED_LIB_SYMLINK
+else
 DEFAULT_TARGETS += $(SHARED_LIB)
+endif
 
 ifdef SHARED_LIB_SYMLINK
 # Create the symlink libdeflate.so => libdeflate.so.$SOVERSION
@@ -305,7 +313,9 @@ all:$(DEFAULT_TARGETS)
 install:all
 	install -d $(DESTDIR)$(LIBDIR) $(DESTDIR)$(INCDIR) $(DESTDIR)$(BINDIR)
 	install -m644 $(STATIC_LIB) $(DESTDIR)$(LIBDIR)
-	install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR)
+	if [ -z "$(DISABLE_SHARED)" ]; then				\
+		install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR);	\
+	fi
 	install -m644 libdeflate.h $(DESTDIR)$(INCDIR)
 	install -m755 gzip$(PROG_SUFFIX) \
 		$(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)
