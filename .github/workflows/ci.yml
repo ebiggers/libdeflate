@@ -8,13 +8,8 @@ jobs:
     name: Build and test (x86_64, ${{ matrix.os }}, ${{ matrix.compiler }})
     strategy:
       matrix:
-        os: [ubuntu-20.04, ubuntu-18.04, ubuntu-16.04]
+        os: [ubuntu-20.04, ubuntu-18.04]
         compiler: [gcc, clang]
-        exclude:
-          # clang 3.8.0-2ubuntu4 crashes with:
-          # "fatal error: error in backend: Cannot select: 0x21025a0: v64i8 = X86ISD::VBROADCAST 0x2101fb0"
-          - os: ubuntu-16.04
-            compiler: clang
     runs-on: ${{ matrix.os }}
     env:
       CC: ${{ matrix.compiler }}
