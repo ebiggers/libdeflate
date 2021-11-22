@@ -1,0 +1,10 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+includedir=@INCDIR@
+libdir=@LIBDIR@
+
+Name: libdeflate
+Description: Fast implementation of DEFLATE, zlib, and gzip
+Version: @VERSION@
+Libs: -L${libdir} -ldeflate
+Cflags: -I${includedir}
