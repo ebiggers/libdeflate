@@ -329,6 +329,7 @@ install:all $(PKGCONFBASE)
 	    -e "s|@INCDIR@|$(INCDIR)|"					\
 	    -e "s|@VERSION@|$(VERSION)|"				\
 	    $(PKGCONFBASE) > $(DESTDIR)$(LIBDIR)/pkgconfig/libdeflate.pc
+	chmod 644 $(DESTDIR)$(LIBDIR)/pkgconfig/libdeflate.pc
 	install -m644 libdeflate.h $(DESTDIR)$(INCDIR)
 	install -m755 gzip$(PROG_SUFFIX) \
 		$(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)
