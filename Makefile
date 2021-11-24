@@ -40,7 +40,8 @@
 #
 ##############################################################################
 
-VERSION=$(shell sed -n 's/\#define LIBDEFLATE_VERSION_STRING.*"\(.*\)"/\1/p' libdeflate.h)
+VERSION = $(shell sed -n 's/\#define LIBDEFLATE_VERSION_STRING.*"\(.*\)"/\1/p' \
+	    libdeflate.h)
 
 #### Common compiler flags.  You can add additional flags by defining CFLAGS
 #### in the environment or on the 'make' command line.
@@ -310,24 +311,24 @@ DEFAULT_TARGETS += gunzip$(PROG_SUFFIX)
 
 all:$(DEFAULT_TARGETS)
 
-# we don't generate the pkg-config file until install time, as needed
+# We don't generate the pkg-config file until install time, as needed
 # definitions might not exist until then.
-PKGCONFBASE:=libdeflate.pc.in
+PKGCONFBASE := libdeflate.pc.in
 
 # Install the files.  Note: not all versions of the 'install' program have the
 # '-D' and '-t' options, so don't use them; use portable commands only.
 install:all $(PKGCONFBASE)
-	install -d $(DESTDIR)$(LIBDIR)/pkgconfig $(DESTDIR)$(INCDIR) $(DESTDIR)$(BINDIR)
+	install -d $(DESTDIR)$(LIBDIR)/pkgconfig $(DESTDIR)$(INCDIR)	\
+		$(DESTDIR)$(BINDIR)
 	install -m644 $(STATIC_LIB) $(DESTDIR)$(LIBDIR)
 	if [ -z "$(DISABLE_SHARED)" ]; then				\
 		install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR);	\
 	fi
-	sed -e "s|@PREFIX@|$(PREFIX)|" \
-		  -e "s|@LIBDIR@|$(LIBDIR)|" \
-		  -e "s|@INCDIR@|$(INCDIR)|" \
-			-e "s|@VERSION@|$(VERSION)|" \
-			$(PKGCONFBASE) > \
-			$(DESTDIR)$(LIBDIR)/pkgconfig/$(basename $(PKGCONFBASE))
+	sed -e "s|@PREFIX@|$(PREFIX)|"					\
+	    -e "s|@LIBDIR@|$(LIBDIR)|"					\
+	    -e "s|@INCDIR@|$(INCDIR)|"					\
+	    -e "s|@VERSION@|$(VERSION)|"				\
+	    $(PKGCONFBASE) > $(DESTDIR)$(LIBDIR)/pkgconfig/libdeflate.pc
 	install -m644 libdeflate.h $(DESTDIR)$(INCDIR)
 	install -m755 gzip$(PROG_SUFFIX) \
 		$(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)
@@ -341,10 +342,10 @@ install:all $(PKGCONFBASE)
 uninstall:
 	rm -f $(DESTDIR)$(LIBDIR)/$(STATIC_LIB)				\
 	      $(DESTDIR)$(LIBDIR)/$(SHARED_LIB)				\
+	      $(DESTDIR)$(LIBDIR)/pkgconfig/libdeflate.pc		\
 	      $(DESTDIR)$(INCDIR)/libdeflate.h				\
 	      $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)		\
-	      $(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX) \
-				$(DESTDIR)$(LIBDIR)/pkgconfig/libdeflate.pc
+	      $(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX)
 	if [ -n "$(SHARED_LIB_SYMLINK)" ]; then				\
 		rm -f $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK);	\
 	fi
