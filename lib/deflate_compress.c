@@ -2085,7 +2085,7 @@ quick_match_score(unsigned len, unsigned offset, unsigned lookahead)
 	if (lookahead == 1)
 		score -= 2;
 	else if (lookahead >= 2)
-		score -= 7;
+		score -= 6;
 	return score;
 }
 
@@ -2868,19 +2868,21 @@ libdeflate_alloc_compressor(int compression_level)
 		c->max_search_depth = 100;
 		c->nice_match_length = 130;
 		break;
-#if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 8:
-		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 12;
-		c->nice_match_length = 20;
-		c->p.n.num_optim_passes = 1;
+		c->impl = deflate_compress_lazy2;
+		c->max_search_depth = 256;
+		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		break;
+#if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 9:
-		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 16;
-		c->nice_match_length = 26;
-		c->p.n.num_optim_passes = 2;
+#else
+	default:
+#endif
+		c->impl = deflate_compress_lazy2;
+		c->max_search_depth = 512;
+		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		break;
+#if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 10:
 		c->impl = deflate_compress_near_optimal;
 		c->max_search_depth = 30;
@@ -2898,17 +2900,6 @@ libdeflate_alloc_compressor(int compression_level)
 		c->max_search_depth = 100;
 		c->nice_match_length = 133;
 		c->p.n.num_optim_passes = 4;
-		break;
-#else
-	case 8:
-		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 150;
-		c->nice_match_length = 200;
-		break;
-	default:
-		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 200;
-		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		break;
 #endif
 	}
