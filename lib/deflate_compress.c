@@ -2084,18 +2084,16 @@ quick_match_score(unsigned len, unsigned offset, unsigned lookahead)
 
 	if (lookahead == 1)
 		score -= 2;
+	else if (lookahead >= 2)
+		score -= 7;
 	return score;
 }
 
-/*
- * This is the "lazy" DEFLATE compressor.  Before choosing a match, it checks to
- * see if there's a better match at the next position.  If yes, it outputs a
- * literal and continues to the next position.  If no, it outputs the match.
- */
-static size_t
-deflate_compress_lazy(struct libdeflate_compressor * restrict c,
-		      const u8 * restrict in, size_t in_nbytes,
-		      u8 * restrict out, size_t out_nbytes_avail)
+static forceinline size_t
+deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
+			      const u8 * restrict in, size_t in_nbytes,
+			      u8 * restrict out, size_t out_nbytes_avail,
+			      bool lazy2)
 {
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
@@ -2210,19 +2208,69 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 				cur_offset = next_offset;
 				goto have_cur_match;
 			}
-			/*
-			 * No better match at the next position.  Output the
-			 * current match.
-			 */
-			deflate_choose_match(c, cur_len, cur_offset,
-					     &litrunlen, &next_seq);
-			in_next = hc_matchfinder_skip_positions(
+
+			if (lazy2) {
+				/* In lazy2 mode, look ahead another position */
+				if (unlikely(in_end - in_next <
+					     DEFLATE_MAX_MATCH_LEN)) {
+					max_len = in_end - in_next;
+					nice_len = MIN(nice_len, max_len);
+				}
+				next_len = hc_matchfinder_longest_match(
 						&c->p.g.hc_mf,
 						&in_cur_base,
-						in_next,
-						in_end,
-						cur_len - 2,
-						next_hashes);
+						in_next++,
+						DEFLATE_MIN_MATCH_LEN - 1,
+						max_len,
+						nice_len,
+						c->max_search_depth >> 2,
+						next_hashes,
+						&next_offset);
+				if (next_len >= DEFLATE_MIN_MATCH_LEN &&
+				    quick_match_score(next_len, next_offset,
+						      2) >
+				    quick_match_score(cur_len, cur_offset, 0)) {
+					/*
+					 * There's a much better match two
+					 * positions ahead, so use two literals.
+					 */
+					deflate_choose_literal(
+						c, *(in_next - 3), &litrunlen);
+					deflate_choose_literal(
+						c, *(in_next - 2), &litrunlen);
+					cur_len = next_len;
+					cur_offset = next_offset;
+					goto have_cur_match;
+				}
+				/*
+				 * No better match at either of the next 2
+				 * positions.  Output the current match.
+				 */
+				deflate_choose_match(c, cur_len, cur_offset,
+						     &litrunlen, &next_seq);
+				if (cur_len > 3)
+					in_next = hc_matchfinder_skip_positions(
+							&c->p.g.hc_mf,
+							&in_cur_base,
+							in_next,
+							in_end,
+							cur_len - 3,
+							next_hashes);
+			} else { /* !lazy2 */
+				/*
+				 * No better match at the next position.  Output
+				 * the current match.
+				 */
+				deflate_choose_match(c, cur_len, cur_offset,
+						     &litrunlen, &next_seq);
+				in_next = hc_matchfinder_skip_positions(
+							&c->p.g.hc_mf,
+							&in_cur_base,
+							in_next,
+							in_end,
+							cur_len - 2,
+							next_hashes);
+			}
 			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
 			 !should_end_block(&c->split_stats, in_block_begin,
@@ -2235,6 +2283,34 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 	} while (in_next != in_end);
 
 	return deflate_flush_output(&os);
+}
+
+/*
+ * This is the "lazy" DEFLATE compressor.  Before choosing a match, it checks to
+ * see if there's a better match at the next position.  If yes, it outputs a
+ * literal and continues to the next position.  If no, it outputs the match.
+ */
+static size_t
+deflate_compress_lazy(struct libdeflate_compressor * restrict c,
+		      const u8 * restrict in, size_t in_nbytes,
+		      u8 * restrict out, size_t out_nbytes_avail)
+{
+	return deflate_compress_lazy_generic(c, in, in_nbytes, out,
+					     out_nbytes_avail, false);
+}
+
+/*
+ * The lazy2 compressor.  This is similar to the regular lazy one, but it looks
+ * for a better match at the next 2 positions rather than the next 1.  This
+ * makes it take slightly more time, but compress some inputs slightly more.
+ */
+static size_t
+deflate_compress_lazy2(struct libdeflate_compressor * restrict c,
+		       const u8 * restrict in, size_t in_nbytes,
+		       u8 * restrict out, size_t out_nbytes_avail)
+{
+	return deflate_compress_lazy_generic(c, in, in_nbytes, out,
+					     out_nbytes_avail, true);
 }
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
