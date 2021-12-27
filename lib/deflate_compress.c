@@ -2885,20 +2885,20 @@ libdeflate_alloc_compressor(int compression_level)
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 10:
 		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 30;
-		c->nice_match_length = 50;
+		c->max_search_depth = 33;
+		c->nice_match_length = 150;
 		c->p.n.num_optim_passes = 2;
 		break;
 	case 11:
 		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 60;
-		c->nice_match_length = 80;
+		c->max_search_depth = 66;
+		c->nice_match_length = 200;
 		c->p.n.num_optim_passes = 3;
 		break;
 	default:
 		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 100;
-		c->nice_match_length = 133;
+		c->max_search_depth = 150;
+		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		c->p.n.num_optim_passes = 4;
 		break;
 #endif
