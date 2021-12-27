@@ -2073,8 +2073,23 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 }
 
 /*
+ * Quickly estimate how "good" a match is.  Naively, only length would be
+ * considered.  We take offset into account too, as a slightly longer match
+ * probably isn't better if it occurs at a much larger offset.
+ */
+static forceinline int
+quick_match_score(unsigned len, unsigned offset, unsigned lookahead)
+{
+	int score = (int)(len * 4) - (int)bsr32(offset);
+
+	if (lookahead == 1)
+		score -= 2;
+	return score;
+}
+
+/*
  * This is the "lazy" DEFLATE compressor.  Before choosing a match, it checks to
- * see if there's a longer match at the next position.  If yes, it outputs a
+ * see if there's a better match at the next position.  If yes, it outputs a
  * literal and continues to the next position.  If no, it outputs the match.
  */
 static size_t
@@ -2154,7 +2169,7 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 			}
 
 			/*
-			 * Try to find a longer match at the next position.
+			 * Try to find a better match at the next position.
 			 *
 			 * Note: since we already have a match at the *current*
 			 * position, we use only half the 'max_search_depth'
@@ -2165,7 +2180,7 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 			 * Note: it's possible to structure the code such that
 			 * there's only one call to longest_match(), which
 			 * handles both the "find the initial match" and "try to
-			 * find a longer match" cases.  However, it is faster to
+			 * find a better match" cases.  However, it is faster to
 			 * have two call sites, with longest_match() inlined at
 			 * each.
 			 */
@@ -2175,15 +2190,17 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 						&c->p.g.hc_mf,
 						&in_cur_base,
 						in_next++,
-						cur_len,
+						DEFLATE_MIN_MATCH_LEN - 1,
 						max_len,
 						nice_len,
 						c->max_search_depth >> 1,
 						next_hashes,
 						&next_offset);
-			if (next_len > cur_len) {
+			if (next_len >= DEFLATE_MIN_MATCH_LEN &&
+			    quick_match_score(next_len, next_offset, 1) >
+			    quick_match_score(cur_len, cur_offset, 0)) {
 				/*
-				 * Found a longer match at the next position.
+				 * Found a better match at the next position.
 				 * Output a literal.  Then the next match
 				 * becomes the current match.
 				 */
@@ -2194,7 +2211,7 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 				goto have_cur_match;
 			}
 			/*
-			 * No longer match at the next position.  Output the
+			 * No better match at the next position.  Output the
 			 * current match.
 			 */
 			deflate_choose_match(c, cur_len, cur_offset,
