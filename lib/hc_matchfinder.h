@@ -186,7 +186,7 @@ hc_matchfinder_slide_window(struct hc_matchfinder *mf)
  */
 static forceinline u32
 hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
-			     const u8 ** const restrict in_base_p,
+			     const u8 * const restrict in_base,
 			     const u8 * const restrict in_next,
 			     u32 best_len,
 			     const u32 max_len,
@@ -203,21 +203,10 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 	u32 seq4;
 	const u8 *matchptr;
 	u32 len;
-	u32 cur_pos = in_next - *in_base_p;
-	const u8 *in_base;
+	u32 cur_pos = in_next - in_base;
 	mf_pos_t cutoff;
 
-	if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
-		hc_matchfinder_slide_window(mf);
-		*in_base_p += MATCHFINDER_WINDOW_SIZE;
-		cur_pos = 0;
-	}
-
-	in_base = *in_base_p;
 	cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
-
-	if (unlikely(max_len < 5)) /* can we read 4 bytes from 'in_next + 1'? */
-		goto out;
 
 	/* Get the precomputed hash codes.  */
 	hash3 = next_hashes[0];
@@ -366,9 +355,8 @@ out:
  */
 static forceinline const u8 *
 hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
-			      const u8 ** const restrict in_base_p,
+			      const u8 * const restrict in_base,
 			      const u8 *in_next,
-			      const u8 * const in_end,
 			      const u32 count,
 			      u32 * const restrict next_hashes)
 {
@@ -377,18 +365,10 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 	u32 next_hashseq;
 	u32 remaining = count;
 
-	if (unlikely(count + 5 > in_end - in_next))
-		return &in_next[count];
-
-	cur_pos = in_next - *in_base_p;
+	cur_pos = in_next - in_base;
 	hash3 = next_hashes[0];
 	hash4 = next_hashes[1];
 	do {
-		if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
-			hc_matchfinder_slide_window(mf);
-			*in_base_p += MATCHFINDER_WINDOW_SIZE;
-			cur_pos = 0;
-		}
 		mf->hash3_tab[hash3] = cur_pos;
 		mf->next_tab[cur_pos] = mf->hash4_tab[hash4];
 		mf->hash4_tab[hash4] = cur_pos;

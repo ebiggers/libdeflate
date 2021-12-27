@@ -2014,19 +2014,28 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
 		u32 litrunlen = 0;
 		struct deflate_sequence *next_seq = c->p.g.sequences;
+		int skip_len = 0;
+		const u8 *next_pause_point =
+			MIN(in_cur_base + MIN(MATCHFINDER_WINDOW_SIZE,
+					      in_end - in_cur_base),
+			    MIN(in_next + MIN(MIN_BLOCK_LENGTH,
+					      in_max_block_end - in_next),
+				in_max_block_end - MIN(DEFLATE_MAX_MATCH_LEN - 1,
+						       in_max_block_end - in_next)));
+		u32 length;
+		u32 offset;
 
 		init_block_split_stats(&c->split_stats);
 		deflate_reset_symbol_frequencies(c);
 
-		do {
-			u32 length;
-			u32 offset;
+		if (in_next >= next_pause_point)
+			goto pause;
 
-			adjust_max_and_nice_len(&max_len, &nice_len,
-						in_end - in_next);
+find_match:
+		for (;;) {
 			length = hc_matchfinder_longest_match(
 						&c->p.g.hc_mf,
-						&in_cur_base,
+						in_cur_base,
 						in_next,
 						DEFLATE_MIN_MATCH_LEN - 1,
 						max_len,
@@ -2034,32 +2043,105 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 						c->max_search_depth,
 						next_hashes,
 						&offset);
-
-			if (length > DEFLATE_MIN_MATCH_LEN ||
+			if ((length > DEFLATE_MIN_MATCH_LEN ||
 			    (length == DEFLATE_MIN_MATCH_LEN &&
-			     offset <= 4096)) {
+			     offset <= 4096))) {
 				/* Match found. */
 				deflate_choose_match(c, length, offset,
 						     &litrunlen, &next_seq);
 				observe_match(&c->split_stats, length);
+				skip_len = length - 1;
+				in_next++;
+				if (next_pause_point <= in_next + skip_len) {
+					int skipped = next_pause_point - in_next;
+					if (skipped > 0) {
+						in_next = hc_matchfinder_skip_positions(
+							&c->p.g.hc_mf,
+							in_cur_base,
+							in_next,
+							skipped,
+							next_hashes);
+						skip_len -= skipped;
+					}
+					break;
+				}
 				in_next = hc_matchfinder_skip_positions(
 						&c->p.g.hc_mf,
-						&in_cur_base,
-						in_next + 1,
-						in_end,
-						length - 1,
+						in_cur_base,
+						in_next,
+						skip_len,
 						next_hashes);
+				skip_len = 0;
 			} else {
 				/* No match found. */
 				deflate_choose_literal(c, *in_next, &litrunlen);
 				observe_literal(&c->split_stats, *in_next);
-				in_next++;
+				if (++in_next >= next_pause_point)
+					break;
 			}
+		}
+	pause:
+		/*
+		 * Adjust max_len and nice_len if we're nearing the end of the
+		 * input buffer.
+		 */
+		if (unlikely(max_len > in_end - in_next)) {
+			max_len = in_end - in_next;
+			nice_len = MIN(max_len, nice_len);
+			if (max_len < 5) {
+				in_next += skip_len;
+				while (in_next != in_end) {
+					deflate_choose_literal(c, *in_next++,
+							       &litrunlen);
+				}
+				goto end_block;
+			}
+		}
 
-			/* Check if it's time to output another block. */
-		} while (in_next < in_max_block_end &&
-			 !should_end_block(&c->split_stats,
-					   in_block_begin, in_next, in_end));
+		/* Slide the window forward if needed. */
+		if (in_next - in_cur_base >= MATCHFINDER_WINDOW_SIZE) {
+			hc_matchfinder_slide_window(&c->p.g.hc_mf);
+			in_cur_base += MATCHFINDER_WINDOW_SIZE;
+		}
+
+		/* End the block if the soft maximum size has been reached. */
+		if (skip_len == 0 && in_next >= in_max_block_end)
+			goto end_block;
+
+		/*
+		 * End the block if the block splitting algorithm thinks this is
+		 * a good place to do so.
+		 */
+		if (skip_len == 0 && should_end_block(&c->split_stats,
+				     in_block_begin, in_next, in_end))
+			goto end_block;
+
+		/*
+		 * It's not time to end the block yet.  Compute the next pause
+		 * point and resume matchfinding.
+		 */
+		next_pause_point =
+			MIN(in_cur_base + MIN(MATCHFINDER_WINDOW_SIZE,
+					      in_end - in_cur_base),
+			    MIN(in_next + MIN(NUM_OBSERVATIONS_PER_BLOCK_CHECK * 2 -
+					      c->split_stats.num_new_observations,
+					      in_max_block_end - in_next),
+				in_max_block_end - MIN(DEFLATE_MAX_MATCH_LEN - 1,
+						       in_max_block_end - in_next)));
+		if (skip_len) {
+			int skipped = MAX(1, MIN(skip_len, next_pause_point - in_next));
+			in_next = hc_matchfinder_skip_positions(&c->p.g.hc_mf,
+								in_cur_base,
+								in_next,
+								skipped,
+								next_hashes);
+			skip_len -= skipped;
+			if (in_next >= next_pause_point)
+				goto pause;
+		}
+		goto find_match;
+
+	end_block:
 
 		deflate_finish_sequence(next_seq, litrunlen);
 		deflate_flush_block(c, &os, in_block_begin,
@@ -2110,7 +2192,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						in_end - in_next);
 			cur_len = hc_matchfinder_longest_match(
 						&c->p.g.hc_mf,
-						&in_cur_base,
+						in_cur_base,
 						in_next,
 						DEFLATE_MIN_MATCH_LEN - 1,
 						max_len,
@@ -2140,9 +2222,8 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						     &litrunlen, &next_seq);
 				in_next = hc_matchfinder_skip_positions(
 						&c->p.g.hc_mf,
-						&in_cur_base,
+						in_cur_base,
 						in_next,
-						in_end,
 						cur_len - 1,
 						next_hashes);
 				continue;
@@ -2168,7 +2249,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						in_end - in_next);
 			next_len = hc_matchfinder_longest_match(
 						&c->p.g.hc_mf,
-						&in_cur_base,
+						in_cur_base,
 						in_next++,
 						cur_len - 1,
 						max_len,
@@ -2198,7 +2279,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 							in_end - in_next);
 				next_len = hc_matchfinder_longest_match(
 						&c->p.g.hc_mf,
-						&in_cur_base,
+						in_cur_base,
 						in_next++,
 						cur_len - 1,
 						max_len,
@@ -2231,9 +2312,8 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 				if (cur_len > 3)
 					in_next = hc_matchfinder_skip_positions(
 							&c->p.g.hc_mf,
-							&in_cur_base,
+							in_cur_base,
 							in_next,
-							in_end,
 							cur_len - 3,
 							next_hashes);
 			} else { /* !lazy2 */
@@ -2245,9 +2325,8 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						     &litrunlen, &next_seq);
 				in_next = hc_matchfinder_skip_positions(
 							&c->p.g.hc_mf,
-							&in_cur_base,
+							in_cur_base,
 							in_next,
-							in_end,
 							cur_len - 2,
 							next_hashes);
 			}
