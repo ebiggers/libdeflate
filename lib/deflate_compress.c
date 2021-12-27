@@ -2608,7 +2608,6 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 	const u8 *in_end = in_next + in_nbytes;
 	struct deflate_output_bitstream os;
 	const u8 *in_cur_base = in_next;
-	const u8 *in_next_slide = in_next + MIN(in_end - in_next, MATCHFINDER_WINDOW_SIZE);
 	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
 	unsigned nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
@@ -2623,52 +2622,37 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		const u8 * const in_block_begin = in_next;
 		const u8 * const in_max_block_end =
 			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
+		const u8 *next_search_pos = in_next;
 		const u8 *next_observation = in_next;
+		const u8 *next_pause_point =
+			MIN(in_cur_base + MIN(MATCHFINDER_WINDOW_SIZE,
+					      in_end - in_cur_base),
+			    MIN(in_next + MIN(MIN_BLOCK_LENGTH,
+					      in_max_block_end - in_next),
+				in_max_block_end - MIN(DEFLATE_MAX_MATCH_LEN - 1,
+						       in_max_block_end - in_next)));
 
 		init_block_split_stats(&c->split_stats);
 
+		if (in_next >= next_pause_point)
+			goto pause;
+
 		/*
-		 * Find matches until we decide to end the block.  We end the
-		 * block if any of the following is true:
+		 * Run the input buffer through the matchfinder, caching the
+		 * matches, until we decide to end the block.
 		 *
-		 * (1) Maximum block length has been reached
-		 * (2) Match catch may overflow.
-		 * (3) Block split heuristic says to split now.
+		 * For a tighter matchfinding loop, we compute a "pause point",
+		 * which is the next position at which we may need to check
+		 * whether to end the block or to decrease max_len.  We then
+		 * only do these extra checks upon reaching the pause point.
 		 */
+	resume_matchfinding:
 		do {
-			struct lz_match *matches;
-			unsigned best_len;
-			size_t remaining = in_end - in_next;
+			if (in_next >= next_search_pos) {
+				/* Search for matches at this position. */
+				u32 best_len;
+				struct lz_match *matches = cache_ptr;
 
-			/* Slide the window forward if needed.  */
-			if (in_next == in_next_slide) {
-				bt_matchfinder_slide_window(&c->p.n.bt_mf);
-				in_cur_base = in_next;
-				in_next_slide = in_next +
-					MIN(remaining, MATCHFINDER_WINDOW_SIZE);
-			}
-
-			/*
-			 * Find matches with the current position using the
-			 * binary tree matchfinder and save them in
-			 * 'match_cache'.
-			 *
-			 * Note: the binary tree matchfinder is more suited for
-			 * optimal parsing than the hash chain matchfinder.  The
-			 * reasons for this include:
-			 *
-			 * - The binary tree matchfinder can find more matches
-			 *   in the same number of steps.
-			 * - One of the major advantages of hash chains is that
-			 *   skipping positions (not searching for matches at
-			 *   them) is faster; however, with optimal parsing we
-			 *   search for matches at almost all positions, so this
-			 *   advantage of hash chains is negated.
-			 */
-			matches = cache_ptr;
-			best_len = 0;
-			adjust_max_and_nice_len(&max_len, &nice_len, remaining);
-			if (likely(max_len >= BT_MATCHFINDER_REQUIRED_NBYTES)) {
 				cache_ptr = bt_matchfinder_get_matches(
 						&c->p.n.bt_mf,
 						in_cur_base,
@@ -2679,76 +2663,113 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						next_hashes,
 						&best_len,
 						matches);
+				cache_ptr->length = cache_ptr - matches;
+				/*
+				 * Accumulate literal/match statistics for block
+				 * splitting.
+				 */
+				if (in_next >= next_observation) {
+					if (best_len >= 4) {
+						observe_match(&c->split_stats,
+							      best_len);
+						next_observation = in_next + best_len;
+					} else {
+						observe_literal(&c->split_stats,
+								*in_next);
+						next_observation = in_next + 1;
+					}
+				}
+				/*
+				 * If there was a very long match found, then
+				 * don't cache any matches for the bytes covered
+				 * by that match.  This avoids degenerate
+				 * behavior when compressing highly redundant
+				 * data, where the number of matches can be very
+				 * large.
+				 *
+				 * This heuristic doesn't actually hurt the
+				 * compression ratio *too* much.  If there's a
+				 * long match, then the data must be highly
+				 * compressible, so it doesn't matter as much
+				 * what we do.
+				 */
+				if (best_len >= nice_len)
+					next_search_pos = in_next + best_len;
+			} else {
+				/* Don't search for matches at this position. */
+				bt_matchfinder_skip_position(
+						&c->p.n.bt_mf,
+						in_cur_base,
+						in_next - in_cur_base,
+						nice_len,
+						c->max_search_depth,
+						next_hashes);
+				cache_ptr->length = 0;
 			}
-
-			if (in_next >= next_observation) {
-				if (best_len >= 4) {
-					observe_match(&c->split_stats,
-						      best_len);
-					next_observation = in_next + best_len;
-				} else {
-					observe_literal(&c->split_stats,
-							*in_next);
-					next_observation = in_next + 1;
+			cache_ptr->offset = *in_next;
+			cache_ptr++;
+		} while (++in_next < next_pause_point &&
+			 likely(cache_ptr < &c->p.n.match_cache[CACHE_LENGTH]));
+pause:
+		/*
+		 * Adjust max_len and nice_len if we're nearing the end of the
+		 * input buffer.  In addition, if we are so close to the end of
+		 * the input buffer that there cannot be any more matches, then
+		 * just advance through the last few positions and record no
+		 * matches.
+		 */
+		if (unlikely(max_len > in_end - in_next)) {
+			max_len = in_end - in_next;
+			nice_len = MIN(max_len, nice_len);
+			if (max_len < BT_MATCHFINDER_REQUIRED_NBYTES) {
+				while (in_next != in_end) {
+					cache_ptr->length = 0;
+					cache_ptr->offset = *in_next++;
+					cache_ptr++;
 				}
 			}
+		}
+		
+		/* Slide the window forward if needed. */
+		if (in_next - in_cur_base == MATCHFINDER_WINDOW_SIZE) {
+			bt_matchfinder_slide_window(&c->p.n.bt_mf);
+			in_cur_base = in_next;
+		}
 
-			cache_ptr->length = cache_ptr - matches;
-			cache_ptr->offset = *in_next;
-			in_next++;
-			cache_ptr++;
+		/* End the block if the match cache may overflow. */
+		if (unlikely(cache_ptr >= &c->p.n.match_cache[CACHE_LENGTH]))
+			goto end_block;
 
-			/*
-			 * If there was a very long match found, don't cache any
-			 * matches for the bytes covered by that match.  This
-			 * avoids degenerate behavior when compressing highly
-			 * redundant data, where the number of matches can be
-			 * very large.
-			 *
-			 * This heuristic doesn't actually hurt the compression
-			 * ratio very much.  If there's a long match, then the
-			 * data must be highly compressible, so it doesn't
-			 * matter much what we do.
-			 */
-			if (best_len >= DEFLATE_MIN_MATCH_LEN &&
-			    best_len >= nice_len) {
-				--best_len;
-				do {
-					remaining = in_end - in_next;
-					if (in_next == in_next_slide) {
-						bt_matchfinder_slide_window(
-							&c->p.n.bt_mf);
-						in_cur_base = in_next;
-						in_next_slide = in_next +
-							MIN(remaining,
-							    MATCHFINDER_WINDOW_SIZE);
-					}
-					adjust_max_and_nice_len(&max_len,
-								&nice_len,
-								remaining);
-					if (max_len >=
-					    BT_MATCHFINDER_REQUIRED_NBYTES) {
-						bt_matchfinder_skip_position(
-							&c->p.n.bt_mf,
-							in_cur_base,
-							in_next - in_cur_base,
-							nice_len,
-							c->max_search_depth,
-							next_hashes);
-					}
-					cache_ptr->length = 0;
-					cache_ptr->offset = *in_next;
-					in_next++;
-					cache_ptr++;
-				} while (--best_len);
-			}
-		} while (in_next < in_max_block_end &&
-			 cache_ptr < &c->p.n.match_cache[CACHE_LENGTH] &&
-			 !should_end_block(&c->split_stats, in_block_begin,
-					   in_next, in_end));
+		/* End the block if the soft maximum size has been reached. */
+		if (in_next >= in_max_block_end)
+			goto end_block;
+
 		/*
-		 * All the matches for this block have been cached.  Now choose
-		 * the sequence of items to output and flush the block.
+		 * End the block if the block splitting algorithm thinks this is
+		 * a good place to do so.
+		 */
+		if (should_end_block(&c->split_stats,
+				     in_block_begin, in_next, in_end))
+			goto end_block;
+
+		/*
+		 * It's not time to end the block yet.  Compute the next pause
+		 * point and resume matchfinding.
+		 */
+		next_pause_point =
+			MIN(in_cur_base + MIN(MATCHFINDER_WINDOW_SIZE,
+					      in_end - in_cur_base),
+			    MIN(in_next + MIN(NUM_OBSERVATIONS_PER_BLOCK_CHECK * 2 -
+					      c->split_stats.num_new_observations,
+					      in_max_block_end - in_next),
+				in_max_block_end - MIN(DEFLATE_MAX_MATCH_LEN - 1,
+						       in_max_block_end - in_next)));
+		goto resume_matchfinding;
+
+end_block:
+		/*
+		 * We've decided on a block boundary and cached matches.  Now
+		 * choose a match/literal sequence and flush the block.
 		 */
 		deflate_optimize_block(c, in_next - in_block_begin, cache_ptr,
 				       in_block_begin == in);
