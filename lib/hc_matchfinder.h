@@ -1,8 +1,6 @@
 /*
  * hc_matchfinder.h - Lempel-Ziv matchfinding with a hash table of linked lists
  *
- * Originally public domain; changes after 2016-09-07 are copyrighted.
- *
  * Copyright 2016 Eric Biggers
  *
  * Permission is hereby granted, free of charge, to any person

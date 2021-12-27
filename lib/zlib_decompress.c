@@ -1,8 +1,6 @@
 /*
  * zlib_decompress.c - decompress with a zlib wrapper
  *
- * Originally public domain; changes after 2016-09-07 are copyrighted.
- *
  * Copyright 2016 Eric Biggers
  *
  * Permission is hereby granted, free of charge, to any person
