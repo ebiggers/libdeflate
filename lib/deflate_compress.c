@@ -2124,7 +2124,9 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 						c->max_search_depth,
 						next_hashes,
 						&cur_offset);
-			if (cur_len < DEFLATE_MIN_MATCH_LEN) {
+			if (cur_len < DEFLATE_MIN_MATCH_LEN ||
+			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
+			     cur_offset > 8192)) {
 				/* No match found.  Choose a literal. */
 				deflate_choose_literal(c, *(in_next - 1),
 						       &litrunlen);
