@@ -58,7 +58,7 @@
 
 #include "hc_matchfinder.h"
 #if SUPPORT_NEAR_OPTIMAL_PARSING
-#  include "bt_matchfinder.h"
+#  include "lcpit_matchfinder.h"
 #endif
 
 /*
@@ -400,7 +400,7 @@ struct libdeflate_compressor {
 		struct {
 
 			/* Binary tree matchfinder  */
-			struct bt_matchfinder bt_mf;
+			struct lcpit_matchfinder lcpit;
 
 			/*
 			 * Cached matches for the current block.  This array
@@ -2494,6 +2494,7 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 
 		num_matches = cache_ptr->length;
 		literal = cache_ptr->offset;
+		cache_ptr -= num_matches;
 
 		/* It's always possible to choose a literal.  */
 		best_cost_to_end = c->p.n.costs.literal[literal] +
@@ -2519,7 +2520,7 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 			 * offset costing less than a smaller offset to code,
 			 * this is a very useful heuristic.
 			 */
-			match = cache_ptr - num_matches;
+			match = &cache_ptr[num_matches - 1];
 			len = DEFLATE_MIN_MATCH_LEN;
 			do {
 				offset = match->offset;
@@ -2534,8 +2535,7 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 						cur_node->item = ((u32)offset << OPTIMUM_OFFSET_SHIFT) | len;
 					}
 				} while (++len <= match->length);
-			} while (++match != cache_ptr);
-			cache_ptr -= num_matches;
+			} while (match-- != cache_ptr);
 		}
 		cur_node->cost_to_end = best_cost_to_end;
 	} while (cur_node != &c->p.n.optimum_nodes[0]);
@@ -2606,17 +2606,15 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			      const u8 * restrict in, size_t in_nbytes,
 			      u8 * restrict out, size_t out_nbytes_avail)
 {
+	struct lcpit_matchfinder *mf = &c->p.n.lcpit;
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
 	struct deflate_output_bitstream os;
-	const u8 *in_cur_base = in_next;
-	const u8 *in_next_slide = in_next + MIN(in_end - in_next, MATCHFINDER_WINDOW_SIZE);
 	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
 	unsigned nice_len = MIN(c->nice_match_length, max_len);
-	u32 next_hashes[2] = {0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
-	bt_matchfinder_init(&c->p.n.bt_mf);
+	lcpit_matchfinder_load_buffer(mf, in, in_nbytes);
 
 	do {
 		/* Starting a new DEFLATE block. */
@@ -2638,51 +2636,18 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		 * (3) Block split heuristic says to split now.
 		 */
 		do {
-			struct lz_match *matches;
-			unsigned best_len;
-			size_t remaining = in_end - in_next;
+			unsigned num_matches;
+			unsigned best_len = 0;
+			unsigned offset;
 
-			/* Slide the window forward if needed.  */
-			if (in_next == in_next_slide) {
-				bt_matchfinder_slide_window(&c->p.n.bt_mf);
-				in_cur_base = in_next;
-				in_next_slide = in_next +
-					MIN(remaining, MATCHFINDER_WINDOW_SIZE);
+			adjust_max_and_nice_len(&max_len, &nice_len,
+						in_end - in_next);
+			num_matches = lcpit_matchfinder_get_matches(mf,
+								    cache_ptr);
+			if (num_matches) {
+				best_len = cache_ptr[0].length;
+				offset = cache_ptr[0].offset;
 			}
-
-			/*
-			 * Find matches with the current position using the
-			 * binary tree matchfinder and save them in
-			 * 'match_cache'.
-			 *
-			 * Note: the binary tree matchfinder is more suited for
-			 * optimal parsing than the hash chain matchfinder.  The
-			 * reasons for this include:
-			 *
-			 * - The binary tree matchfinder can find more matches
-			 *   in the same number of steps.
-			 * - One of the major advantages of hash chains is that
-			 *   skipping positions (not searching for matches at
-			 *   them) is faster; however, with optimal parsing we
-			 *   search for matches at almost all positions, so this
-			 *   advantage of hash chains is negated.
-			 */
-			matches = cache_ptr;
-			best_len = 0;
-			adjust_max_and_nice_len(&max_len, &nice_len, remaining);
-			if (likely(max_len >= BT_MATCHFINDER_REQUIRED_NBYTES)) {
-				cache_ptr = bt_matchfinder_get_matches(
-						&c->p.n.bt_mf,
-						in_cur_base,
-						in_next - in_cur_base,
-						max_len,
-						nice_len,
-						c->max_search_depth,
-						next_hashes,
-						&best_len,
-						matches);
-			}
-
 			if (in_next >= next_observation) {
 				if (best_len >= 4) {
 					observe_match(&c->split_stats,
@@ -2694,56 +2659,34 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 					next_observation = in_next + 1;
 				}
 			}
-
-			cache_ptr->length = cache_ptr - matches;
-			cache_ptr->offset = *in_next;
-			in_next++;
-			cache_ptr++;
-
-			/*
-			 * If there was a very long match found, don't cache any
-			 * matches for the bytes covered by that match.  This
-			 * avoids degenerate behavior when compressing highly
-			 * redundant data, where the number of matches can be
-			 * very large.
-			 *
-			 * This heuristic doesn't actually hurt the compression
-			 * ratio very much.  If there's a long match, then the
-			 * data must be highly compressible, so it doesn't
-			 * matter much what we do.
-			 */
-			if (best_len >= DEFLATE_MIN_MATCH_LEN &&
-			    best_len >= nice_len) {
-				--best_len;
-				do {
-					remaining = in_end - in_next;
-					if (in_next == in_next_slide) {
-						bt_matchfinder_slide_window(
-							&c->p.n.bt_mf);
-						in_cur_base = in_next;
-						in_next_slide = in_next +
-							MIN(remaining,
-							    MATCHFINDER_WINDOW_SIZE);
+			if (best_len) {
+				if (best_len >= nice_len) {
+					best_len = lz_extend(in_next,
+							     in_next - offset,
+							     best_len,
+							     max_len);
+					cache_ptr[0].length = best_len;
+					cache_ptr[num_matches].length = num_matches;
+					cache_ptr[num_matches].offset = *in_next;
+					cache_ptr += num_matches + 1;
+					lcpit_matchfinder_skip_bytes(mf,
+								     best_len - 1);
+					while (--best_len) {
+						cache_ptr[0].length = 0;
+						cache_ptr[0].offset = *++in_next;
+						cache_ptr++;
 					}
-					adjust_max_and_nice_len(&max_len,
-								&nice_len,
-								remaining);
-					if (max_len >=
-					    BT_MATCHFINDER_REQUIRED_NBYTES) {
-						bt_matchfinder_skip_position(
-							&c->p.n.bt_mf,
-							in_cur_base,
-							in_next - in_cur_base,
-							nice_len,
-							c->max_search_depth,
-							next_hashes);
-					}
-					cache_ptr->length = 0;
-					cache_ptr->offset = *in_next;
-					in_next++;
-					cache_ptr++;
-				} while (--best_len);
+				} else {
+					cache_ptr[num_matches].length = num_matches;
+					cache_ptr[num_matches].offset = *in_next;
+					cache_ptr += num_matches + 1;
+				}
+			} else {
+				cache_ptr[0].length = 0;
+				cache_ptr[0].offset = *in_next;
+				cache_ptr++;
 			}
+			in_next++;
 		} while (in_next < in_max_block_end &&
 			 cache_ptr < &c->p.n.match_cache[CACHE_LENGTH] &&
 			 !should_end_block(&c->split_stats, in_block_begin,
@@ -2898,11 +2841,23 @@ libdeflate_alloc_compressor(int compression_level)
 	default:
 		c->impl = deflate_compress_near_optimal;
 		c->max_search_depth = 150;
-		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
+		c->nice_match_length = 63;
 		c->p.n.num_optim_passes = 4;
 		break;
 #endif
 	}
+
+#if SUPPORT_NEAR_OPTIMAL_PARSING
+	if (c->impl == deflate_compress_near_optimal) {
+		if (!lcpit_matchfinder_init(&c->p.n.lcpit,
+					    MATCHFINDER_WINDOW_SIZE,
+					    DEFLATE_MIN_MATCH_LEN,
+					    c->nice_match_length)) {
+			libdeflate_aligned_free(c);
+			return NULL;
+		}
+	}
+#endif
 
 	deflate_init_offset_slot_fast(c);
 	deflate_init_static_codes(c);
@@ -2934,7 +2889,13 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
-	libdeflate_aligned_free(c);
+	if (c) {
+#if SUPPORT_NEAR_OPTIMAL_PARSING
+		if (c->impl == deflate_compress_near_optimal)
+			lcpit_matchfinder_destroy(&c->p.n.lcpit);
+#endif
+		libdeflate_aligned_free(c);
+	}
 }
 
 unsigned int
