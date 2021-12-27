@@ -2647,13 +2647,28 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		 * only do these extra checks upon reaching the pause point.
 		 */
 	resume_matchfinding:
-		do {
-			if (in_next >= next_search_pos) {
-				/* Search for matches at this position. */
-				u32 best_len;
-				struct lz_match *matches = cache_ptr;
+		while (in_next < next_search_pos) {
+	skip_bytes:
+			/* Don't search for matches at this position. */
+			bt_matchfinder_skip_position(&c->p.n.bt_mf,
+						     in_cur_base,
+						     in_next - in_cur_base,
+						     nice_len,
+						     c->max_search_depth,
+						     next_hashes);
+			cache_ptr->length = 0;
+			cache_ptr->offset = *in_next;
+			cache_ptr++;
+			if (++in_next >= next_pause_point ||
+			    unlikely(cache_ptr >= &c->p.n.match_cache[CACHE_LENGTH]))
+				goto pause;
+		}
+		for (;;) {
+			/* Search for matches at this position. */
+			u32 best_len;
+			struct lz_match *matches = cache_ptr;
 
-				cache_ptr = bt_matchfinder_get_matches(
+			cache_ptr = bt_matchfinder_get_matches(
 						&c->p.n.bt_mf,
 						in_cur_base,
 						in_next - in_cur_base,
@@ -2663,53 +2678,49 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						next_hashes,
 						&best_len,
 						matches);
-				cache_ptr->length = cache_ptr - matches;
-				/*
-				 * Accumulate literal/match statistics for block
-				 * splitting.
-				 */
-				if (in_next >= next_observation) {
-					if (best_len >= 4) {
-						observe_match(&c->split_stats,
-							      best_len);
-						next_observation = in_next + best_len;
-					} else {
-						observe_literal(&c->split_stats,
-								*in_next);
-						next_observation = in_next + 1;
-					}
-				}
-				/*
-				 * If there was a very long match found, then
-				 * don't cache any matches for the bytes covered
-				 * by that match.  This avoids degenerate
-				 * behavior when compressing highly redundant
-				 * data, where the number of matches can be very
-				 * large.
-				 *
-				 * This heuristic doesn't actually hurt the
-				 * compression ratio *too* much.  If there's a
-				 * long match, then the data must be highly
-				 * compressible, so it doesn't matter as much
-				 * what we do.
-				 */
-				if (best_len >= nice_len)
-					next_search_pos = in_next + best_len;
-			} else {
-				/* Don't search for matches at this position. */
-				bt_matchfinder_skip_position(
-						&c->p.n.bt_mf,
-						in_cur_base,
-						in_next - in_cur_base,
-						nice_len,
-						c->max_search_depth,
-						next_hashes);
-				cache_ptr->length = 0;
-			}
+			cache_ptr->length = cache_ptr - matches;
 			cache_ptr->offset = *in_next;
 			cache_ptr++;
-		} while (++in_next < next_pause_point &&
-			 likely(cache_ptr < &c->p.n.match_cache[CACHE_LENGTH]));
+			/*
+			 * Accumulate literal/match statistics for block
+			 * splitting.
+			 */
+			if (in_next >= next_observation) {
+				if (best_len >= 4) {
+					observe_match(&c->split_stats,
+						      best_len);
+					next_observation = in_next + best_len;
+				} else {
+					observe_literal(&c->split_stats,
+							*in_next);
+					next_observation = in_next + 1;
+				}
+			}
+			/*
+			 * If there was a very long match found, then
+			 * don't cache any matches for the bytes covered
+			 * by that match.  This avoids degenerate
+			 * behavior when compressing highly redundant
+			 * data, where the number of matches can be very
+			 * large.
+			 *
+			 * This heuristic doesn't actually hurt the
+			 * compression ratio *too* much.  If there's a
+			 * long match, then the data must be highly
+			 * compressible, so it doesn't matter as much
+			 * what we do.
+			 */
+			if (best_len >= nice_len) {
+				next_search_pos = in_next + best_len;
+				if (++in_next >= next_pause_point ||
+				    unlikely(cache_ptr >= &c->p.n.match_cache[CACHE_LENGTH]))
+					goto pause;
+				goto skip_bytes;
+			}
+			if (++in_next >= next_pause_point ||
+			    unlikely(cache_ptr >= &c->p.n.match_cache[CACHE_LENGTH]))
+				goto pause;
+		}
 pause:
 		/*
 		 * Adjust max_len and nice_len if we're nearing the end of the
