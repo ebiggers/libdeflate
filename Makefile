@@ -181,7 +181,7 @@ LIB_SRC := lib/deflate_decompress.c lib/utils.c \
 
 DECOMPRESSION_ONLY :=
 ifndef DECOMPRESSION_ONLY
-    LIB_SRC += lib/deflate_compress.c
+    LIB_SRC += lib/deflate_compress.c lib/lcpit_matchfinder.c lib/divsufsort.c
 endif
 
 DISABLE_ZLIB :=
