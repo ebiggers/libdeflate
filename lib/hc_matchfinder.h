@@ -110,13 +110,18 @@
 #define LIB_HC_MATCHFINDER_H
 
 #include "matchfinder_common.h"
+#include "rolling_crc.h"
 
 #define HC_MATCHFINDER_HASH3_ORDER	15
 #define HC_MATCHFINDER_HASH4_ORDER	16
+#define HC_MATCHFINDER_HASHN_ORDER	14
 
 #define HC_MATCHFINDER_TOTAL_HASH_SIZE			\
 	(((1UL << HC_MATCHFINDER_HASH3_ORDER) +		\
-	  (1UL << HC_MATCHFINDER_HASH4_ORDER)) * sizeof(mf_pos_t))
+	  (1UL << HC_MATCHFINDER_HASH4_ORDER) +		\
+	  (1UL << HC_MATCHFINDER_HASHN_ORDER)) * sizeof(mf_pos_t))
+
+#define HC_MATCHFINDER_HASHN_MASK ((1UL << HC_MATCHFINDER_HASHN_ORDER) - 1)
 
 struct hc_matchfinder {
 
@@ -127,10 +132,13 @@ struct hc_matchfinder {
 	 * finding length 4+ matches  */
 	mf_pos_t hash4_tab[1UL << HC_MATCHFINDER_HASH4_ORDER];
 
+	mf_pos_t hashN_tab[1UL << HC_MATCHFINDER_HASHN_ORDER];
+
 	/* The "next node" references for the linked lists.  The "next node" of
 	 * the node for the sequence with position 'pos' is 'next_tab[pos]'.  */
 	mf_pos_t next_tab[MATCHFINDER_WINDOW_SIZE];
 
+	mf_pos_t nextN_tab[MATCHFINDER_WINDOW_SIZE];
 }
 #ifdef _aligned_attribute
   _aligned_attribute(MATCHFINDER_MEM_ALIGNMENT)
@@ -199,8 +207,8 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 {
 	u32 depth_remaining = max_search_depth;
 	const u8 *best_matchptr = in_next;
-	mf_pos_t cur_node3, cur_node4;
-	u32 hash3, hash4;
+	mf_pos_t cur_node3, cur_node4, cur_nodeN;
+	u32 hash3, hash4, hashN;
 	u32 next_hashseq;
 	u32 seq4;
 	const u8 *matchptr;
@@ -218,16 +226,19 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 	in_base = *in_base_p;
 	cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
 
-	if (unlikely(max_len < 5)) /* can we read 4 bytes from 'in_next + 1'? */
+	/* can we read N bytes from 'in_next + 1'? */
+	if (unlikely(max_len < 1 + ROLLING_WINDOW_SIZE))
 		goto out;
 
 	/* Get the precomputed hash codes.  */
 	hash3 = next_hashes[0];
 	hash4 = next_hashes[1];
+	hashN = next_hashes[2];
 
 	/* From the hash buckets, get the first node of each linked list.  */
 	cur_node3 = mf->hash3_tab[hash3];
 	cur_node4 = mf->hash4_tab[hash4];
+	cur_nodeN = mf->hashN_tab[hashN & HC_MATCHFINDER_HASHN_MASK];
 
 	/* Update for length 3 matches.  This replaces the singleton node in the
 	 * 'hash3' bucket with the node for the current sequence.  */
@@ -238,12 +249,19 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 	mf->hash4_tab[hash4] = cur_pos;
 	mf->next_tab[cur_pos] = cur_node4;
 
+	mf->hashN_tab[hashN & HC_MATCHFINDER_HASHN_MASK] = cur_pos;
+	mf->nextN_tab[cur_pos] = cur_nodeN;
+
 	/* Compute the next hash codes.  */
 	next_hashseq = get_unaligned_le32(in_next + 1);
 	next_hashes[0] = lz_hash(next_hashseq & 0xFFFFFF, HC_MATCHFINDER_HASH3_ORDER);
 	next_hashes[1] = lz_hash(next_hashseq, HC_MATCHFINDER_HASH4_ORDER);
+	next_hashes[2] = (hashN >> 8) ^
+		crc32_roll_tab[in_next[ROLLING_WINDOW_SIZE] ^ (hashN & 0xff)] ^
+		crc32_unroll_tab[in_next[0]];
 	prefetchw(&mf->hash3_tab[next_hashes[0]]);
 	prefetchw(&mf->hash4_tab[next_hashes[1]]);
+	prefetchw(&mf->hashN_tab[next_hashes[2] & HC_MATCHFINDER_HASHN_MASK]);
 
 	if (best_len < 4) {  /* No match of length >= 4 found yet?  */
 
@@ -295,6 +313,49 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 
 	/* Check for matches of length >= 5.  */
 
+	/* Check for matches of length >= ROLLING_WINDOW_SIZE.  */
+	while (cur_nodeN > cutoff && --depth_remaining) {
+		for (;;) {
+			matchptr = &in_base[cur_nodeN];
+
+		#if UNALIGNED_ACCESS_IS_FAST
+			if ((load_u32_unaligned(matchptr + best_len - 3) ==
+			     load_u32_unaligned(in_next + best_len - 3)) &&
+			    (load_u32_unaligned(matchptr) ==
+			     load_u32_unaligned(in_next)))
+		#else
+			if (matchptr[best_len] == in_next[best_len])
+		#endif
+				break;
+
+			/* Continue to the next node in the list.  */
+			cur_nodeN = mf->nextN_tab[cur_nodeN & (MATCHFINDER_WINDOW_SIZE - 1)];
+			if (cur_nodeN <= cutoff || !--depth_remaining)
+				goto check_hash4;
+		}
+
+	#if UNALIGNED_ACCESS_IS_FAST
+		len = 4;
+	#else
+		len = 0;
+	#endif
+		len = lz_extend(in_next, matchptr, len, max_len);
+		if (len > best_len) {
+			/* This is the new longest match.  */
+			best_len = len;
+			best_matchptr = matchptr;
+			if (best_len >= nice_len)
+				goto out;
+		}
+
+		/* Continue to the next node in the list.  */
+		cur_nodeN = mf->nextN_tab[cur_nodeN &
+				(MATCHFINDER_WINDOW_SIZE - 1)];
+	}
+
+check_hash4:
+	if (best_len >= ROLLING_WINDOW_SIZE)
+		goto out;
 	for (;;) {
 		for (;;) {
 			matchptr = &in_base[cur_node4];
@@ -330,7 +391,7 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 			/* This is the new longest match.  */
 			best_len = len;
 			best_matchptr = matchptr;
-			if (best_len >= nice_len)
+			if (best_len >= nice_len || len >= ROLLING_WINDOW_SIZE)
 				goto out;
 		}
 
@@ -339,6 +400,8 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 		if (cur_node4 <= cutoff || !--depth_remaining)
 			goto out;
 	}
+
+
 out:
 	*offset_ret = in_next - best_matchptr;
 	return best_len;
@@ -375,7 +438,7 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 			      u32 * const restrict next_hashes)
 {
 	u32 cur_pos;
-	u32 hash3, hash4;
+	u32 hash3, hash4, hashN;
 	u32 next_hashseq;
 	u32 remaining = count;
 
@@ -385,6 +448,7 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 	cur_pos = in_next - *in_base_p;
 	hash3 = next_hashes[0];
 	hash4 = next_hashes[1];
+	hashN = next_hashes[2];
 	do {
 		if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
 			hc_matchfinder_slide_window(mf);
@@ -394,17 +458,24 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 		mf->hash3_tab[hash3] = cur_pos;
 		mf->next_tab[cur_pos] = mf->hash4_tab[hash4];
 		mf->hash4_tab[hash4] = cur_pos;
+		mf->nextN_tab[cur_pos] = mf->hashN_tab[hashN & HC_MATCHFINDER_HASHN_MASK];
+		mf->hashN_tab[hashN & HC_MATCHFINDER_HASHN_MASK] = cur_pos;
 
 		next_hashseq = get_unaligned_le32(++in_next);
 		hash3 = lz_hash(next_hashseq & 0xFFFFFF, HC_MATCHFINDER_HASH3_ORDER);
 		hash4 = lz_hash(next_hashseq, HC_MATCHFINDER_HASH4_ORDER);
+		hashN = (hashN >> 8) ^
+			crc32_roll_tab[in_next[ROLLING_WINDOW_SIZE-1] ^ (hashN & 0xff)] ^
+			crc32_unroll_tab[in_next[-1]];
 		cur_pos++;
 	} while (--remaining);
 
 	prefetchw(&mf->hash3_tab[hash3]);
 	prefetchw(&mf->hash4_tab[hash4]);
+	prefetchw(&mf->hashN_tab[hashN & HC_MATCHFINDER_HASHN_MASK]);
 	next_hashes[0] = hash3;
 	next_hashes[1] = hash4;
+	next_hashes[2] = hashN;
 
 	return in_next;
 }

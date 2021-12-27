@@ -2003,7 +2003,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 	const u8 *in_cur_base = in_next;
 	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
 	unsigned nice_len = MIN(c->nice_match_length, max_len);
-	u32 next_hashes[2] = {0, 0};
+	u32 next_hashes[3] = {0, 0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	hc_matchfinder_init(&c->p.g.hc_mf);
@@ -2101,10 +2101,21 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 	const u8 *in_cur_base = in_next;
 	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
 	unsigned nice_len = MIN(c->nice_match_length, max_len);
-	u32 next_hashes[2] = {0, 0};
+	u32 next_hashes[3] = {0, 0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	hc_matchfinder_init(&c->p.g.hc_mf);
+
+	if (in_nbytes >= ROLLING_WINDOW_SIZE) {
+		u32 crc = 0;
+		int i;
+
+		for (i = 0; i < ROLLING_WINDOW_SIZE; i++) {
+			crc = (crc >> 8) ^
+				crc32_roll_tab[in_next[i] ^ (crc & 0xff)];
+		}
+		next_hashes[2] = crc;
+	}
 
 	do {
 		/* Starting a new DEFLATE block. */
