@@ -12,15 +12,22 @@ int main(int argc, char **argv)
 	int ret;
 	int fd = open(argv[1], O_RDONLY);
 	struct stat stbuf;
+	unsigned char level;
 	assert(fd >= 0);
 	ret = fstat(fd, &stbuf);
 	assert(!ret);
 
-	char in[stbuf.st_size];
+	if (stbuf.st_size == 0)
+		return 0;
+	ret = read(fd, &level, 1);
+	assert(ret == 1);
+	level %= 13;
+
+	char in[stbuf.st_size - 1];
 	ret = read(fd, in, sizeof in);
 	assert(ret == sizeof in);
 
-	c = libdeflate_alloc_compressor(6);
+	c = libdeflate_alloc_compressor(level);
 	d = libdeflate_alloc_decompressor();
 
 	char out[sizeof(in)];
