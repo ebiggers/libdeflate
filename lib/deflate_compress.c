@@ -217,7 +217,7 @@ struct deflate_costs {
  * unknown.  In reality, each token in DEFLATE requires a whole number of bits
  * to output.
  */
-#define COST_SHIFT	3
+#define COST_SHIFT	6
 
 /*
  * The NOSTAT_BITS value for a given alphabet is the number of bits assumed to
@@ -2351,28 +2351,81 @@ deflate_set_costs_from_codes(struct libdeflate_compressor *c,
 	}
 }
 
-static forceinline u32
-deflate_default_literal_cost(unsigned literal)
+/*
+ * Set the default costs for literals and length symbols (which are both part of
+ * the litlen alphabet), based on the estimated number of literals and matches
+ * that the block will use.
+ */
+static void
+deflate_prepare_default_costs(struct libdeflate_compressor *c,
+			      u32 *lit_cost, u32 *len_base_cost)
 {
-	STATIC_ASSERT(COST_SHIFT == 3);
-	/* 65 is 8.125 bits/symbol */
-	return 65;
+	int i;
+	u32 num_literals = 0;
+	u32 num_matches = 0;
+
+	for (i = 0; i < NUM_LITERAL_OBSERVATION_TYPES; i++)
+		num_literals += c->split_stats.observations[i];
+	for (; i < NUM_OBSERVATION_TYPES; i++)
+		num_matches += c->split_stats.observations[i];
+
+	/*
+	 
+	   import math
+
+	   match_prob = 0.5
+	   lit_prob = 1 - match_prob
+
+	   COST_SHIFT = 6
+	   NUM_LITERALS = 256
+	   NUM_LEN_SLOTS = 30
+
+	   def get_cost(prob):
+		   return round(-math.log2(prob) * (1 << COST_SHIFT))
+
+	   print('*lit_cost = ' + str(get_cost(lit_prob / NUM_LITERALS)))
+	   print('*len_base_cost = ' + str(get_cost(match_prob / NUM_LEN_SLOTS)))
+
+	 */
+	STATIC_ASSERT(COST_SHIFT == 6);
+	if (num_matches > num_literals / 2) {
+		/* match_prob = 1/3 */
+		*lit_cost = 549;
+		*len_base_cost = 415;
+	} else if (num_matches > num_literals / 4) {
+		/* match_prob = 1/5 */
+		*lit_cost = 533;
+		*len_base_cost = 463;
+	} else if (num_matches > num_literals / 8) {
+		/* match_prob = 1/9 */
+		*lit_cost = 523;
+		*len_base_cost = 517;
+	} else if (num_matches > num_literals / 12) {
+		/* match_prob = 1/13 */
+		*lit_cost = 519;
+		*len_base_cost = 551;
+	} else {
+		/* match_prob = 1/20 */
+		*lit_cost = 517;
+		*len_base_cost = 591;
+	}
 }
 
 static forceinline u32
-deflate_default_length_slot_cost(unsigned length_slot)
+deflate_default_length_cost(unsigned len, u32 len_base_cost)
 {
-	STATIC_ASSERT(COST_SHIFT == 3);
-	/* 65 is 8.125 bits/symbol */
-	return 65 + ((u32)deflate_extra_length_bits[length_slot] << COST_SHIFT);
+	unsigned slot = deflate_length_slot[len];
+
+	return len_base_cost +
+		((u32)deflate_extra_length_bits[slot] << COST_SHIFT);
 }
 
 static forceinline u32
 deflate_default_offset_slot_cost(unsigned offset_slot)
 {
-	STATIC_ASSERT(COST_SHIFT == 3);
-	/* 39 is 4.875 bits/symbol  */
-	return 39 + ((u32)deflate_extra_offset_bits[offset_slot] << COST_SHIFT);
+	STATIC_ASSERT(COST_SHIFT == 6);
+	/* log2(30)*64 */
+	return 314 + ((u32)deflate_extra_offset_bits[offset_slot] << COST_SHIFT);
 }
 
 /*
@@ -2387,19 +2440,23 @@ static void
 deflate_set_default_costs(struct libdeflate_compressor *c)
 {
 	unsigned i;
+	u32 lit_cost, len_base_cost;
+
+	deflate_prepare_default_costs(c, &lit_cost, &len_base_cost);
 
 	/* Literals  */
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
-		c->p.n.costs.literal[i] = deflate_default_literal_cost(i);
+		c->p.n.costs.literal[i] = lit_cost;
 
 	/* Lengths  */
 	for (i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++)
-		c->p.n.costs.length[i] = deflate_default_length_slot_cost(
-						deflate_length_slot[i]);
+		c->p.n.costs.length[i] =
+			deflate_default_length_cost(i, len_base_cost);
 
 	/* Offset slots  */
 	for (i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++)
-		c->p.n.costs.offset_slot[i] = deflate_default_offset_slot_cost(i);
+		c->p.n.costs.offset_slot[i] =
+			deflate_default_offset_slot_cost(i);
 }
 
 static forceinline void
@@ -2421,17 +2478,18 @@ static void
 deflate_adjust_costs(struct libdeflate_compressor *c)
 {
 	unsigned i;
+	u32 lit_cost, len_base_cost;
+
+	deflate_prepare_default_costs(c, &lit_cost, &len_base_cost);
 
 	/* Literals  */
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
-		deflate_adjust_cost(&c->p.n.costs.literal[i],
-				    deflate_default_literal_cost(i));
+		deflate_adjust_cost(&c->p.n.costs.literal[i], lit_cost);
 
 	/* Lengths  */
 	for (i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++)
 		deflate_adjust_cost(&c->p.n.costs.length[i],
-				    deflate_default_length_slot_cost(
-						deflate_length_slot[i]));
+			    deflate_default_length_cost(i, len_base_cost));
 
 	/* Offset slots  */
 	for (i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++)
