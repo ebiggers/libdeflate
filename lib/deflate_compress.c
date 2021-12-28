@@ -1934,10 +1934,10 @@ do_end_block_check(struct block_split_stats *stats, u32 block_length)
 	}
 
 	for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
-		stats->num_observations += stats->new_observations[i];
 		stats->observations[i] += stats->new_observations[i];
 		stats->new_observations[i] = 0;
 	}
+	stats->num_observations += stats->num_new_observations;
 	stats->num_new_observations = 0;
 	return false;
 }
