@@ -2355,16 +2355,16 @@ static forceinline u32
 deflate_default_literal_cost(unsigned literal)
 {
 	STATIC_ASSERT(COST_SHIFT == 3);
-	/* 66 is 8.25 bits/symbol  */
-	return 66;
+	/* 65 is 8.125 bits/symbol */
+	return 65;
 }
 
 static forceinline u32
 deflate_default_length_slot_cost(unsigned length_slot)
 {
 	STATIC_ASSERT(COST_SHIFT == 3);
-	/* 60 is 7.5 bits/symbol  */
-	return 60 + ((u32)deflate_extra_length_bits[length_slot] << COST_SHIFT);
+	/* 65 is 8.125 bits/symbol */
+	return 65 + ((u32)deflate_extra_length_bits[length_slot] << COST_SHIFT);
 }
 
 static forceinline u32
@@ -2381,9 +2381,7 @@ deflate_default_offset_slot_cost(unsigned offset_slot)
  * It works well to assume that each symbol is equally probable.  This results
  * in each symbol being assigned a cost of (-log2(1.0/num_syms) * (1 <<
  * COST_SHIFT)) where 'num_syms' is the number of symbols in the corresponding
- * alphabet.  However, we intentionally bias the parse towards matches rather
- * than literals by using a slightly lower default cost for length symbols than
- * for literals.  This often improves the compression ratio slightly.
+ * alphabet.
  */
 static void
 deflate_set_default_costs(struct libdeflate_compressor *c)
