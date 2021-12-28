@@ -1,5 +1,25 @@
 # libdeflate release notes
 
+## Version 1.9
+
+* Made various improvements to the compression algorithms, and rebalanced the
+  compression levels slightly:
+
+  * Levels 8-9 were changed the most.  Typically, these levels are now faster
+    than before but don't compress as well (but still more than zlib).  On some
+    data, they are much faster and compress much more than before; this change
+    addressed an issue where levels 8-9 were sometimes worse than level 7.
+
+  * Levels 1-3, 7, and 10-12 were strengthened slightly.
+
+  * Levels 4-6 were also strengthened slightly, but some of this improvement was
+    traded off to speed them up slightly as well.
+
+* `make install` will now install a pkg-config file for libdeflate.
+
+* The Makefile now supports the `DISABLE_SHARED` parameter to disable building
+  the shared library.
+
 ## Version 1.8
 
 * Added `-t` (test) option to `libdeflate-gunzip`.
