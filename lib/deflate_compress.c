@@ -2035,7 +2035,9 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 						next_hashes,
 						&offset);
 
-			if (length >= DEFLATE_MIN_MATCH_LEN) {
+			if (length > DEFLATE_MIN_MATCH_LEN ||
+			    (length == DEFLATE_MIN_MATCH_LEN &&
+			     offset <= 4096)) {
 				/* Match found. */
 				deflate_choose_match(c, length, offset,
 						     &litrunlen, &next_seq);
