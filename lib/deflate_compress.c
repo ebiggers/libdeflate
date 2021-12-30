@@ -95,7 +95,7 @@
  * However, fallback behavior (immediately terminating the block) on cache
  * overflow is still required.
  */
-#  define CACHE_LENGTH      (SOFT_MAX_BLOCK_LENGTH * 5)
+#  define MATCH_CACHE_LENGTH      (SOFT_MAX_BLOCK_LENGTH * 5)
 
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
@@ -413,16 +413,17 @@ struct libdeflate_compressor {
 			 * Note: in rare cases, there will be a very high number
 			 * of matches in the block and this array will overflow.
 			 * If this happens, we force the end of the current
-			 * block.  CACHE_LENGTH is the length at which we
+			 * block.  MATCH_CACHE_LENGTH is the length at which we
 			 * actually check for overflow.  The extra slots beyond
 			 * this are enough to absorb the worst case overflow,
-			 * which occurs if starting at &match_cache[CACHE_LENGTH
-			 * - 1], we write MAX_MATCHES_PER_POS matches and a
-			 * match count header, then skip searching for matches
-			 * at 'DEFLATE_MAX_MATCH_LEN - 1' positions and write
-			 * the match count header for each.
+			 * which occurs if starting at
+			 * &match_cache[MATCH_CACHE_LENGTH - 1], we write
+			 * MAX_MATCHES_PER_POS matches and a match count header,
+			 * then skip searching for matches at
+			 * 'DEFLATE_MAX_MATCH_LEN - 1' positions and write the
+			 * match count header for each.
 			 */
-			struct lz_match match_cache[CACHE_LENGTH +
+			struct lz_match match_cache[MATCH_CACHE_LENGTH +
 						    MAX_MATCHES_PER_POS +
 						    DEFLATE_MAX_MATCH_LEN - 1];
 
@@ -2896,7 +2897,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 				} while (--best_len);
 			}
 		} while (in_next < in_max_block_end &&
-			 cache_ptr < &c->p.n.match_cache[CACHE_LENGTH] &&
+			 cache_ptr < &c->p.n.match_cache[MATCH_CACHE_LENGTH] &&
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 		/*
