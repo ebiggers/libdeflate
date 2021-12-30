@@ -1738,7 +1738,7 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 		static_cost += c->freqs.litlen[sym] * 9;
 
 	/* Account for the cost of encoding the end-of-block symbol. */
-	dynamic_cost += c->codes.lens.litlen[256];
+	dynamic_cost += c->codes.lens.litlen[DEFLATE_END_OF_BLOCK];
 	static_cost += 7;
 
 	/* Account for the cost of encoding lengths. */
