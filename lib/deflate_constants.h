@@ -14,11 +14,8 @@
 #define DEFLATE_MIN_MATCH_LEN			3
 #define DEFLATE_MAX_MATCH_LEN			258
 
-/* Minimum and maximum supported match offsets (in bytes)  */
-#define DEFLATE_MIN_MATCH_OFFSET		1
+/* Maximum supported match offset (in bytes) */
 #define DEFLATE_MAX_MATCH_OFFSET		32768
-
-#define DEFLATE_MAX_WINDOW_SIZE			32768
 
 /* Number of symbols in each Huffman code.  Note: for the literal/length
  * and offset codes, these are actually the maximum values; a given block
@@ -33,7 +30,6 @@
 /* Division of symbols in the literal/length code  */
 #define DEFLATE_NUM_LITERALS			256
 #define DEFLATE_END_OF_BLOCK			256
-#define DEFLATE_NUM_LEN_SYMS			31
 
 /* Maximum codeword length, in bits, within each Huffman code  */
 #define DEFLATE_MAX_PRE_CODEWORD_LEN		7
@@ -55,12 +51,5 @@
  */
 #define DEFLATE_MAX_EXTRA_LENGTH_BITS		5
 #define DEFLATE_MAX_EXTRA_OFFSET_BITS		14
-
-/* The maximum number of bits in which a match can be represented.  This
- * is the absolute worst case, which assumes the longest possible Huffman
- * codewords and the maximum numbers of extra bits.  */
-#define DEFLATE_MAX_MATCH_BITS	\
-	(DEFLATE_MAX_LITLEN_CODEWORD_LEN + DEFLATE_MAX_EXTRA_LENGTH_BITS + \
-	DEFLATE_MAX_OFFSET_CODEWORD_LEN + DEFLATE_MAX_EXTRA_OFFSET_BITS)
 
 #endif /* LIB_DEFLATE_CONSTANTS_H */
