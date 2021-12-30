@@ -31,6 +31,9 @@
 
 #include "libdeflate.h"
 
+#include <ctype.h>
+#include <stdio.h>
+
 /******************************************************************************/
 
 /*
@@ -339,6 +342,7 @@ struct libdeflate_compressor {
 	/* Pointer to the compress() implementation chosen at allocation time */
 	size_t (*impl)(struct libdeflate_compressor *,
 		       const u8 *, size_t, u8 *, size_t);
+	const u8 *in;
 
 	/* Frequency counters for the current block  */
 	struct deflate_freqs freqs;
@@ -1477,8 +1481,33 @@ deflate_write_huffman_header(struct libdeflate_compressor *c,
 	}
 }
 
+static const char *lit_to_str(u8 lit)
+{
+	static char str[16];
+	if (isalnum(lit) || ispunct(lit))
+		sprintf(str, "%c", lit);
+	else if (lit == '\n')
+		sprintf(str, "\\n");
+	else
+		sprintf(str, "0x%02x", lit);
+	return str;
+}
+
+static void print_lit(size_t pos, u8 lit)
+{
+	printf("%zu: Lit %s\n", pos, lit_to_str(lit));
+}
+
+static void print_match(size_t pos, const u8 *in_next,
+			unsigned length, unsigned offset)
+{
+	printf("%zu: Match Len=%u Offset=%u Str=%.*s\n",
+	       pos, length, offset, length, in_next - offset);
+}
+
 static void
-deflate_write_sequences(struct deflate_output_bitstream * restrict os,
+deflate_write_sequences(struct libdeflate_compressor *c,
+			struct deflate_output_bitstream * restrict os,
 			const struct deflate_codes * restrict codes,
 			const struct deflate_sequence sequences[restrict],
 			const u8 * restrict in_next)
@@ -1493,7 +1522,7 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 		unsigned offset_symbol;
 
 		if (litrunlen) {
-		#if 1
+		#if 0
 			while (litrunlen >= 4) {
 				unsigned lit0 = in_next[0];
 				unsigned lit1 = in_next[1];
@@ -1546,16 +1575,21 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 			}
 		#else
 			do {
-				unsigned lit = *in_next++;
+				unsigned lit = *in_next;
+
+				print_lit(in_next - c->in, lit);
 				deflate_add_bits(os, codes->codewords.litlen[lit],
 						 codes->lens.litlen[lit]);
 				deflate_flush_bits(os);
+				in_next++;
 			} while (--litrunlen);
 		#endif
 		}
 
 		if (length == 0)
 			return;
+
+		print_match(in_next - c->in, in_next, length, seq->offset);
 
 		in_next += length;
 
@@ -1611,7 +1645,8 @@ static void
 deflate_write_item_list(struct deflate_output_bitstream *os,
 			const struct deflate_codes *codes,
 			struct libdeflate_compressor *c,
-			u32 block_length)
+			u32 block_length,
+			const u8 *in_next)
 {
 	struct deflate_optimum_node *cur_node = &c->p.n.optimum_nodes[0];
 	struct deflate_optimum_node * const end_node = &c->p.n.optimum_nodes[block_length];
@@ -1625,11 +1660,15 @@ deflate_write_item_list(struct deflate_output_bitstream *os,
 		if (length == 1) {
 			/* Literal  */
 			litlen_symbol = offset;
+			print_lit(in_next - c->in, litlen_symbol);
 			deflate_add_bits(os, codes->codewords.litlen[litlen_symbol],
 					 codes->lens.litlen[litlen_symbol]);
 			deflate_flush_bits(os);
 		} else {
 			/* Match length  */
+
+			print_match(in_next - c->in, in_next, length, offset);
+
 			length_slot = deflate_length_slot[length];
 			litlen_symbol = DEFLATE_FIRST_LEN_SYM + length_slot;
 			deflate_add_bits(os, codes->codewords.litlen[litlen_symbol],
@@ -1659,6 +1698,7 @@ deflate_write_item_list(struct deflate_output_bitstream *os,
 
 			deflate_flush_bits(os);
 		}
+		in_next += length;
 		cur_node += length;
 	} while (cur_node != end_node);
 }
@@ -1794,11 +1834,29 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	if (dynamic_cost < MIN(static_cost, uncompressed_cost)) {
 		block_type = DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN;
 		codes = &c->codes;
+		printf("@@@@ New Dynamic Huffman block\n");
+		for (int i = 0; i < 256; i++) {
+			if (c->codes.lens.litlen[i])
+				printf("Lit %s: %u bits\n", lit_to_str(i),
+				       c->codes.lens.litlen[i]);
+		}
+		for (int i = 257; i < c->num_litlen_syms; i++) {
+			if (c->codes.lens.litlen[i])
+				printf("Len slot %d: %u bits\n", i - 257,
+				       c->codes.lens.litlen[i]);
+		}
+		for (int i = 0; i < c->num_offset_syms; i++) {
+			if (c->codes.lens.offset[i])
+				printf("Offset slot %d: %u bits\n", i,
+				       c->codes.lens.offset[i]);
+		}
 	} else if (static_cost < uncompressed_cost) {
 		block_type = DEFLATE_BLOCKTYPE_STATIC_HUFFMAN;
 		codes = &c->static_codes;
+		printf("@@@@ New static Huffman block\n");
 	} else {
 		block_type = DEFLATE_BLOCKTYPE_UNCOMPRESSED;
+		printf("@@@@ New uncompressed block\n");
 	}
 
 	/* Now actually output the block. */
@@ -1820,10 +1878,11 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 		/* Output the literals, matches, and end-of-block symbol. */
 	#if SUPPORT_NEAR_OPTIMAL_PARSING
 		if (near_optimal)
-			deflate_write_item_list(os, codes, c, block_length);
+			deflate_write_item_list(os, codes, c, block_length,
+						block_begin);
 		else
 	#endif
-			deflate_write_sequences(os, codes, c->p.g.sequences,
+			deflate_write_sequences(c, os, codes, c->p.g.sequences,
 						block_begin);
 		deflate_write_end_of_block(os, codes);
 	}
@@ -3085,6 +3144,8 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 			    const void *in, size_t in_nbytes,
 			    void *out, size_t out_nbytes_avail)
 {
+	c->in = in;
+
 	if (unlikely(out_nbytes_avail < OUTPUT_END_PADDING))
 		return 0;
 
