@@ -1888,12 +1888,15 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	}
 }
 
-static forceinline void
+static forceinline bool
 deflate_choose_literal(struct libdeflate_compressor *c, unsigned literal,
 		       u32 *litrunlen_p)
 {
+	u32 prev_freq = c->freqs.litlen[literal];
+
 	c->freqs.litlen[literal]++;
 	++*litrunlen_p;
+	return prev_freq == 0;
 }
 
 static forceinline void
@@ -2174,6 +2177,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
 	unsigned nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
+	u32 num_used_literals = 0;
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	hc_matchfinder_init(&c->p.g.hc_mf);
@@ -2186,6 +2190,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
 		u32 litrunlen = 0;
 		struct deflate_sequence *next_seq = c->p.g.sequences;
+		unsigned min_len = DEFLATE_MIN_MATCH_LEN;
 
 		init_block_split_stats(&c->split_stats);
 		deflate_reset_symbol_frequencies(c);
@@ -2196,6 +2201,17 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			unsigned next_len;
 			unsigned next_offset;
 
+			if (num_used_literals < 8)
+				min_len = 7;
+			else if (num_used_literals < 16)
+				min_len = 6;
+			else if (num_used_literals < 32)
+				min_len = 5;
+			else if (num_used_literals < 64)
+				min_len = 4;
+			else
+				min_len = 3;
+
 			/* Find the longest match at the current position. */
 			adjust_max_and_nice_len(&max_len, &nice_len,
 						in_end - in_next);
@@ -2203,17 +2219,19 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						&c->p.g.hc_mf,
 						&in_cur_base,
 						in_next,
-						DEFLATE_MIN_MATCH_LEN - 1,
+						min_len - 1,
 						max_len,
 						nice_len,
 						c->max_search_depth,
 						next_hashes,
 						&cur_offset);
-			if (cur_len < DEFLATE_MIN_MATCH_LEN ||
+			if (cur_len < min_len ||
 			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
 			     cur_offset > 8192)) {
 				/* No match found.  Choose a literal. */
-				deflate_choose_literal(c, *in_next, &litrunlen);
+				num_used_literals +=
+					deflate_choose_literal(c, *in_next,
+							       &litrunlen);
 				observe_literal(&c->split_stats, *in_next);
 				in_next++;
 				continue;
@@ -2276,8 +2294,9 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 				 * Output a literal.  Then the next match
 				 * becomes the current match.
 				 */
-				deflate_choose_literal(c, *(in_next - 2),
-						       &litrunlen);
+				num_used_literals +=
+					deflate_choose_literal(c, *(in_next - 2),
+							       &litrunlen);
 				cur_len = next_len;
 				cur_offset = next_offset;
 				goto have_cur_match;
@@ -2305,9 +2324,11 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 					 * There's a much better match two
 					 * positions ahead, so use two literals.
 					 */
-					deflate_choose_literal(
+					num_used_literals +=
+						deflate_choose_literal(
 						c, *(in_next - 3), &litrunlen);
-					deflate_choose_literal(
+					num_used_literals +=
+						deflate_choose_literal(
 						c, *(in_next - 2), &litrunlen);
 					cur_len = next_len;
 					cur_offset = next_offset;
