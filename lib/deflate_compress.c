@@ -211,14 +211,15 @@ struct deflate_costs {
 };
 
 /*
- * COST_SHIFT is a scaling factor that makes it possible to consider fractional
- * bit costs.  A token requiring 'n' bits to represent has cost n << COST_SHIFT.
+ * BIT_COST is a scaling factor that makes it possible to consider fractional
+ * bit costs.  A token requiring 'n' bits to represent has cost 'n * BIT_COST'.
+ * BIT_COST should be a power of 2.
  *
  * Note: this is only useful as a statistical trick for when the true costs are
  * unknown.  In reality, each token in DEFLATE requires a whole number of bits
  * to output.
  */
-#define COST_SHIFT	3
+#define BIT_COST	16
 
 /*
  * The NOSTAT_BITS value for a given alphabet is the number of bits assumed to
@@ -446,6 +447,10 @@ struct libdeflate_compressor {
 
 			/* The current cost model being used.  */
 			struct deflate_costs costs;
+
+			/* Literal/match statistics saved from previous block */
+			u32 prev_observations[NUM_OBSERVATION_TYPES];
+			u32 prev_num_observations;
 
 			unsigned num_optim_passes;
 		} n; /* (n)ear-optimal */
@@ -1699,7 +1704,7 @@ static void
 deflate_flush_block(struct libdeflate_compressor * restrict c,
 		    struct deflate_output_bitstream * restrict os,
 		    const u8 * restrict block_begin, u32 block_length,
-		    bool is_final_block, bool use_item_list)
+		    bool is_final_block, bool near_optimal)
 {
 	static const u8 deflate_extra_precode_bits[DEFLATE_NUM_PRECODE_SYMS] = {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7,
@@ -1713,11 +1718,13 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	int block_type;
 	unsigned sym;
 
-	/* Tally the end-of-block symbol. */
-	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
+	if (!near_optimal || !SUPPORT_NEAR_OPTIMAL_PARSING) {
+		/* Tally the end-of-block symbol. */
+		c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 
-	/* Build dynamic Huffman codes. */
-	deflate_make_huffman_codes(&c->freqs, &c->codes);
+		/* Build dynamic Huffman codes. */
+		deflate_make_huffman_codes(&c->freqs, &c->codes);
+	} /* Else, this was already done */
 
 	/* Account for the cost of sending dynamic Huffman codes. */
 	deflate_precompute_huffman_header(c);
@@ -1794,7 +1801,7 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 
 		/* Output the literals, matches, and end-of-block symbol. */
 	#if SUPPORT_NEAR_OPTIMAL_PARSING
-		if (use_item_list)
+		if (near_optimal)
 			deflate_write_item_list(os, codes, c, block_length);
 		else
 	#endif
@@ -1909,17 +1916,29 @@ observe_match(struct block_split_stats *stats, unsigned length)
 	stats->num_new_observations++;
 }
 
-static bool
-do_end_block_check(struct block_split_stats *stats, u32 block_length)
+static void
+merge_new_observations(struct block_split_stats *stats)
 {
 	int i;
 
-	if (stats->num_observations > 0) {
+	for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+		stats->observations[i] += stats->new_observations[i];
+		stats->new_observations[i] = 0;
+	}
+	stats->num_observations += stats->num_new_observations;
+	stats->num_new_observations = 0;
+}
 
+static bool
+do_end_block_check(struct block_split_stats *stats, u32 block_length)
+{
+	if (stats->num_observations > 0) {
 		/* Note: to avoid slow divisions, we do not divide by
 		 * 'num_observations', but rather do all math with the numbers
 		 * multiplied by 'num_observations'.  */
 		u32 total_delta = 0;
+		int i;
+
 		for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
 			u32 expected = stats->observations[i] * stats->num_new_observations;
 			u32 actual = stats->new_observations[i] * stats->num_observations;
@@ -1933,13 +1952,7 @@ do_end_block_check(struct block_split_stats *stats, u32 block_length)
 		    NUM_OBSERVATIONS_PER_BLOCK_CHECK * 200 / 512 * stats->num_observations)
 			return true;
 	}
-
-	for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
-		stats->observations[i] += stats->new_observations[i];
-		stats->new_observations[i] = 0;
-	}
-	stats->num_observations += stats->num_new_observations;
-	stats->num_new_observations = 0;
+	merge_new_observations(stats);
 	return false;
 }
 
@@ -2320,6 +2333,9 @@ deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 		}
 		cur_node += length;
 	} while (cur_node != end_node);
+
+	/* Tally the end-of-block symbol. */
+	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 }
 
 /* Set the current cost model from the codeword lengths specified in @lens.  */
@@ -2332,7 +2348,7 @@ deflate_set_costs_from_codes(struct libdeflate_compressor *c,
 	/* Literals  */
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++) {
 		u32 bits = (lens->litlen[i] ? lens->litlen[i] : LITERAL_NOSTAT_BITS);
-		c->p.n.costs.literal[i] = bits << COST_SHIFT;
+		c->p.n.costs.literal[i] = bits * BIT_COST;
 	}
 
 	/* Lengths  */
@@ -2341,74 +2357,172 @@ deflate_set_costs_from_codes(struct libdeflate_compressor *c,
 		unsigned litlen_sym = 257 + length_slot;
 		u32 bits = (lens->litlen[litlen_sym] ? lens->litlen[litlen_sym] : LENGTH_NOSTAT_BITS);
 		bits += deflate_extra_length_bits[length_slot];
-		c->p.n.costs.length[i] = bits << COST_SHIFT;
+		c->p.n.costs.length[i] = bits * BIT_COST;
 	}
 
 	/* Offset slots  */
 	for (i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++) {
 		u32 bits = (lens->offset[i] ? lens->offset[i] : OFFSET_NOSTAT_BITS);
 		bits += deflate_extra_offset_bits[i];
-		c->p.n.costs.offset_slot[i] = bits << COST_SHIFT;
+		c->p.n.costs.offset_slot[i] = bits * BIT_COST;
+	}
+}
+
+/*
+ * This array contains the precomputed value:
+ *
+ *	int(-log2(1/(num_used_literals + 29)) * BIT_COST)
+ *
+ * ... for each value of 'num_used_literals' in [1, 256].  This is the cost of a
+ * litlen symbol, assuming that all litlen symbols are equally likely except for
+ * literals that don't appear in the block at all, allowing fractional bit
+ * costs, and disregarding the end-of-block symbol.
+ *
+ * This array was generated by scripts/gen_default_litlen_costs.py.
+ */
+static const u8 used_lits_to_default_litlen_cost[] = {
+	78, 78, 79, 80, 80, 81, 82, 82, 83, 83, 84, 85, 85, 86, 86, 87, 87, 88,
+	88, 89, 89, 90, 90, 91, 91, 92, 92, 92, 93, 93, 94, 94, 94, 95, 95, 96,
+	96, 96, 97, 97, 97, 98, 98, 98, 99, 99, 99, 99, 100, 100, 100, 101, 101,
+	101, 102, 102, 102, 102, 103, 103, 103, 103, 104, 104, 104, 104, 105,
+	105, 105, 105, 106, 106, 106, 106, 106, 107, 107, 107, 107, 108, 108,
+	108, 108, 108, 109, 109, 109, 109, 109, 110, 110, 110, 110, 110, 111,
+	111, 111, 111, 111, 112, 112, 112, 112, 112, 112, 113, 113, 113, 113,
+	113, 113, 114, 114, 114, 114, 114, 114, 115, 115, 115, 115, 115, 115,
+	115, 116, 116, 116, 116, 116, 116, 117, 117, 117, 117, 117, 117, 117,
+	118, 118, 118, 118, 118, 118, 118, 118, 119, 119, 119, 119, 119, 119,
+	119, 119, 120, 120, 120, 120, 120, 120, 120, 120, 121, 121, 121, 121,
+	121, 121, 121, 121, 122, 122, 122, 122, 122, 122, 122, 122, 122, 123,
+	123, 123, 123, 123, 123, 123, 123, 123, 124, 124, 124, 124, 124, 124,
+	124, 124, 124, 125, 125, 125, 125, 125, 125, 125, 125, 125, 125, 126,
+	126, 126, 126, 126, 126, 126, 126, 126, 126, 126, 127, 127, 127, 127,
+	127, 127, 127, 127, 127, 127, 128, 128, 128, 128, 128, 128, 128, 128,
+	128, 128, 128, 128, 129, 129, 129, 129, 129, 129, 129, 129, 129, 129,
+	129, 129, 130, 130, 130, 130, 130, 130,
+};
+
+/*
+ * Choose the default costs for literal and length symbols.  These symbols are
+ * both part of the litlen alphabet.
+ */
+static void
+deflate_choose_default_litlen_costs(struct libdeflate_compressor *c,
+				    u32 *lit_cost, u32 *len_sym_cost)
+{
+	unsigned num_used_literals = 0;
+	u32 literal_freq = 0;
+	u32 match_freq = 0;
+	int i;
+
+	/*
+	 * If any literals don't appear at all, then the number of litlen
+	 * symbols that might be used is lower, so use lower default costs.
+	 */
+	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
+		num_used_literals += c->freqs.litlen[i]; /* 0 or 1 here */
+	STATIC_ASSERT(BIT_COST == 16);
+	STATIC_ASSERT(ARRAY_LEN(used_lits_to_default_litlen_cost) == 256 + 1);
+	*lit_cost = *len_sym_cost =
+		used_lits_to_default_litlen_cost[num_used_literals];
+
+	/* If there are many matches, then prefer length symbols to literals. */
+	for (i = 0; i < NUM_LITERAL_OBSERVATION_TYPES; i++)
+		literal_freq += c->split_stats.observations[i];
+	for (; i < NUM_OBSERVATION_TYPES; i++)
+		match_freq += c->split_stats.observations[i];
+	if (match_freq > literal_freq) {
+		*lit_cost += BIT_COST / 3;
+		*len_sym_cost -= BIT_COST / 3;
+	} else if (match_freq > literal_freq / 2) {
+		*lit_cost += BIT_COST / 6;
+		*len_sym_cost -= BIT_COST / 6;
 	}
 }
 
 static forceinline u32
-deflate_default_literal_cost(unsigned literal)
+deflate_default_length_cost(unsigned len, u32 len_sym_cost)
 {
-	STATIC_ASSERT(COST_SHIFT == 3);
-	/* 66 is 8.25 bits/symbol  */
-	return 66;
+	unsigned slot = deflate_length_slot[len];
+	u32 num_extra_bits = deflate_extra_length_bits[slot];
+
+	return len_sym_cost + (num_extra_bits * BIT_COST);
 }
 
 static forceinline u32
-deflate_default_length_slot_cost(unsigned length_slot)
+deflate_default_offset_slot_cost(unsigned slot)
 {
-	STATIC_ASSERT(COST_SHIFT == 3);
-	/* 60 is 7.5 bits/symbol  */
-	return 60 + ((u32)deflate_extra_length_bits[length_slot] << COST_SHIFT);
+	u32 num_extra_bits = deflate_extra_offset_bits[slot];
+	/*
+	 * Assume that all offset symbols are equally probable.
+	 * The resulting cost is 'int(-log2(1/30) * BIT_COST)',
+	 * where 30 is the number of potentially-used offset symbols.
+	 */
+	u32 offset_sym_cost = 4*BIT_COST + (907*BIT_COST)/1000;
+
+	return offset_sym_cost + (num_extra_bits * BIT_COST);
 }
 
-static forceinline u32
-deflate_default_offset_slot_cost(unsigned offset_slot)
-{
-	STATIC_ASSERT(COST_SHIFT == 3);
-	/* 39 is 4.875 bits/symbol  */
-	return 39 + ((u32)deflate_extra_offset_bits[offset_slot] << COST_SHIFT);
-}
-
-/*
- * Set default symbol costs for the first block's first optimization pass.
- *
- * It works well to assume that each symbol is equally probable.  This results
- * in each symbol being assigned a cost of (-log2(1.0/num_syms) * (1 <<
- * COST_SHIFT)) where 'num_syms' is the number of symbols in the corresponding
- * alphabet.  However, we intentionally bias the parse towards matches rather
- * than literals by using a slightly lower default cost for length symbols than
- * for literals.  This often improves the compression ratio slightly.
- */
+/* Set default symbol costs for the first block's first optimization pass. */
 static void
 deflate_set_default_costs(struct libdeflate_compressor *c)
+{
+	u32 lit_cost, len_sym_cost;
+	unsigned i;
+
+	deflate_choose_default_litlen_costs(c, &lit_cost, &len_sym_cost);
+
+	/* Literals  */
+	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
+		c->p.n.costs.literal[i] = lit_cost;
+
+	/* Lengths  */
+	for (i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++)
+		c->p.n.costs.length[i] =
+			deflate_default_length_cost(i, len_sym_cost);
+
+	/* Offset slots  */
+	for (i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++)
+		c->p.n.costs.offset_slot[i] =
+			deflate_default_offset_slot_cost(i);
+}
+
+static forceinline void
+deflate_adjust_cost(u32 *cost_p, u32 default_cost, int change_amount)
+{
+	if (change_amount == 0)
+		/* Block is very similar to previous; prefer previous costs. */
+		*cost_p = (default_cost + 3 * *cost_p) / 4;
+	else if (change_amount == 1)
+		*cost_p = (default_cost + *cost_p) / 2;
+	else if (change_amount == 2)
+		*cost_p = (5 * default_cost + 3 * *cost_p) / 8;
+	else
+		/* Block differs greatly from previous; prefer default costs. */
+		*cost_p = (3 * default_cost + *cost_p) / 4;
+}
+
+static forceinline void
+deflate_adjust_costs_impl(struct libdeflate_compressor *c,
+			  u32 lit_cost, u32 len_sym_cost, int change_amount)
 {
 	unsigned i;
 
 	/* Literals  */
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
-		c->p.n.costs.literal[i] = deflate_default_literal_cost(i);
+		deflate_adjust_cost(&c->p.n.costs.literal[i], lit_cost,
+				    change_amount);
 
 	/* Lengths  */
 	for (i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++)
-		c->p.n.costs.length[i] = deflate_default_length_slot_cost(
-						deflate_length_slot[i]);
+		deflate_adjust_cost(&c->p.n.costs.length[i],
+			    deflate_default_length_cost(i, len_sym_cost),
+			    change_amount);
 
 	/* Offset slots  */
 	for (i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++)
-		c->p.n.costs.offset_slot[i] = deflate_default_offset_slot_cost(i);
-}
-
-static forceinline void
-deflate_adjust_cost(u32 *cost_p, u32 default_cost)
-{
-	*cost_p += ((s32)default_cost - (s32)*cost_p) >> 1;
+		deflate_adjust_cost(&c->p.n.costs.offset_slot[i],
+				    deflate_default_offset_slot_cost(i),
+				    change_amount);
 }
 
 /*
@@ -2423,23 +2537,42 @@ deflate_adjust_cost(u32 *cost_p, u32 default_cost)
 static void
 deflate_adjust_costs(struct libdeflate_compressor *c)
 {
-	unsigned i;
+	u32 lit_cost, len_sym_cost;
+	u64 total_delta = 0;
+	u64 cutoff;
+	int i;
 
-	/* Literals  */
-	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
-		deflate_adjust_cost(&c->p.n.costs.literal[i],
-				    deflate_default_literal_cost(i));
+	deflate_choose_default_litlen_costs(c, &lit_cost, &len_sym_cost);
 
-	/* Lengths  */
-	for (i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++)
-		deflate_adjust_cost(&c->p.n.costs.length[i],
-				    deflate_default_length_slot_cost(
-						deflate_length_slot[i]));
+	/*
+	 * Decide how different the current block is from the previous block,
+	 * using the block splitting statistics from the current and previous
+	 * blocks.  The more different the current block is, the more we prefer
+	 * the default costs rather than the previous block's costs.
+	 *
+	 * The algorithm here is similar to the end-of-block check one, but here
+	 * we compare two entire blocks rather than a partial block with a small
+	 * extra part, and therefore we need 64-bit numbers in some places.
+	 */
+	for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+		u64 prev = (u64)c->p.n.prev_observations[i] *
+			    c->split_stats.num_observations;
+		u64 cur = (u64)c->split_stats.observations[i] *
+			  c->p.n.prev_num_observations;
 
-	/* Offset slots  */
-	for (i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++)
-		deflate_adjust_cost(&c->p.n.costs.offset_slot[i],
-				    deflate_default_offset_slot_cost(i));
+		total_delta += prev > cur ? prev - cur : cur - prev;
+	}
+	cutoff = ((u64)c->p.n.prev_num_observations *
+		  c->split_stats.num_observations * 200) / 512;
+
+	if (4 * total_delta > 9 * cutoff)
+		deflate_adjust_costs_impl(c, lit_cost, len_sym_cost, 3);
+	else if (2 * total_delta > 3 * cutoff)
+		deflate_adjust_costs_impl(c, lit_cost, len_sym_cost, 2);
+	else if (2 * total_delta > cutoff)
+		deflate_adjust_costs_impl(c, lit_cost, len_sym_cost, 1);
+	else
+		deflate_adjust_costs_impl(c, lit_cost, len_sym_cost, 0);
 }
 
 /*
@@ -2535,7 +2668,8 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
  */
 static void
 deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
-		       const struct lz_match *cache_ptr, bool is_first_block)
+		       const struct lz_match *cache_ptr, bool is_first_block,
+		       bool is_last_block)
 {
 	unsigned num_passes_remaining = c->p.n.num_optim_passes;
 	u32 i;
@@ -2546,13 +2680,16 @@ deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
 					ARRAY_LEN(c->p.n.optimum_nodes) - 1); i++)
 		c->p.n.optimum_nodes[i].cost_to_end = 0x80000000;
 
+	/* Make sure the literal/match statistics are up to date. */
+	merge_new_observations(&c->split_stats);
+
 	/* Set the initial costs. */
 	if (is_first_block)
 		deflate_set_default_costs(c);
 	else
 		deflate_adjust_costs(c);
 
-	for (;;) {
+	do {
 		/* Find the minimum cost path for this pass. */
 		deflate_find_min_cost_path(c, block_length, cache_ptr);
 
@@ -2560,13 +2697,45 @@ deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
 		deflate_reset_symbol_frequencies(c);
 		deflate_tally_item_list(c, block_length);
 
-		if (--num_passes_remaining == 0)
-			break;
-
-		/* At least one optimization pass remains; update the costs. */
+		/* Make the Huffman codes. */
 		deflate_make_huffman_codes(&c->freqs, &c->codes);
-		deflate_set_costs_from_codes(c, &c->codes.lens);
+
+		/*
+		 * Update the costs.  On the last optimization pass, the new
+		 * costs aren't needed for this block, but they will be used
+		 * later in determining the initial costs for the next block.
+		 */
+		if (--num_passes_remaining || !is_last_block)
+			deflate_set_costs_from_codes(c, &c->codes.lens);
+	} while (num_passes_remaining);
+}
+
+static void deflate_near_optimal_begin_block(struct libdeflate_compressor *c,
+					     bool is_first_block)
+{
+	int i;
+
+	if (!is_first_block) {
+		/*
+		 * Save some literal/match statistics from the previous block so
+		 * that deflate_adjust_costs() will be able to decide how much
+		 * the current block differs from the previous one.
+		 */
+		for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+			c->p.n.prev_observations[i] =
+				c->split_stats.observations[i];
+		}
+		c->p.n.prev_num_observations = c->split_stats.num_observations;
 	}
+	init_block_split_stats(&c->split_stats);
+
+	/*
+	 * c->freqs isn't needed for real until deflate_optimize_block().
+	 * Before then, we temporarily (ab)use it to keep track of which
+	 * literals appear in the block at all, regardless of frequency.
+	 */
+	memset(c->freqs.litlen, 0,
+	       DEFLATE_NUM_LITERALS * sizeof(c->freqs.litlen[0]));
 }
 
 /*
@@ -2609,7 +2778,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
 		const u8 *next_observation = in_next;
 
-		init_block_split_stats(&c->split_stats);
+		deflate_near_optimal_begin_block(c, in_block_begin == in);
 
 		/*
 		 * Find matches until we decide to end the block.  We end the
@@ -2664,7 +2833,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						&best_len,
 						matches);
 			}
-
+			c->freqs.litlen[*in_next] = 1; /* seen at least once */
 			if (in_next >= next_observation) {
 				if (best_len >= 4) {
 					observe_match(&c->split_stats,
@@ -2735,7 +2904,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		 * the sequence of items to output and flush the block.
 		 */
 		deflate_optimize_block(c, in_next - in_block_begin, cache_ptr,
-				       in_block_begin == in);
+				       in_block_begin == in, in_next == in_end);
 		deflate_flush_block(c, &os, in_block_begin,
 				    in_next - in_block_begin,
 				    in_next == in_end, true);
