@@ -1958,6 +1958,19 @@ should_end_block(struct block_split_stats *stats,
 /******************************************************************************/
 
 /*
+ * Decrease the maximum and nice match lengths if we're approaching the end of
+ * the input buffer.
+ */
+static forceinline void
+adjust_max_and_nice_len(unsigned *max_len, unsigned *nice_len, size_t remaining)
+{
+	if (unlikely(remaining < DEFLATE_MAX_MATCH_LEN)) {
+		*max_len = remaining;
+		*nice_len = MIN(*nice_len, *max_len);
+	}
+}
+
+/*
  * This is the level 0 "compressor".  It always outputs uncompressed blocks.
  */
 static size_t
@@ -1994,7 +2007,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 	hc_matchfinder_init(&c->p.g.hc_mf);
 
 	do {
-		/* Starting a new DEFLATE block.  */
+		/* Starting a new DEFLATE block. */
 
 		const u8 * const in_block_begin = in_next;
 		const u8 * const in_max_block_end =
@@ -2009,44 +2022,42 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 			u32 length;
 			u32 offset;
 
-			/* Decrease the maximum and nice match lengths if we're
-			 * approaching the end of the input buffer.  */
-			if (unlikely(max_len > in_end - in_next)) {
-				max_len = in_end - in_next;
-				nice_len = MIN(nice_len, max_len);
-			}
-
-			length = hc_matchfinder_longest_match(&c->p.g.hc_mf,
-							      &in_cur_base,
-							      in_next,
-							      DEFLATE_MIN_MATCH_LEN - 1,
-							      max_len,
-							      nice_len,
-							      c->max_search_depth,
-							      next_hashes,
-							      &offset);
+			adjust_max_and_nice_len(&max_len, &nice_len,
+						in_end - in_next);
+			length = hc_matchfinder_longest_match(
+						&c->p.g.hc_mf,
+						&in_cur_base,
+						in_next,
+						DEFLATE_MIN_MATCH_LEN - 1,
+						max_len,
+						nice_len,
+						c->max_search_depth,
+						next_hashes,
+						&offset);
 
 			if (length >= DEFLATE_MIN_MATCH_LEN) {
-				/* Match found.  */
+				/* Match found. */
 				deflate_choose_match(c, length, offset,
 						     &litrunlen, &next_seq);
 				observe_match(&c->split_stats, length);
-				in_next = hc_matchfinder_skip_positions(&c->p.g.hc_mf,
-									&in_cur_base,
-									in_next + 1,
-									in_end,
-									length - 1,
-									next_hashes);
+				in_next = hc_matchfinder_skip_positions(
+						&c->p.g.hc_mf,
+						&in_cur_base,
+						in_next + 1,
+						in_end,
+						length - 1,
+						next_hashes);
 			} else {
-				/* No match found.  */
+				/* No match found. */
 				deflate_choose_literal(c, *in_next, &litrunlen);
 				observe_literal(&c->split_stats, *in_next);
 				in_next++;
 			}
 
-			/* Check if it's time to output another block.  */
+			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
-			 !should_end_block(&c->split_stats, in_block_begin, in_next, in_end));
+			 !should_end_block(&c->split_stats,
+					   in_block_begin, in_next, in_end));
 
 		deflate_finish_sequence(next_seq, litrunlen);
 		deflate_flush_block(c, &os, in_block_begin,
@@ -2079,7 +2090,7 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 	hc_matchfinder_init(&c->p.g.hc_mf);
 
 	do {
-		/* Starting a new DEFLATE block.  */
+		/* Starting a new DEFLATE block. */
 
 		const u8 * const in_block_begin = in_next;
 		const u8 * const in_max_block_end =
@@ -2096,51 +2107,49 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 			unsigned next_len;
 			unsigned next_offset;
 
-			if (unlikely(in_end - in_next < DEFLATE_MAX_MATCH_LEN)) {
-				max_len = in_end - in_next;
-				nice_len = MIN(nice_len, max_len);
-			}
-
-			/* Find the longest match at the current position.  */
-			cur_len = hc_matchfinder_longest_match(&c->p.g.hc_mf,
-							       &in_cur_base,
-							       in_next,
-							       DEFLATE_MIN_MATCH_LEN - 1,
-							       max_len,
-							       nice_len,
-							       c->max_search_depth,
-							       next_hashes,
-							       &cur_offset);
-			in_next += 1;
-
+			/* Find the longest match at the current position. */
+			adjust_max_and_nice_len(&max_len, &nice_len,
+						in_end - in_next);
+			cur_len = hc_matchfinder_longest_match(
+						&c->p.g.hc_mf,
+						&in_cur_base,
+						in_next,
+						DEFLATE_MIN_MATCH_LEN - 1,
+						max_len,
+						nice_len,
+						c->max_search_depth,
+						next_hashes,
+						&cur_offset);
 			if (cur_len < DEFLATE_MIN_MATCH_LEN) {
-				/* No match found.  Choose a literal.  */
-				deflate_choose_literal(c, *(in_next - 1), &litrunlen);
-				observe_literal(&c->split_stats, *(in_next - 1));
+				/* No match found.  Choose a literal. */
+				deflate_choose_literal(c, *in_next, &litrunlen);
+				observe_literal(&c->split_stats, *in_next);
+				in_next++;
 				continue;
 			}
+			in_next++;
 
 		have_cur_match:
 			observe_match(&c->split_stats, cur_len);
-
-			/* We have a match at the current position.  */
-
-			/* If the current match is very long, choose it
-			 * immediately.  */
+			/*
+			 * We have a match at the current position.
+			 * If it's very long, choose it immediately.
+			 */
 			if (cur_len >= nice_len) {
 				deflate_choose_match(c, cur_len, cur_offset,
 						     &litrunlen, &next_seq);
-				in_next = hc_matchfinder_skip_positions(&c->p.g.hc_mf,
-									&in_cur_base,
-									in_next,
-									in_end,
-									cur_len - 1,
-									next_hashes);
+				in_next = hc_matchfinder_skip_positions(
+						&c->p.g.hc_mf,
+						&in_cur_base,
+						in_next,
+						in_end,
+						cur_len - 1,
+						next_hashes);
 				continue;
 			}
 
 			/*
-			 * Try to find a match at the next position.
+			 * Try to find a longer match at the next position.
 			 *
 			 * Note: since we already have a match at the *current*
 			 * position, we use only half the 'max_search_depth'
@@ -2155,45 +2164,47 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 			 * have two call sites, with longest_match() inlined at
 			 * each.
 			 */
-			if (unlikely(in_end - in_next < DEFLATE_MAX_MATCH_LEN)) {
-				max_len = in_end - in_next;
-				nice_len = MIN(nice_len, max_len);
-			}
-			next_len = hc_matchfinder_longest_match(&c->p.g.hc_mf,
-								&in_cur_base,
-								in_next,
-								cur_len,
-								max_len,
-								nice_len,
-								c->max_search_depth / 2,
-								next_hashes,
-								&next_offset);
-			in_next += 1;
-
+			adjust_max_and_nice_len(&max_len, &nice_len,
+						in_end - in_next);
+			next_len = hc_matchfinder_longest_match(
+						&c->p.g.hc_mf,
+						&in_cur_base,
+						in_next++,
+						cur_len,
+						max_len,
+						nice_len,
+						c->max_search_depth >> 1,
+						next_hashes,
+						&next_offset);
 			if (next_len > cur_len) {
-				/* Found a longer match at the next position.
+				/*
+				 * Found a longer match at the next position.
 				 * Output a literal.  Then the next match
-				 * becomes the current match.  */
-				deflate_choose_literal(c, *(in_next - 2), &litrunlen);
+				 * becomes the current match.
+				 */
+				deflate_choose_literal(c, *(in_next - 2),
+						       &litrunlen);
 				cur_len = next_len;
 				cur_offset = next_offset;
 				goto have_cur_match;
 			}
-
-			/* No longer match at the next position.
-			 * Output the current match.  */
+			/*
+			 * No longer match at the next position.  Output the
+			 * current match.
+			 */
 			deflate_choose_match(c, cur_len, cur_offset,
 					     &litrunlen, &next_seq);
-			in_next = hc_matchfinder_skip_positions(&c->p.g.hc_mf,
-								&in_cur_base,
-								in_next,
-								in_end,
-								cur_len - 2,
-								next_hashes);
-
-			/* Check if it's time to output another block.  */
+			in_next = hc_matchfinder_skip_positions(
+						&c->p.g.hc_mf,
+						&in_cur_base,
+						in_next,
+						in_end,
+						cur_len - 2,
+						next_hashes);
+			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
-			 !should_end_block(&c->split_stats, in_block_begin, in_next, in_end));
+			 !should_end_block(&c->split_stats,
+					   in_block_begin, in_next, in_end));
 
 		deflate_finish_sequence(next_seq, litrunlen);
 		deflate_flush_block(c, &os, in_block_begin,
@@ -2501,7 +2512,8 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 	const u8 *in_end = in_next + in_nbytes;
 	struct deflate_output_bitstream os;
 	const u8 *in_cur_base = in_next;
-	const u8 *in_next_slide = in_next + MIN(in_end - in_next, MATCHFINDER_WINDOW_SIZE);
+	const u8 *in_next_slide =
+		in_next + MIN(in_end - in_next, MATCHFINDER_WINDOW_SIZE);
 	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
 	unsigned nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
@@ -2510,7 +2522,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 	bt_matchfinder_init(&c->p.n.bt_mf);
 
 	do {
-		/* Starting a new DEFLATE block.  */
+		/* Starting a new DEFLATE block. */
 
 		struct lz_match *cache_ptr = c->p.n.match_cache;
 		const u8 * const in_block_begin = in_next;
@@ -2531,20 +2543,14 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		do {
 			struct lz_match *matches;
 			unsigned best_len;
+			size_t remaining = in_end - in_next;
 
 			/* Slide the window forward if needed.  */
 			if (in_next == in_next_slide) {
 				bt_matchfinder_slide_window(&c->p.n.bt_mf);
 				in_cur_base = in_next;
-				in_next_slide = in_next + MIN(in_end - in_next,
-							      MATCHFINDER_WINDOW_SIZE);
-			}
-
-			/* Decrease the maximum and nice match lengths if we're
-			 * approaching the end of the input buffer.  */
-			if (unlikely(max_len > in_end - in_next)) {
-				max_len = in_end - in_next;
-				nice_len = MIN(nice_len, max_len);
+				in_next_slide = in_next +
+					MIN(remaining, MATCHFINDER_WINDOW_SIZE);
 			}
 
 			/*
@@ -2566,24 +2572,28 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			 */
 			matches = cache_ptr;
 			best_len = 0;
+			adjust_max_and_nice_len(&max_len, &nice_len, remaining);
 			if (likely(max_len >= BT_MATCHFINDER_REQUIRED_NBYTES)) {
-				cache_ptr = bt_matchfinder_get_matches(&c->p.n.bt_mf,
-								       in_cur_base,
-								       in_next - in_cur_base,
-								       max_len,
-								       nice_len,
-								       c->max_search_depth,
-								       next_hashes,
-								       &best_len,
-								       matches);
+				cache_ptr = bt_matchfinder_get_matches(
+						&c->p.n.bt_mf,
+						in_cur_base,
+						in_next - in_cur_base,
+						max_len,
+						nice_len,
+						c->max_search_depth,
+						next_hashes,
+						&best_len,
+						matches);
 			}
 
 			if (in_next >= next_observation) {
 				if (best_len >= 4) {
-					observe_match(&c->split_stats, best_len);
+					observe_match(&c->split_stats,
+						      best_len);
 					next_observation = in_next + best_len;
 				} else {
-					observe_literal(&c->split_stats, *in_next);
+					observe_literal(&c->split_stats,
+							*in_next);
 					next_observation = in_next + 1;
 				}
 			}
@@ -2605,26 +2615,31 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			 * data must be highly compressible, so it doesn't
 			 * matter much what we do.
 			 */
-			if (best_len >= DEFLATE_MIN_MATCH_LEN && best_len >= nice_len) {
+			if (best_len >= DEFLATE_MIN_MATCH_LEN &&
+			    best_len >= nice_len) {
 				--best_len;
 				do {
+					remaining = in_end - in_next;
 					if (in_next == in_next_slide) {
-						bt_matchfinder_slide_window(&c->p.n.bt_mf);
+						bt_matchfinder_slide_window(
+							&c->p.n.bt_mf);
 						in_cur_base = in_next;
-						in_next_slide = in_next + MIN(in_end - in_next,
-									      MATCHFINDER_WINDOW_SIZE);
+						in_next_slide = in_next +
+							MIN(remaining,
+							    MATCHFINDER_WINDOW_SIZE);
 					}
-					if (unlikely(max_len > in_end - in_next)) {
-						max_len = in_end - in_next;
-						nice_len = MIN(nice_len, max_len);
-					}
-					if (max_len >= BT_MATCHFINDER_REQUIRED_NBYTES) {
-						bt_matchfinder_skip_position(&c->p.n.bt_mf,
-									     in_cur_base,
-									     in_next - in_cur_base,
-									     nice_len,
-									     c->max_search_depth,
-									     next_hashes);
+					adjust_max_and_nice_len(&max_len,
+								&nice_len,
+								remaining);
+					if (max_len >=
+					    BT_MATCHFINDER_REQUIRED_NBYTES) {
+						bt_matchfinder_skip_position(
+							&c->p.n.bt_mf,
+							in_cur_base,
+							in_next - in_cur_base,
+							nice_len,
+							c->max_search_depth,
+							next_hashes);
 					}
 					cache_ptr->length = 0;
 					cache_ptr->offset = *in_next;
@@ -2634,13 +2649,16 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			}
 		} while (in_next < in_max_block_end &&
 			 cache_ptr < &c->p.n.match_cache[CACHE_LENGTH] &&
-			 !should_end_block(&c->split_stats, in_block_begin, in_next, in_end));
-
-		/* All the matches for this block have been cached.  Now choose
-		 * the sequence of items to output and flush the block.  */
+			 !should_end_block(&c->split_stats,
+					   in_block_begin, in_next, in_end));
+		/*
+		 * All the matches for this block have been cached.  Now choose
+		 * the sequence of items to output and flush the block.
+		 */
 		deflate_optimize_block(c, in_next - in_block_begin, cache_ptr,
 				       in_block_begin == in);
-		deflate_flush_block(c, &os, in_block_begin, in_next - in_block_begin,
+		deflate_flush_block(c, &os, in_block_begin,
+				    in_next - in_block_begin,
 				    in_next == in_end, true);
 	} while (in_next != in_end);
 
