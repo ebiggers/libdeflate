@@ -1991,6 +1991,101 @@ adjust_max_and_nice_len(unsigned *max_len, unsigned *nice_len, size_t remaining)
 }
 
 /*
+ * Choose the minimum match length for the greedy and lazy parsers.
+ *
+ * By default the minimum match length is 3, which is the smallest length the
+ * DEFLATE format allows.  However, with greedy and lazy parsing, some data
+ * (e.g. DNA sequencing data) benefits greatly from a longer minimum length.
+ * Typically, this is because literals are very cheap.  In general, the
+ * near-optimal parser handles this case naturally, but the greedy and lazy
+ * parsers need a heuristic to decide when to use short matches.
+ *
+ * The heuristic we use is to make the minimum match length depend on the number
+ * of different literals that exist in the data.  If there are many different
+ * literals, then literals will probably be expensive, so short matches will
+ * probably be worthwhile.  Conversely, if not many literals are used, then
+ * probably literals will be cheap and short matches won't be worthwhile.
+ */
+static unsigned
+choose_min_match_len(unsigned num_used_literals, unsigned max_search_depth)
+{
+	/* map from num_used_literals to min_len */
+	static const u8 min_lens[] = {
+		9, 9, 9, 9, 9, 9, 8, 8, 7, 7, 6, 6, 6, 6, 6, 6,
+		5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+		5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4,
+		4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+		4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+		/* the rest is implicitly 3 */
+	};
+	unsigned min_len;
+
+	STATIC_ASSERT(DEFLATE_MIN_MATCH_LEN <= 3);
+	STATIC_ASSERT(ARRAY_LEN(min_lens) <= DEFLATE_NUM_LITERALS + 1);
+
+	if (num_used_literals >= ARRAY_LEN(min_lens))
+		return 3;
+	min_len = min_lens[num_used_literals];
+	/*
+	 * With a low max_search_depth, it may be too hard to find long matches.
+	 */
+	if (max_search_depth < 16) {
+		if (max_search_depth < 5)
+			min_len = MIN(min_len, 4);
+		else if (max_search_depth < 10)
+			min_len = MIN(min_len, 5);
+		else
+			min_len = MIN(min_len, 7);
+	}
+	return min_len;
+}
+
+static unsigned
+calculate_min_match_len(const u8 *data, size_t data_len,
+			unsigned max_search_depth)
+{
+	u8 used[256] = { 0 };
+	unsigned num_used_literals = 0;
+	int i;
+
+	/*
+	 * For an initial approximation, scan the first 4 KiB of data.
+	 * recalculate_min_match_len() will update the min_len later.
+	 */
+	data_len = MIN(data_len, 4096);
+	for (i = 0; i < data_len; i++)
+		used[data[i]] = 1;
+	for (i = 0; i < 256; i++)
+		num_used_literals += used[i];
+	return choose_min_match_len(num_used_literals, max_search_depth);
+}
+
+/*
+ * Recalculate the minimum match length for a block, now that we know the
+ * distribution of literals that are actually being used (freqs->litlen).
+ */
+static unsigned
+recalculate_min_match_len(const struct deflate_freqs *freqs,
+			  unsigned max_search_depth)
+{
+	u32 literal_freq = 0;
+	u32 cutoff;
+	unsigned num_used_literals = 0;
+	int i;
+
+	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
+		literal_freq += freqs->litlen[i];
+
+	cutoff = literal_freq >> 10; /* Ignore literals used very rarely */
+
+	for (i = 0; i < DEFLATE_NUM_LITERALS; i++) {
+		if (freqs->litlen[i] > cutoff)
+			num_used_literals++;
+	}
+	return choose_min_match_len(num_used_literals, max_search_depth);
+}
+
+/*
  * This is the level 0 "compressor".  It always outputs uncompressed blocks.
  */
 static size_t
@@ -2032,11 +2127,15 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 		const u8 * const in_block_begin = in_next;
 		const u8 * const in_max_block_end =
 			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
+		unsigned min_len;
 		u32 litrunlen = 0;
 		struct deflate_sequence *next_seq = c->p.g.sequences;
 
 		init_block_split_stats(&c->split_stats);
 		deflate_reset_symbol_frequencies(c);
+		min_len = calculate_min_match_len(in_next,
+						  in_max_block_end - in_next,
+						  c->max_search_depth);
 
 		do {
 			u32 length;
@@ -2048,15 +2147,15 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 						&c->p.g.hc_mf,
 						&in_cur_base,
 						in_next,
-						DEFLATE_MIN_MATCH_LEN - 1,
+						min_len - 1,
 						max_len,
 						nice_len,
 						c->max_search_depth,
 						next_hashes,
 						&offset);
 
-			if (length > DEFLATE_MIN_MATCH_LEN ||
-			    (length == DEFLATE_MIN_MATCH_LEN &&
+			if (length >= min_len &&
+			    (length > DEFLATE_MIN_MATCH_LEN ||
 			     offset <= 4096)) {
 				/* Match found. */
 				deflate_choose_match(c, length, offset,
@@ -2113,17 +2212,36 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 		const u8 * const in_block_begin = in_next;
 		const u8 * const in_max_block_end =
 			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
+		const u8 *next_recalc_min_len =
+			in_next + MIN(in_end - in_next, 10000);
+		unsigned min_len = DEFLATE_MIN_MATCH_LEN;
 		u32 litrunlen = 0;
 		struct deflate_sequence *next_seq = c->p.g.sequences;
 
 		init_block_split_stats(&c->split_stats);
 		deflate_reset_symbol_frequencies(c);
 
+		min_len = calculate_min_match_len(in_next,
+						  in_max_block_end - in_next,
+						  c->max_search_depth);
 		do {
 			unsigned cur_len;
 			unsigned cur_offset;
 			unsigned next_len;
 			unsigned next_offset;
+
+			/*
+			 * Recalculate the minimum match length if it hasn't
+			 * been done recently.
+			 */
+			if (in_next >= next_recalc_min_len) {
+				min_len = recalculate_min_match_len(
+						&c->freqs,
+						c->max_search_depth);
+				next_recalc_min_len +=
+					MIN(in_end - next_recalc_min_len,
+					    in_next - in_block_begin);
+			}
 
 			/* Find the longest match at the current position. */
 			adjust_max_and_nice_len(&max_len, &nice_len,
@@ -2132,13 +2250,13 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						&c->p.g.hc_mf,
 						&in_cur_base,
 						in_next,
-						DEFLATE_MIN_MATCH_LEN - 1,
+						min_len - 1,
 						max_len,
 						nice_len,
 						c->max_search_depth,
 						next_hashes,
 						&cur_offset);
-			if (cur_len < DEFLATE_MIN_MATCH_LEN ||
+			if (cur_len < min_len ||
 			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
 			     cur_offset > 8192)) {
 				/* No match found.  Choose a literal. */
