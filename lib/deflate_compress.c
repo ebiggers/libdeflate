@@ -1453,7 +1453,7 @@ deflate_write_huffman_header(struct libdeflate_compressor *c,
 			else
 				deflate_add_bits(os, precode_item >> 5, 7);
 		}
-		STATIC_ASSERT(CAN_BUFFER(DEFLATE_MAX_PRE_CODEWORD_LEN + 7));
+		STATIC_ASSERT(CAN_BUFFER(MAX_PRE_CODEWORD_LEN + 7));
 		deflate_flush_bits(os);
 	}
 }
