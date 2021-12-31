@@ -1544,7 +1544,7 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 		in_next += length;
 
 		length_slot = seq->length_slot;
-		litlen_symbol = 257 + length_slot;
+		litlen_symbol = DEFLATE_FIRST_LEN_SYM + length_slot;
 
 		/* Litlen symbol  */
 		deflate_add_bits(os, codes->codewords.litlen[litlen_symbol],
@@ -1615,7 +1615,7 @@ deflate_write_item_list(struct deflate_output_bitstream *os,
 		} else {
 			/* Match length  */
 			length_slot = deflate_length_slot[length];
-			litlen_symbol = 257 + length_slot;
+			litlen_symbol = DEFLATE_FIRST_LEN_SYM + length_slot;
 			deflate_add_bits(os, codes->codewords.litlen[litlen_symbol],
 					 codes->lens.litlen[litlen_symbol]);
 
@@ -1747,8 +1747,11 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	static_cost += 7;
 
 	/* Account for the cost of encoding lengths. */
-	for (sym = 257; sym < 257 + ARRAY_LEN(deflate_extra_length_bits); sym++) {
-		u32 extra = deflate_extra_length_bits[sym - 257];
+	for (sym = DEFLATE_FIRST_LEN_SYM;
+	     sym < DEFLATE_FIRST_LEN_SYM + ARRAY_LEN(deflate_extra_length_bits);
+	     sym++) {
+		u32 extra = deflate_extra_length_bits[
+					sym - DEFLATE_FIRST_LEN_SYM];
 		dynamic_cost += c->freqs.litlen[sym] *
 				(extra + c->codes.lens.litlen[sym]);
 		static_cost += c->freqs.litlen[sym] *
@@ -1825,7 +1828,7 @@ deflate_choose_match(struct libdeflate_compressor *c,
 	unsigned length_slot = deflate_length_slot[length];
 	unsigned offset_slot = deflate_get_offset_slot(c, offset);
 
-	c->freqs.litlen[257 + length_slot]++;
+	c->freqs.litlen[DEFLATE_FIRST_LEN_SYM + length_slot]++;
 	c->freqs.offset[offset_slot]++;
 
 	seq->litrunlen_and_length = ((u32)length << 23) | *litrunlen_p;
@@ -2319,7 +2322,8 @@ deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 			c->freqs.litlen[offset]++;
 		} else {
 			/* Match  */
-			c->freqs.litlen[257 + deflate_length_slot[length]]++;
+			c->freqs.litlen[DEFLATE_FIRST_LEN_SYM +
+					deflate_length_slot[length]]++;
 			c->freqs.offset[deflate_get_offset_slot(c, offset)]++;
 		}
 		cur_node += length;
@@ -2342,7 +2346,7 @@ deflate_set_costs_from_codes(struct libdeflate_compressor *c,
 	/* Lengths  */
 	for (i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++) {
 		unsigned length_slot = deflate_length_slot[i];
-		unsigned litlen_sym = 257 + length_slot;
+		unsigned litlen_sym = DEFLATE_FIRST_LEN_SYM + length_slot;
 		u32 bits = (lens->litlen[litlen_sym] ? lens->litlen[litlen_sym] : LENGTH_NOSTAT_BITS);
 		bits += deflate_extra_length_bits[length_slot];
 		c->p.n.costs.length[i] = bits * BIT_COST;

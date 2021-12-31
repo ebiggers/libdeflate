@@ -30,6 +30,7 @@
 /* Division of symbols in the literal/length code  */
 #define DEFLATE_NUM_LITERALS			256
 #define DEFLATE_END_OF_BLOCK			256
+#define DEFLATE_FIRST_LEN_SYM			257
 
 /* Maximum codeword length, in bits, within each Huffman code  */
 #define DEFLATE_MAX_PRE_CODEWORD_LEN		7
