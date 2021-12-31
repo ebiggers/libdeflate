@@ -2765,12 +2765,12 @@ libdeflate_alloc_compressor(int compression_level)
 		break;
 	case 5:
 		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 20;
+		c->max_search_depth = 16;
 		c->nice_match_length = 30;
 		break;
 	case 6:
 		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 40;
+		c->max_search_depth = 35;
 		c->nice_match_length = 65;
 		break;
 	case 7:
