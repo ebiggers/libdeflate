@@ -1715,7 +1715,7 @@ static void
 deflate_flush_block(struct libdeflate_compressor * restrict c,
 		    struct deflate_output_bitstream * restrict os,
 		    const u8 * restrict block_begin, u32 block_length,
-		    bool is_final_block, bool use_item_list)
+		    bool is_final_block, bool near_optimal)
 {
 	static const u8 deflate_extra_precode_bits[DEFLATE_NUM_PRECODE_SYMS] = {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7,
@@ -1729,11 +1729,13 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	int block_type;
 	unsigned sym;
 
-	/* Tally the end-of-block symbol. */
-	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
+	if (!near_optimal || !SUPPORT_NEAR_OPTIMAL_PARSING) {
+		/* Tally the end-of-block symbol. */
+		c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 
-	/* Build dynamic Huffman codes. */
-	deflate_make_huffman_codes(&c->freqs, &c->codes);
+		/* Build dynamic Huffman codes. */
+		deflate_make_huffman_codes(&c->freqs, &c->codes);
+	} /* Else, this was already done */
 
 	/* Account for the cost of sending dynamic Huffman codes. */
 	deflate_precompute_huffman_header(c);
@@ -1813,7 +1815,7 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 
 		/* Output the literals, matches, and end-of-block symbol. */
 	#if SUPPORT_NEAR_OPTIMAL_PARSING
-		if (use_item_list)
+		if (near_optimal)
 			deflate_write_item_list(os, codes, c, block_length);
 		else
 	#endif
@@ -2458,6 +2460,9 @@ deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 		}
 		cur_node += length;
 	} while (cur_node != end_node);
+
+	/* Tally the end-of-block symbol. */
+	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 }
 
 /* Set the current cost model from the codeword lengths specified in @lens.  */
@@ -2673,7 +2678,8 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
  */
 static void
 deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
-		       const struct lz_match *cache_ptr, bool is_first_block)
+		       const struct lz_match *cache_ptr, bool is_first_block,
+		       bool is_final_block)
 {
 	unsigned num_passes_remaining = c->p.n.num_optim_passes;
 	u32 i;
@@ -2690,7 +2696,7 @@ deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
 	else
 		deflate_adjust_costs(c);
 
-	for (;;) {
+	do {
 		/* Find the minimum cost path for this pass. */
 		deflate_find_min_cost_path(c, block_length, cache_ptr);
 
@@ -2698,13 +2704,17 @@ deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
 		deflate_reset_symbol_frequencies(c);
 		deflate_tally_item_list(c, block_length);
 
-		if (--num_passes_remaining == 0)
-			break;
-
-		/* At least one optimization pass remains; update the costs. */
+		/* Make the Huffman codes. */
 		deflate_make_huffman_codes(&c->freqs, &c->codes);
-		deflate_set_costs_from_codes(c, &c->codes.lens);
-	}
+
+		/*
+		 * Update the costs.  After the last optimization pass, the
+		 * final costs won't be needed for this block, but they will be
+		 * used in determining the initial costs for the next block.
+		 */
+		if (--num_passes_remaining || !is_final_block)
+			deflate_set_costs_from_codes(c, &c->codes.lens);
+	} while (num_passes_remaining);
 }
 
 /*
@@ -2873,7 +2883,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		 * the sequence of items to output and flush the block.
 		 */
 		deflate_optimize_block(c, in_next - in_block_begin, cache_ptr,
-				       in_block_begin == in);
+				       in_block_begin == in, in_next == in_end);
 		deflate_flush_block(c, &os, in_block_begin,
 				    in_next - in_block_begin,
 				    in_next == in_end, true);
