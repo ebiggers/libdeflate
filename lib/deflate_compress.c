@@ -33,9 +33,10 @@
 
 /*
  * By default, the near-optimal parsing algorithm is enabled at compression
- * level 8 and above.  The near-optimal parsing algorithm produces a compression
- * ratio significantly better than the greedy and lazy algorithms implemented
- * here, and also the algorithm used by zlib at level 9.  However, it is slow.
+ * level 10 and above.  The near-optimal parsing algorithm produces a
+ * compression ratio significantly better than the greedy and lazy algorithms
+ * implemented here, and also the algorithm used by zlib at level 9.  However,
+ * it is slow.
  */
 #define SUPPORT_NEAR_OPTIMAL_PARSING 1
 
@@ -2789,7 +2790,7 @@ libdeflate_alloc_compressor(int compression_level)
 		return NULL;
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
-	if (compression_level >= 8)
+	if (compression_level >= 10)
 		size += sizeof(c->p.n);
 	else if (compression_level >= 1)
 		size += sizeof(c->p.g);
@@ -2849,19 +2850,20 @@ libdeflate_alloc_compressor(int compression_level)
 		c->max_search_depth = 100;
 		c->nice_match_length = 130;
 		break;
-#if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 8:
-		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 12;
-		c->nice_match_length = 20;
-		c->p.n.num_optim_passes = 1;
+		c->impl = deflate_compress_lazy2;
+		c->max_search_depth = 300;
+		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		break;
 	case 9:
-		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 16;
-		c->nice_match_length = 26;
-		c->p.n.num_optim_passes = 2;
+#if !SUPPORT_NEAR_OPTIMAL_PARSING
+	default:
+#endif
+		c->impl = deflate_compress_lazy2;
+		c->max_search_depth = 600;
+		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		break;
+#if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 10:
 		c->impl = deflate_compress_near_optimal;
 		c->max_search_depth = 30;
@@ -2874,24 +2876,14 @@ libdeflate_alloc_compressor(int compression_level)
 		c->nice_match_length = 80;
 		c->p.n.num_optim_passes = 3;
 		break;
+	case 12:
 	default:
 		c->impl = deflate_compress_near_optimal;
 		c->max_search_depth = 100;
 		c->nice_match_length = 133;
 		c->p.n.num_optim_passes = 4;
 		break;
-#else
-	case 8:
-		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 150;
-		c->nice_match_length = 200;
-		break;
-	default:
-		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 200;
-		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
-		break;
-#endif
+#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 	}
 
 	deflate_init_offset_slot_fast(c);
