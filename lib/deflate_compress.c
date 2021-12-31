@@ -31,84 +31,127 @@
 
 #include "libdeflate.h"
 
-/*
- * By default, the near-optimal parsing algorithm is enabled at compression
- * level 10 and above.  The near-optimal parsing algorithm produces a
- * compression ratio significantly better than the greedy and lazy algorithms
- * implemented here, and also the algorithm used by zlib at level 9.  However,
- * it is slow.
- */
-#define SUPPORT_NEAR_OPTIMAL_PARSING 1
+/******************************************************************************/
 
 /*
- * Define to 1 to maintain the full map from match offsets to offset slots.
- * This slightly speeds up translations of match offsets to offset slots, but it
- * uses 32769 bytes of memory rather than the 512 bytes used by the condensed
- * map.  The speedup provided by the larger map is most helpful when the
- * near-optimal parsing algorithm is being used.
+ * The following parameters can be changed at build time to customize the
+ * compression algorithms slightly:
+ *
+ * (Note, not all customizable parameters are here.  Some others can be found in
+ * libdeflate_alloc_compressor() and in *_matchfinder.h.)
+ */
+
+/*
+ * If this parameter is defined to 1, then the near-optimal parsing algorithm
+ * will be included, and compression levels 10-12 will use it.  This algorithm
+ * usually produces a compression ratio significantly better than the other
+ * algorithms.  However, it is slow.  If this parameter is defined to 0, then
+ * levels 10-12 will be the same as level 9 and will use the lazy2 algorithm.
+ */
+#define SUPPORT_NEAR_OPTIMAL_PARSING	1
+
+/*
+ * If this parameter is defined to 1, then the compressor will maintain a full
+ * map from match offsets to offset slots, rather than a condensed map.  This
+ * will usually improve performance, especially for the near-optimal parsing
+ * algorithm.  However, it will use an additional 32257 bytes of memory.
  */
 #define USE_FULL_OFFSET_SLOT_FAST	SUPPORT_NEAR_OPTIMAL_PARSING
+
+/*
+ * This is the minimum block length, in uncompressed bytes, which the compressor
+ * will use.  This should be a value below which using shorter blocks is very
+ * unlikely to be worthwhile, due to the per-block overhead.  This parameter
+ * doesn't apply to the final block, which can be arbitrarily short.
+ *
+ * Defining a fixed minimum block length is needed in order to guarantee a
+ * reasonable upper bound on the compressed size.  It's also needed because our
+ * block splitting algorithm doesn't work well on very short blocks.
+ */
+#define MIN_BLOCK_LENGTH	10000
+
+/*
+ * This is the soft maximum block length, in uncompressed bytes, which the
+ * compressor will use.  This is a "soft" maximum, meaning that the compressor
+ * will try to end blocks at this length, but it may go slightly past it if
+ * there is a match that straddles this limit.  This parameter doesn't apply to
+ * uncompressed blocks, which the DEFLATE format limits to 65535 bytes.
+ *
+ * This should be a value above which it is very likely that splitting the block
+ * would produce a better compression ratio.  Increasing/decreasing this
+ * parameter will increase/decrease per-compressor memory usage linearly.
+ */
+#define SOFT_MAX_BLOCK_LENGTH	300000
+
+/*
+ * These are the maximum codeword lengths, in bits, the compressor will use for
+ * each Huffman code.  The DEFLATE format defines limits for these.  However,
+ * further limiting litlen codewords to 14 bits is beneficial, since it has
+ * negligible effect on compression ratio but allows some optimizations when
+ * outputting bits.  (It allows 4 literals to be written at once rather than 3.)
+ */
+#define MAX_LITLEN_CODEWORD_LEN		14
+#define MAX_OFFSET_CODEWORD_LEN		DEFLATE_MAX_OFFSET_CODEWORD_LEN
+#define MAX_PRE_CODEWORD_LEN		DEFLATE_MAX_PRE_CODEWORD_LEN
+
+#if SUPPORT_NEAR_OPTIMAL_PARSING
+
+/* Parameters specific to the near-optimal parsing algorithm */
+
+/*
+ * BIT_COST is a scaling factor that allows the compressor to consider
+ * fractional bit costs when deciding which literal/match sequence to use.  This
+ * is useful when the true symbol costs are unknown.  For example, if the
+ * compressor thinks that a symbol has 6.5 bits of entropy, it can set its cost
+ * to 6.5 bits rather than have to use 6 or 7 bits.  Although in the end each
+ * symbol will use a whole number of bits due to the Huffman coding, considering
+ * fractional bits can be helpful due to the limited information.
+ *
+ * BIT_COST should be a power of 2.  A value of 8 or 16 works well.  A higher
+ * value isn't very useful since the calculations are approximate anyway.
+ */
+#define BIT_COST	8
+
+/*
+ * The NOSTAT_BITS value for a given alphabet is the number of bits assumed to
+ * be needed to output a symbol that was unused in the previous optimization
+ * pass.  Assigning a default cost allows the symbol to be used in the next
+ * optimization pass.  However, the cost should be relatively high because the
+ * symbol probably won't be used very many times (if at all).
+ */
+#define LITERAL_NOSTAT_BITS	13
+#define LENGTH_NOSTAT_BITS	13
+#define OFFSET_NOSTAT_BITS	10
+
+/*
+ * This is (approximately) the maximum number of matches that the compressor
+ * will cache per block.  If the match cache becomes full, then the compressor
+ * will be forced to end the block early.  This value should be large enough so
+ * that this rarely happens, due to the block being ended normally before the
+ * cache fills up.  Increasing/decreasing this parameter will increase/decrease
+ * per-compressor memory usage linearly.
+ */
+#define MATCH_CACHE_LENGTH	(SOFT_MAX_BLOCK_LENGTH * 5)
+
+#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
+
+/******************************************************************************/
 
 /* Include the needed matchfinders. */
 #define MATCHFINDER_WINDOW_ORDER	DEFLATE_WINDOW_ORDER
 #include "hc_matchfinder.h"
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 #  include "bt_matchfinder.h"
+/*
+ * This is the maximum number of matches the binary trees matchfinder can find
+ * at a single position.  Since the matchfinder never finds more than one match
+ * for the same length, presuming one of each possible length is sufficient for
+ * an upper bound.  (This says nothing about whether it is worthwhile to
+ * consider so many matches; this is just defining the worst case.)
+ */
+#define MAX_MATCHES_PER_POS	\
+	(DEFLATE_MAX_MATCH_LEN - DEFLATE_MIN_MATCH_LEN + 1)
 #endif
-
-/*
- * The compressor always chooses a block of at least MIN_BLOCK_LENGTH bytes,
- * except if the last block has to be shorter.
- */
-#define MIN_BLOCK_LENGTH	10000
-
-/*
- * The compressor attempts to end blocks after SOFT_MAX_BLOCK_LENGTH bytes, but
- * the final length might be slightly longer due to matches extending beyond
- * this limit.
- */
-#define SOFT_MAX_BLOCK_LENGTH	300000
-
-/*
- * The number of observed matches or literals that represents sufficient data to
- * decide whether the current block should be terminated or not.
- */
-#define NUM_OBSERVATIONS_PER_BLOCK_CHECK       512
-
-
-#if SUPPORT_NEAR_OPTIMAL_PARSING
-/* Constants specific to the near-optimal parsing algorithm */
-
-/*
- * The maximum number of matches the matchfinder can find at a single position.
- * Since the matchfinder never finds more than one match for the same length,
- * presuming one of each possible length is sufficient for an upper bound.
- * (This says nothing about whether it is worthwhile to consider so many
- * matches; this is just defining the worst case.)
- */
-#  define MAX_MATCHES_PER_POS	(DEFLATE_MAX_MATCH_LEN - DEFLATE_MIN_MATCH_LEN + 1)
-
-/*
- * The number of lz_match structures in the match cache, excluding the extra
- * "overflow" entries.  This value should be high enough so that nearly the
- * time, all matches found in a given block can fit in the match cache.
- * However, fallback behavior (immediately terminating the block) on cache
- * overflow is still required.
- */
-#  define MATCH_CACHE_LENGTH      (SOFT_MAX_BLOCK_LENGTH * 5)
-
-#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
-
-/*
- * These are the compressor-side limits on the codeword lengths for each Huffman
- * code.  To make outputting bits slightly faster, some of these limits are
- * lower than the limits defined by the DEFLATE format.  This does not
- * significantly affect the compression ratio, at least for the block lengths we
- * use.
- */
-#define MAX_LITLEN_CODEWORD_LEN		14
-#define MAX_OFFSET_CODEWORD_LEN		DEFLATE_MAX_OFFSET_CODEWORD_LEN
-#define MAX_PRE_CODEWORD_LEN		DEFLATE_MAX_PRE_CODEWORD_LEN
 
 /* Table: length slot => length slot base value  */
 static const unsigned deflate_length_slot_base[] = {
@@ -191,48 +234,6 @@ struct deflate_freqs {
 	u32 offset[DEFLATE_NUM_OFFSET_SYMS];
 };
 
-#if SUPPORT_NEAR_OPTIMAL_PARSING
-
-/* Costs for the near-optimal parsing algorithm.  */
-struct deflate_costs {
-
-	/* The cost to output each possible literal.  */
-	u32 literal[DEFLATE_NUM_LITERALS];
-
-	/* The cost to output each possible match length.  */
-	u32 length[DEFLATE_MAX_MATCH_LEN + 1];
-
-	/* The cost to output a match offset of each possible offset slot.  */
-	u32 offset_slot[DEFLATE_NUM_OFFSET_SYMS];
-};
-
-/*
- * BIT_COST is a scaling factor that allows the compressor to consider
- * fractional bit costs when deciding which literal/match sequence to use.  This
- * is useful when the true symbol costs are unknown.  For example, if the
- * compressor thinks that a symbol has 6.5 bits of entropy, it can set its cost
- * to 6.5 bits rather than have to use 6 or 7 bits.  Although in the end each
- * symbol will use a whole number of bits due to the Huffman coding, considering
- * fractional bits can be helpful due to the limited information.
- *
- * BIT_COST should be a power of 2.  A value of 8 or 16 works well.  A higher
- * value isn't very useful since the calculations are approximate anyway.
- */
-#define BIT_COST	8
-
-/*
- * The NOSTAT_BITS value for a given alphabet is the number of bits assumed to
- * be needed to output a symbol that was unused in the previous optimization
- * pass.  Assigning a default cost allows the symbol to be used in the next
- * optimization pass.  However, the cost should be relatively high because the
- * symbol probably won't be used very many times (if at all).
- */
-#define LITERAL_NOSTAT_BITS	13
-#define LENGTH_NOSTAT_BITS	13
-#define OFFSET_NOSTAT_BITS	10
-
-#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
-
 /*
  * Represents a run of literals followed by a match or end-of-block.  This
  * struct is needed to temporarily store items chosen by the parser, since items
@@ -265,6 +266,19 @@ struct deflate_sequence {
 };
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
+
+/* Costs for the near-optimal parsing algorithm.  */
+struct deflate_costs {
+
+	/* The cost to output each possible literal.  */
+	u32 literal[DEFLATE_NUM_LITERALS];
+
+	/* The cost to output each possible match length.  */
+	u32 length[DEFLATE_MAX_MATCH_LEN + 1];
+
+	/* The cost to output a match offset of each possible offset slot.  */
+	u32 offset_slot[DEFLATE_NUM_OFFSET_SYMS];
+};
 
 /*
  * This structure represents a byte position in the input data and a node in the
@@ -311,6 +325,7 @@ struct deflate_optimum_node {
 #define NUM_LITERAL_OBSERVATION_TYPES 8
 #define NUM_MATCH_OBSERVATION_TYPES 2
 #define NUM_OBSERVATION_TYPES (NUM_LITERAL_OBSERVATION_TYPES + NUM_MATCH_OBSERVATION_TYPES)
+#define NUM_OBSERVATIONS_PER_BLOCK_CHECK 512
 struct block_split_stats {
 	u32 new_observations[NUM_OBSERVATION_TYPES];
 	u32 observations[NUM_OBSERVATION_TYPES];
