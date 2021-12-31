@@ -211,14 +211,18 @@ struct deflate_costs {
 };
 
 /*
- * COST_SHIFT is a scaling factor that makes it possible to consider fractional
- * bit costs.  A token requiring 'n' bits to represent has cost n << COST_SHIFT.
+ * BIT_COST is a scaling factor that allows the compressor to consider
+ * fractional bit costs when deciding which literal/match sequence to use.  This
+ * is useful when the true symbol costs are unknown.  For example, if the
+ * compressor thinks that a symbol has 6.5 bits of entropy, it can set its cost
+ * to 6.5 bits rather than have to use 6 or 7 bits.  Although in the end each
+ * symbol will use a whole number of bits due to the Huffman coding, considering
+ * fractional bits can be helpful due to the limited information.
  *
- * Note: this is only useful as a statistical trick for when the true costs are
- * unknown.  In reality, each token in DEFLATE requires a whole number of bits
- * to output.
+ * BIT_COST should be a power of 2.  A value of 8 or 16 works well.  A higher
+ * value isn't very useful since the calculations are approximate anyway.
  */
-#define COST_SHIFT	3
+#define BIT_COST	8
 
 /*
  * The NOSTAT_BITS value for a given alphabet is the number of bits assumed to
@@ -2332,7 +2336,7 @@ deflate_set_costs_from_codes(struct libdeflate_compressor *c,
 	/* Literals  */
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++) {
 		u32 bits = (lens->litlen[i] ? lens->litlen[i] : LITERAL_NOSTAT_BITS);
-		c->p.n.costs.literal[i] = bits << COST_SHIFT;
+		c->p.n.costs.literal[i] = bits * BIT_COST;
 	}
 
 	/* Lengths  */
@@ -2341,21 +2345,21 @@ deflate_set_costs_from_codes(struct libdeflate_compressor *c,
 		unsigned litlen_sym = 257 + length_slot;
 		u32 bits = (lens->litlen[litlen_sym] ? lens->litlen[litlen_sym] : LENGTH_NOSTAT_BITS);
 		bits += deflate_extra_length_bits[length_slot];
-		c->p.n.costs.length[i] = bits << COST_SHIFT;
+		c->p.n.costs.length[i] = bits * BIT_COST;
 	}
 
 	/* Offset slots  */
 	for (i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++) {
 		u32 bits = (lens->offset[i] ? lens->offset[i] : OFFSET_NOSTAT_BITS);
 		bits += deflate_extra_offset_bits[i];
-		c->p.n.costs.offset_slot[i] = bits << COST_SHIFT;
+		c->p.n.costs.offset_slot[i] = bits * BIT_COST;
 	}
 }
 
 static forceinline u32
 deflate_default_literal_cost(unsigned literal)
 {
-	STATIC_ASSERT(COST_SHIFT == 3);
+	STATIC_ASSERT(BIT_COST == 8);
 	/* 66 is 8.25 bits/symbol  */
 	return 66;
 }
@@ -2363,28 +2367,28 @@ deflate_default_literal_cost(unsigned literal)
 static forceinline u32
 deflate_default_length_slot_cost(unsigned length_slot)
 {
-	STATIC_ASSERT(COST_SHIFT == 3);
+	STATIC_ASSERT(BIT_COST == 8);
 	/* 60 is 7.5 bits/symbol  */
-	return 60 + ((u32)deflate_extra_length_bits[length_slot] << COST_SHIFT);
+	return 60 + ((u32)deflate_extra_length_bits[length_slot] * BIT_COST);
 }
 
 static forceinline u32
 deflate_default_offset_slot_cost(unsigned offset_slot)
 {
-	STATIC_ASSERT(COST_SHIFT == 3);
+	STATIC_ASSERT(BIT_COST == 8);
 	/* 39 is 4.875 bits/symbol  */
-	return 39 + ((u32)deflate_extra_offset_bits[offset_slot] << COST_SHIFT);
+	return 39 + ((u32)deflate_extra_offset_bits[offset_slot] * BIT_COST);
 }
 
 /*
  * Set default symbol costs for the first block's first optimization pass.
  *
  * It works well to assume that each symbol is equally probable.  This results
- * in each symbol being assigned a cost of (-log2(1.0/num_syms) * (1 <<
- * COST_SHIFT)) where 'num_syms' is the number of symbols in the corresponding
- * alphabet.  However, we intentionally bias the parse towards matches rather
- * than literals by using a slightly lower default cost for length symbols than
- * for literals.  This often improves the compression ratio slightly.
+ * in each symbol being assigned a cost of (-log2(1.0/num_syms) * BIT_COST)
+ * where 'num_syms' is the number of symbols in the corresponding alphabet.
+ * However, we intentionally bias the parse towards matches rather than literals
+ * by using a slightly lower default cost for length symbols than for literals.
+ * This often improves the compression ratio slightly.
  */
 static void
 deflate_set_default_costs(struct libdeflate_compressor *c)
