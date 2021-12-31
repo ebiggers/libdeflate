@@ -17,6 +17,9 @@
 /* Maximum supported match offset (in bytes) */
 #define DEFLATE_MAX_MATCH_OFFSET		32768
 
+/* log2 of DEFLATE_MAX_MATCH_OFFSET */
+#define DEFLATE_WINDOW_ORDER			15
+
 /* Number of symbols in each Huffman code.  Note: for the literal/length
  * and offset codes, these are actually the maximum values; a given block
  * might use fewer symbols.  */

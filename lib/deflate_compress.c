@@ -49,12 +49,8 @@
  */
 #define USE_FULL_OFFSET_SLOT_FAST	SUPPORT_NEAR_OPTIMAL_PARSING
 
-/*
- * DEFLATE uses a 32768 byte sliding window; set the matchfinder parameters
- * appropriately.
- */
-#define MATCHFINDER_WINDOW_ORDER	15
-
+/* Include the needed matchfinders. */
+#define MATCHFINDER_WINDOW_ORDER	DEFLATE_WINDOW_ORDER
 #include "hc_matchfinder.h"
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 #  include "bt_matchfinder.h"
