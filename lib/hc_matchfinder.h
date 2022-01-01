@@ -162,9 +162,9 @@ hc_matchfinder_slide_window(struct hc_matchfinder *mf)
  *	Location of a pointer which points to the place in the input data the
  *	matchfinder currently stores positions relative to.  This may be updated
  *	by this function.
- * @cur_pos
- *	The current position in the input buffer relative to @in_base (the
- *	position of the sequence being matched against).
+ * @in_next
+ *	Pointer to the next position in the input buffer, i.e. the sequence
+ *	being matched against.
  * @best_len
  *	Require a match longer than this length.
  * @max_len
@@ -351,16 +351,16 @@ out:
  *	Location of a pointer which points to the place in the input data the
  *	matchfinder currently stores positions relative to.  This may be updated
  *	by this function.
- * @cur_pos
- *	The current position in the input buffer relative to @in_base.
- * @end_pos
- *	The end position of the input buffer, relative to @in_base.
+ * @in_next
+ *	Pointer to the next position in the input buffer.
+ * @in_end
+ *	Pointer to the end of the input buffer.
+ * @count
+ *	The number of bytes to advance.  Must be > 0.
  * @next_hashes
  *	The precomputed hash codes for the sequence beginning at @in_next.
  *	These will be used and then updated with the precomputed hashcodes for
  *	the sequence beginning at @in_next + @count.
- * @count
- *	The number of bytes to advance.  Must be > 0.
  *
  * Returns @in_next + @count.
  */
