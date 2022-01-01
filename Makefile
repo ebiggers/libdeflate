@@ -113,7 +113,7 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
     endif
 
 # macOS?
-else ifeq ($(shell uname),Darwin)
+else ifneq ($(findstring -darwin,$(shell $(CC) -dumpmachine 2>/dev/null)),)
    SHARED_LIB         := libdeflate.$(SOVERSION).dylib
    SHARED_LIB_SYMLINK := libdeflate.dylib
    SHARED_LIB_CFLAGS  := -fPIC
