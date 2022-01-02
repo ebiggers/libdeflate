@@ -73,7 +73,7 @@
  * chain for length 3+ matches, the algorithm just checks for one close length 3
  * match, then focuses on finding length 4+ matches.
  *
- * The longest_match() and skip_positions() functions are inlined into the
+ * The longest_match() and skip_bytes() functions are inlined into the
  * compressors that use them.  This isn't just about saving the overhead of a
  * function call.  These functions are intended to be called from the inner
  * loops of compressors, where giving the compiler more control over register
@@ -359,12 +359,12 @@ out:
  *	the sequence beginning at @in_next + @count.
  */
 static forceinline void
-hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
-			      const u8 ** const restrict in_base_p,
-			      const u8 *in_next,
-			      const u8 * const in_end,
-			      const u32 count,
-			      u32 * const restrict next_hashes)
+hc_matchfinder_skip_bytes(struct hc_matchfinder * const restrict mf,
+			  const u8 ** const restrict in_base_p,
+			  const u8 *in_next,
+			  const u8 * const in_end,
+			  const u32 count,
+			  u32 * const restrict next_hashes)
 {
 	u32 cur_pos;
 	u32 hash3, hash4;

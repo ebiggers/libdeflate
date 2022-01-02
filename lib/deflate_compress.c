@@ -2182,12 +2182,12 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 				/* Match found. */
 				deflate_choose_match(c, length, offset, &seq);
 				observe_match(&c->split_stats, length);
-				hc_matchfinder_skip_positions(&c->p.g.hc_mf,
-							      &in_cur_base,
-							      in_next + 1,
-							      in_end,
-							      length - 1,
-							      next_hashes);
+				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
+							  &in_cur_base,
+							  in_next + 1,
+							  in_end,
+							  length - 1,
+							  next_hashes);
 				in_next += length;
 			} else {
 				/* No match found. */
@@ -2295,12 +2295,12 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			if (cur_len >= nice_len) {
 				deflate_choose_match(c, cur_len, cur_offset,
 						     &seq);
-				hc_matchfinder_skip_positions(&c->p.g.hc_mf,
-							      &in_cur_base,
-							      in_next,
-							      in_end,
-							      cur_len - 1,
-							      next_hashes);
+				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
+							  &in_cur_base,
+							  in_next,
+							  in_end,
+							  cur_len - 1,
+							  next_hashes);
 				in_next += cur_len - 1;
 				continue;
 			}
@@ -2385,13 +2385,12 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 				deflate_choose_match(c, cur_len, cur_offset,
 						     &seq);
 				if (cur_len > 3) {
-					hc_matchfinder_skip_positions(
-							&c->p.g.hc_mf,
-							&in_cur_base,
-							in_next,
-							in_end,
-							cur_len - 3,
-							next_hashes);
+					hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
+								  &in_cur_base,
+								  in_next,
+								  in_end,
+								  cur_len - 3,
+								  next_hashes);
 					in_next += cur_len - 3;
 				}
 			} else { /* !lazy2 */
@@ -2401,12 +2400,12 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 				 */
 				deflate_choose_match(c, cur_len, cur_offset,
 						     &seq);
-				hc_matchfinder_skip_positions(&c->p.g.hc_mf,
-							      &in_cur_base,
-							      in_next,
-							      in_end,
-							      cur_len - 2,
-							      next_hashes);
+				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
+							  &in_cur_base,
+							  in_next,
+							  in_end,
+							  cur_len - 2,
+							  next_hashes);
 				in_next += cur_len - 2;
 			}
 			/* Check if it's time to output another block. */
@@ -3153,7 +3152,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 								remaining);
 					if (max_len >=
 					    BT_MATCHFINDER_REQUIRED_NBYTES) {
-						bt_matchfinder_skip_position(
+						bt_matchfinder_skip_byte(
 							&c->p.n.bt_mf,
 							in_cur_base,
 							in_next - in_cur_base,
