@@ -2307,12 +2307,10 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 						max_len,
 						nice_len,
 						c->max_search_depth,
+						4096,
 						next_hashes,
 						&offset);
-
-			if (length >= min_len &&
-			    (length > DEFLATE_MIN_MATCH_LEN ||
-			     offset <= 4096)) {
+			if (length >= min_len) {
 				/* Match found. */
 				deflate_choose_match(c, length, offset, &seq);
 				observe_match(&c->split_stats, length);
@@ -2407,11 +2405,10 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						max_len,
 						nice_len,
 						c->max_search_depth,
+						8192,
 						next_hashes,
 						&cur_offset);
-			if (cur_len < min_len ||
-			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
-			     cur_offset > 8192)) {
+			if (cur_len < min_len) {
 				/* No match found.  Choose a literal. */
 				deflate_choose_literal(c, *in_next, seq);
 				observe_literal(&c->split_stats, *in_next);
@@ -2465,6 +2462,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						max_len,
 						nice_len,
 						c->max_search_depth >> 1,
+						0,
 						next_hashes,
 						&next_offset);
 			if (next_len >= cur_len &&
@@ -2494,6 +2492,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						max_len,
 						nice_len,
 						c->max_search_depth >> 2,
+						0,
 						next_hashes,
 						&next_offset);
 				if (next_len >= cur_len &&

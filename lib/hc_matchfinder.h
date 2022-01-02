@@ -170,6 +170,9 @@ hc_matchfinder_slide_window(struct hc_matchfinder *mf)
  *	Must be <= @max_len.
  * @max_search_depth
  *	Limit on the number of potential matches to consider.  Must be >= 1.
+ * @max_offset_for_len3
+ *	A length 3 match will only be returned if its offset is less than or
+ *	equal to this argument.  Pass 0 if no length 3 matches aren't wanted.
  * @next_hashes
  *	The precomputed hash codes for the sequence beginning at @in_next.
  *	These will be used and then updated with the precomputed hashcodes for
@@ -188,6 +191,7 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 			     const u32 max_len,
 			     const u32 nice_len,
 			     const u32 max_search_depth,
+			     const u32 max_offset_for_len3,
 			     u32 * const restrict next_hashes,
 			     u32 * const restrict offset_ret)
 {
@@ -248,9 +252,11 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
 
 		seq4 = load_u32_unaligned(in_next);
 
-		if (best_len < 3) {
+		if (best_len < 3 && max_offset_for_len3 != 0) {
 			matchptr = &in_base[cur_node3];
-			if (load_u24_unaligned(matchptr) == loaded_u32_to_u24(seq4)) {
+			if (in_next - matchptr <= max_offset_for_len3 &&
+			    load_u24_unaligned(matchptr) ==
+			    loaded_u32_to_u24(seq4)) {
 				best_len = 3;
 				best_matchptr = matchptr;
 			}
