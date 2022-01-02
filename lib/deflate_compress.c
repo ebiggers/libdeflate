@@ -84,6 +84,12 @@
 #define SOFT_MAX_BLOCK_LENGTH	300000
 
 /*
+ * Block length, in uncompressed bytes, used by deflate_compress_fastest().
+ * deflate_compress_fastest() doesn't use the other block length settings.
+ */
+#define FAST_BLOCK_LENGTH	MIN(32768, SOFT_MAX_BLOCK_LENGTH)
+
+/*
  * These are the maximum codeword lengths, in bits, the compressor will use for
  * each Huffman code.  The DEFLATE format defines limits for these.  However,
  * further limiting litlen codewords to 14 bits is beneficial, since it has
@@ -140,6 +146,7 @@
 /* Include the needed matchfinders. */
 #define MATCHFINDER_WINDOW_ORDER	DEFLATE_WINDOW_ORDER
 #include "hc_matchfinder.h"
+#include "ht_matchfinder.h"
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 #  include "bt_matchfinder.h"
 /*
@@ -396,7 +403,7 @@ struct libdeflate_compressor {
 	union {
 		/* Data for greedy or lazy parsing  */
 		struct {
-			/* Hash chain matchfinder  */
+			/* Hash chains matchfinder */
 			struct hc_matchfinder hc_mf;
 
 			/* The matches and literals that the parser has chosen
@@ -408,6 +415,16 @@ struct libdeflate_compressor {
 				DIV_ROUND_UP(SOFT_MAX_BLOCK_LENGTH,
 					     DEFLATE_MIN_MATCH_LEN) + 1];
 		} g; /* (g)reedy */
+
+		/* Data for fastest parsing */
+		struct {
+			/* Hash table matchfinder */
+			struct ht_matchfinder ht_mf;
+
+			struct deflate_sequence sequences[
+				DIV_ROUND_UP(FAST_BLOCK_LENGTH,
+					     HT_MATCHFINDER_MIN_MATCH_LEN) + 1];
+		} f; /* (f)astest */
 
 	#if SUPPORT_NEAR_OPTIMAL_PARSING
 		/* Data for near-optimal parsing  */
@@ -1726,7 +1743,8 @@ static void
 deflate_flush_block(struct libdeflate_compressor * restrict c,
 		    struct deflate_output_bitstream * restrict os,
 		    const u8 * restrict block_begin, u32 block_length,
-		    bool is_final_block, bool near_optimal)
+		    const struct deflate_sequence *sequences,
+		    bool is_final_block)
 {
 	static const u8 deflate_extra_precode_bits[DEFLATE_NUM_PRECODE_SYMS] = {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7,
@@ -1740,7 +1758,8 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	int block_type;
 	unsigned sym;
 
-	if (!near_optimal || !SUPPORT_NEAR_OPTIMAL_PARSING) {
+	if (sequences != NULL /* !near_optimal */ ||
+	    !SUPPORT_NEAR_OPTIMAL_PARSING) {
 		/* Tally the end-of-block symbol. */
 		c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 
@@ -1826,11 +1845,11 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 
 		/* Output the literals, matches, and end-of-block symbol. */
 	#if SUPPORT_NEAR_OPTIMAL_PARSING
-		if (near_optimal)
+		if (sequences == NULL)
 			deflate_write_item_list(os, codes, c, block_length);
 		else
 	#endif
-			deflate_write_sequences(os, codes, c->p.g.sequences,
+			deflate_write_sequences(os, codes, sequences,
 						block_begin);
 		deflate_write_end_of_block(os, codes);
 	}
@@ -2125,6 +2144,87 @@ deflate_compress_none(struct libdeflate_compressor * restrict c,
 }
 
 /*
+ * This is a faster variant of deflate_compress_greedy().  It uses the
+ * ht_matchfinder rather than the hc_matchfinder.  It also skips the block
+ * splitting algorithm and just uses fixed length blocks.  c->max_search_depth
+ * has no effect with this algorithm, as it is hardcoded in ht_matchfinder.h.
+ */
+static size_t
+deflate_compress_fastest(struct libdeflate_compressor * restrict c,
+			 const u8 * restrict in, size_t in_nbytes,
+			 u8 * restrict out, size_t out_nbytes_avail)
+{
+	const u8 *in_next = in;
+	const u8 *in_end = in_next + in_nbytes;
+	struct deflate_output_bitstream os;
+	const u8 *in_cur_base = in_next;
+	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
+	unsigned nice_len = MIN(c->nice_match_length, max_len);
+	u32 next_hash = 0;
+
+	deflate_init_output(&os, out, out_nbytes_avail);
+	ht_matchfinder_init(&c->p.f.ht_mf);
+
+	do {
+		/* Starting a new DEFLATE block. */
+
+		const u8 * const in_block_begin = in_next;
+		const u8 * const in_max_block_end =
+			in_next + MIN(in_end - in_next, FAST_BLOCK_LENGTH);
+		struct deflate_sequence *seq = c->p.f.sequences;
+
+		deflate_begin_sequences(c, seq);
+
+		do {
+			u32 length;
+			u32 offset;
+			size_t remaining = in_end - in_next;
+
+			if (unlikely(remaining < DEFLATE_MAX_MATCH_LEN)) {
+				max_len = remaining;
+				if (max_len < HT_MATCHFINDER_REQUIRED_NBYTES) {
+					do {
+						deflate_choose_literal(
+							c, *in_next++, seq);
+					} while (--max_len);
+					break;
+				}
+				nice_len = MIN(nice_len, max_len);
+			}
+			length = ht_matchfinder_longest_match(&c->p.f.ht_mf,
+							      &in_cur_base,
+							      in_next,
+							      max_len,
+							      nice_len,
+							      &next_hash,
+							      &offset);
+			if (length) {
+				/* Match found. */
+				deflate_choose_match(c, length, offset, &seq);
+				ht_matchfinder_skip_bytes(&c->p.f.ht_mf,
+							  &in_cur_base,
+							  in_next + 1,
+							  in_end,
+							  length - 1,
+							  &next_hash);
+				in_next += length;
+			} else {
+				/* No match found. */
+				deflate_choose_literal(c, *in_next++, seq);
+			}
+
+			/* Check if it's time to output another block. */
+		} while (in_next < in_max_block_end);
+
+		deflate_flush_block(c, &os, in_block_begin,
+				    in_next - in_block_begin,
+				    c->p.f.sequences, in_next == in_end);
+	} while (in_next != in_end);
+
+	return deflate_flush_output(&os);
+}
+
+/*
  * This is the "greedy" DEFLATE compressor. It always chooses the longest match.
  */
 static size_t
@@ -2203,7 +2303,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 
 		deflate_flush_block(c, &os, in_block_begin,
 				    in_next - in_block_begin,
-				    in_next == in_end, false);
+				    c->p.g.sequences, in_next == in_end);
 	} while (in_next != in_end);
 
 	return deflate_flush_output(&os);
@@ -2415,7 +2515,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 
 		deflate_flush_block(c, &os, in_block_begin,
 				    in_next - in_block_begin,
-				    in_next == in_end, false);
+				    c->p.g.sequences, in_next == in_end);
 	} while (in_next != in_end);
 
 	return deflate_flush_output(&os);
@@ -3179,7 +3279,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 				       in_block_begin == in, in_next == in_end);
 		deflate_flush_block(c, &os, in_block_begin,
 				    in_next - in_block_begin,
-				    in_next == in_end, true);
+				    NULL, in_next == in_end);
 	} while (in_next != in_end);
 
 	return deflate_flush_output(&os);
@@ -3233,12 +3333,14 @@ libdeflate_alloc_compressor(int compression_level)
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	if (compression_level >= 10)
 		size += sizeof(c->p.n);
-	else if (compression_level >= 1)
-		size += sizeof(c->p.g);
-#else
-	if (compression_level >= 1)
-		size += sizeof(c->p.g);
+	else
 #endif
+	{
+		if (compression_level >= 2)
+			size += sizeof(c->p.g);
+		else if (compression_level == 1)
+			size += sizeof(c->p.f);
+	}
 
 	c = libdeflate_aligned_malloc(MATCHFINDER_MEM_ALIGNMENT, size);
 	if (!c)
@@ -3257,9 +3359,9 @@ libdeflate_alloc_compressor(int compression_level)
 		c->impl = deflate_compress_none;
 		break;
 	case 1:
-		c->impl = deflate_compress_greedy;
-		c->max_search_depth = 2;
-		c->nice_match_length = 8;
+		c->impl = deflate_compress_fastest;
+		/* max_search_depth is unused */
+		c->nice_match_length = 32;
 		break;
 	case 2:
 		c->impl = deflate_compress_greedy;
