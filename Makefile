@@ -89,8 +89,10 @@ PROG_SUFFIX        :=
 PROG_CFLAGS        :=
 HARD_LINKS         := 1
 
+TARGET_MACHINE     := $(shell $(CC) -dumpmachine 2>/dev/null)
+
 # Compiling for Windows with MinGW?
-ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
+ifneq ($(findstring -mingw,$(TARGET_MACHINE)),)
     STATIC_LIB_SUFFIX  := static.lib
     SHARED_LIB         := libdeflate.dll
     SHARED_LIB_SYMLINK :=
@@ -112,21 +114,21 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
                 sed -E 's/g?cc(-?[0-9]+(\.[0-9]+)*)?(\.exe)?$$/ar\3/')
     endif
 
-# macOS?
-else ifneq ($(findstring -darwin,$(shell $(CC) -dumpmachine 2>/dev/null)),)
+# Compiling for macOS?
+else ifneq ($(findstring -darwin,$(TARGET_MACHINE)),)
    SHARED_LIB         := libdeflate.$(SOVERSION).dylib
    SHARED_LIB_SYMLINK := libdeflate.dylib
    SHARED_LIB_CFLAGS  := -fPIC
    SHARED_LIB_LDFLAGS := -install_name $(SHARED_LIB)
 
-# Android?
-else ifneq ($(findstring -android,$(shell $(CC) -dumpmachine 2>/dev/null)),)
+# Compiling for Android?
+else ifneq ($(findstring -android,$(TARGET_MACHINE)),)
    SHARED_LIB         := libdeflate.so
    SHARED_LIB_SYMLINK :=
    SHARED_LIB_CFLAGS  := -fPIC
    SHARED_LIB_LDFLAGS := -Wl,-soname=$(SHARED_LIB)
 
-# Linux, FreeBSD, etc.
+# Compiling for Linux, FreeBSD, etc.
 else
    SHARED_LIB         := libdeflate.so.$(SOVERSION)
    SHARED_LIB_SYMLINK := libdeflate.so
