@@ -357,10 +357,8 @@ out:
  *	The precomputed hash codes for the sequence beginning at @in_next.
  *	These will be used and then updated with the precomputed hashcodes for
  *	the sequence beginning at @in_next + @count.
- *
- * Returns @in_next + @count.
  */
-static forceinline const u8 *
+static forceinline void
 hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 			      const u8 ** const restrict in_base_p,
 			      const u8 *in_next,
@@ -374,7 +372,7 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 	u32 remaining = count;
 
 	if (unlikely(count + 5 > in_end - in_next))
-		return &in_next[count];
+		return;
 
 	cur_pos = in_next - *in_base_p;
 	hash3 = next_hashes[0];
@@ -399,8 +397,6 @@ hc_matchfinder_skip_positions(struct hc_matchfinder * const restrict mf,
 	prefetchw(&mf->hash4_tab[hash4]);
 	next_hashes[0] = hash3;
 	next_hashes[1] = hash4;
-
-	return in_next;
 }
 
 #endif /* LIB_HC_MATCHFINDER_H */
