@@ -132,7 +132,7 @@ bt_right_child(struct bt_matchfinder *mf, s32 node)
 }
 
 /* The minimum permissible value of 'max_len' for bt_matchfinder_get_matches()
- * and bt_matchfinder_skip_position().  There must be sufficiently many bytes
+ * and bt_matchfinder_skip_byte().  There must be sufficiently many bytes
  * remaining to load a 32-bit integer from the *next* position.  */
 #define BT_MATCHFINDER_REQUIRED_NBYTES	5
 
@@ -334,12 +334,12 @@ bt_matchfinder_get_matches(struct bt_matchfinder *mf,
  * must do hashing and tree re-rooting.
  */
 static forceinline void
-bt_matchfinder_skip_position(struct bt_matchfinder *mf,
-			     const u8 *in_base,
-			     ptrdiff_t cur_pos,
-			     u32 nice_len,
-			     u32 max_search_depth,
-			     u32 next_hashes[2])
+bt_matchfinder_skip_byte(struct bt_matchfinder *mf,
+			 const u8 *in_base,
+			 ptrdiff_t cur_pos,
+			 u32 nice_len,
+			 u32 max_search_depth,
+			 u32 next_hashes[2])
 {
 	u32 best_len;
 	bt_matchfinder_advance_one_byte(mf,
