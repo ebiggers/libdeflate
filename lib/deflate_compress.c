@@ -1836,39 +1836,42 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	}
 }
 
+static void
+deflate_begin_sequences(struct libdeflate_compressor *c,
+			struct deflate_sequence *first_seq)
+{
+	deflate_reset_symbol_frequencies(c);
+	first_seq->litrunlen_and_length = 0;
+}
+
 static forceinline void
 deflate_choose_literal(struct libdeflate_compressor *c, unsigned literal,
-		       u32 *litrunlen_p)
+		       struct deflate_sequence *seq)
 {
 	c->freqs.litlen[literal]++;
-	++*litrunlen_p;
+	seq->litrunlen_and_length++;
 }
 
 static forceinline void
 deflate_choose_match(struct libdeflate_compressor *c,
 		     unsigned length, unsigned offset,
-		     u32 *litrunlen_p, struct deflate_sequence **next_seq_p)
+		     struct deflate_sequence **seq_p)
 {
-	struct deflate_sequence *seq = *next_seq_p;
+	struct deflate_sequence *seq = *seq_p;
 	unsigned length_slot = deflate_length_slot[length];
 	unsigned offset_slot = deflate_get_offset_slot(c, offset);
 
 	c->freqs.litlen[DEFLATE_FIRST_LEN_SYM + length_slot]++;
 	c->freqs.offset[offset_slot]++;
 
-	seq->litrunlen_and_length = ((u32)length << 23) | *litrunlen_p;
+	seq->litrunlen_and_length |= (u32)length << 23;
 	seq->offset = offset;
 	seq->length_slot = length_slot;
 	seq->offset_symbol = offset_slot;
 
-	*litrunlen_p = 0;
-	*next_seq_p = seq + 1;
-}
-
-static forceinline void
-deflate_finish_sequence(struct deflate_sequence *seq, u32 litrunlen)
-{
-	seq->litrunlen_and_length = litrunlen; /* length = 0 */
+	seq++;
+	seq->litrunlen_and_length = 0;
+	*seq_p = seq;
 }
 
 /******************************************************************************/
@@ -2147,11 +2150,11 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 		const u8 * const in_max_block_end =
 			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
 		unsigned min_len;
-		u32 litrunlen = 0;
-		struct deflate_sequence *next_seq = c->p.g.sequences;
+		struct deflate_sequence *seq = c->p.g.sequences;
 
 		init_block_split_stats(&c->split_stats);
-		deflate_reset_symbol_frequencies(c);
+		deflate_begin_sequences(c, seq);
+
 		min_len = calculate_min_match_len(in_next,
 						  in_max_block_end - in_next,
 						  c->max_search_depth);
@@ -2177,8 +2180,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 			    (length > DEFLATE_MIN_MATCH_LEN ||
 			     offset <= 4096)) {
 				/* Match found. */
-				deflate_choose_match(c, length, offset,
-						     &litrunlen, &next_seq);
+				deflate_choose_match(c, length, offset, &seq);
 				observe_match(&c->split_stats, length);
 				in_next = hc_matchfinder_skip_positions(
 						&c->p.g.hc_mf,
@@ -2189,7 +2191,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 						next_hashes);
 			} else {
 				/* No match found. */
-				deflate_choose_literal(c, *in_next, &litrunlen);
+				deflate_choose_literal(c, *in_next, seq);
 				observe_literal(&c->split_stats, *in_next);
 				in_next++;
 			}
@@ -2199,7 +2201,6 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 
-		deflate_finish_sequence(next_seq, litrunlen);
 		deflate_flush_block(c, &os, in_block_begin,
 				    in_next - in_block_begin,
 				    in_next == in_end, false);
@@ -2234,11 +2235,10 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 		const u8 *next_recalc_min_len =
 			in_next + MIN(in_end - in_next, 10000);
 		unsigned min_len = DEFLATE_MIN_MATCH_LEN;
-		u32 litrunlen = 0;
-		struct deflate_sequence *next_seq = c->p.g.sequences;
+		struct deflate_sequence *seq = c->p.g.sequences;
 
 		init_block_split_stats(&c->split_stats);
-		deflate_reset_symbol_frequencies(c);
+		deflate_begin_sequences(c, seq);
 
 		min_len = calculate_min_match_len(in_next,
 						  in_max_block_end - in_next,
@@ -2279,7 +2279,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
 			     cur_offset > 8192)) {
 				/* No match found.  Choose a literal. */
-				deflate_choose_literal(c, *in_next, &litrunlen);
+				deflate_choose_literal(c, *in_next, seq);
 				observe_literal(&c->split_stats, *in_next);
 				in_next++;
 				continue;
@@ -2294,7 +2294,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			 */
 			if (cur_len >= nice_len) {
 				deflate_choose_match(c, cur_len, cur_offset,
-						     &litrunlen, &next_seq);
+						     &seq);
 				in_next = hc_matchfinder_skip_positions(
 						&c->p.g.hc_mf,
 						&in_cur_base,
@@ -2342,8 +2342,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 				 * Output a literal.  Then the next match
 				 * becomes the current match.
 				 */
-				deflate_choose_literal(c, *(in_next - 2),
-						       &litrunlen);
+				deflate_choose_literal(c, *(in_next - 2), seq);
 				cur_len = next_len;
 				cur_offset = next_offset;
 				goto have_cur_match;
@@ -2372,9 +2371,9 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 					 * positions ahead, so use two literals.
 					 */
 					deflate_choose_literal(
-						c, *(in_next - 3), &litrunlen);
+						c, *(in_next - 3), seq);
 					deflate_choose_literal(
-						c, *(in_next - 2), &litrunlen);
+						c, *(in_next - 2), seq);
 					cur_len = next_len;
 					cur_offset = next_offset;
 					goto have_cur_match;
@@ -2384,7 +2383,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 				 * positions.  Output the current match.
 				 */
 				deflate_choose_match(c, cur_len, cur_offset,
-						     &litrunlen, &next_seq);
+						     &seq);
 				if (cur_len > 3)
 					in_next = hc_matchfinder_skip_positions(
 							&c->p.g.hc_mf,
@@ -2399,7 +2398,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 				 * the current match.
 				 */
 				deflate_choose_match(c, cur_len, cur_offset,
-						     &litrunlen, &next_seq);
+						     &seq);
 				in_next = hc_matchfinder_skip_positions(
 							&c->p.g.hc_mf,
 							&in_cur_base,
@@ -2413,7 +2412,6 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 
-		deflate_finish_sequence(next_seq, litrunlen);
 		deflate_flush_block(c, &os, in_block_begin,
 				    in_next - in_block_begin,
 				    in_next == in_end, false);
