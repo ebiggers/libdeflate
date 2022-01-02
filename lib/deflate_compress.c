@@ -51,10 +51,11 @@
 #define SUPPORT_NEAR_OPTIMAL_PARSING	1
 
 /*
- * This is the minimum block length, in uncompressed bytes, which the compressor
- * will use.  This should be a value below which using shorter blocks is very
- * unlikely to be worthwhile, due to the per-block overhead.  This parameter
- * doesn't apply to the final block, which can be arbitrarily short.
+ * This is the minimum block length that the compressor will use, in
+ * uncompressed bytes.  It is also the amount by which the final block is
+ * allowed to grow past the soft maximum length in order to avoid using a very
+ * short block at the end.  This should be a value below which using shorter
+ * blocks is unlikely to be worthwhile, due to the per-block overhead.
  *
  * Defining a fixed minimum block length is needed in order to guarantee a
  * reasonable upper bound on the compressed size.  It's also needed because our
@@ -63,23 +64,46 @@
 #define MIN_BLOCK_LENGTH	10000
 
 /*
- * This is the soft maximum block length, in uncompressed bytes, which the
- * compressor will use.  This is a "soft" maximum, meaning that the compressor
- * will try to end blocks at this length, but it may go slightly past it if
- * there is a match that straddles this limit.  This parameter doesn't apply to
- * uncompressed blocks, which the DEFLATE format limits to 65535 bytes.
+ * For the greedy, lazy, lazy2, and near-optimal compressors: This is the soft
+ * maximum block length, in uncompressed bytes.  The compressor will try to end
+ * blocks at this length, but it may go slightly past it if there is a match
+ * that straddles this limit or if the input data ends soon after this limit.
+ * This parameter doesn't apply to uncompressed blocks, which the DEFLATE format
+ * limits to 65535 bytes.
  *
  * This should be a value above which it is very likely that splitting the block
- * would produce a better compression ratio.  Increasing/decreasing this
- * parameter will increase/decrease per-compressor memory usage linearly.
+ * would produce a better compression ratio.  For the near-optimal compressor,
+ * increasing/decreasing this parameter will increase/decrease per-compressor
+ * memory usage linearly.
  */
 #define SOFT_MAX_BLOCK_LENGTH	300000
 
 /*
- * Block length, in uncompressed bytes, used by deflate_compress_fastest().
- * deflate_compress_fastest() doesn't use the other block length settings.
+ * For the greedy, lazy, and lazy2 compressors: this is the length of the
+ * sequence store, which is an array where the compressor temporarily stores
+ * matches that it's going to use in the current block.  This value is 1 more
+ * than the number of matches that can be used in a block.  If the sequence
+ * store fills up, then the compressor will be forced to end the block early.
+ * This value should be large enough so that this rarely happens, due to the
+ * block being ended normally before then.  Increasing/decreasing this value
+ * will increase/decrease per-compressor memory usage linearly.
  */
-#define FAST_BLOCK_LENGTH	MIN(32768, SOFT_MAX_BLOCK_LENGTH)
+#define SEQ_STORE_LENGTH	50000
+
+/*
+ * For deflate_compress_fastest(): This is the soft maximum block length.
+ * deflate_compress_fastest() doesn't use the regular block splitting algorithm;
+ * it only ends blocks when they reach FAST_SOFT_MAX_BLOCK_LENGTH bytes or
+ * FAST_SEQ_STORE_LENGTH - 1 matches.  Therefore, this value should be lower
+ * than the regular SOFT_MAX_BLOCK_LENGTH.
+ */
+#define FAST_SOFT_MAX_BLOCK_LENGTH	65535
+
+/*
+ * For deflate_compress_fastest(): this is the length of the sequence store.
+ * This is like SEQ_STORE_LENGTH, but this should be a lower value.
+ */
+#define FAST_SEQ_STORE_LENGTH	8192
 
 /*
  * These are the maximum codeword lengths, in bits, the compressor will use for
@@ -97,13 +121,13 @@
 /* Parameters specific to the near-optimal parsing algorithm */
 
 /*
- * BIT_COST is a scaling factor that allows the compressor to consider
- * fractional bit costs when deciding which literal/match sequence to use.  This
- * is useful when the true symbol costs are unknown.  For example, if the
- * compressor thinks that a symbol has 6.5 bits of entropy, it can set its cost
- * to 6.5 bits rather than have to use 6 or 7 bits.  Although in the end each
- * symbol will use a whole number of bits due to the Huffman coding, considering
- * fractional bits can be helpful due to the limited information.
+ * BIT_COST is a scaling factor that allows the near-optimal compressor to
+ * consider fractional bit costs when deciding which literal/match sequence to
+ * use.  This is useful when the true symbol costs are unknown.  For example, if
+ * the compressor thinks that a symbol has 6.5 bits of entropy, it can set its
+ * cost to 6.5 bits rather than have to use 6 or 7 bits.  Although in the end
+ * each symbol will use a whole number of bits due to the Huffman coding,
+ * considering fractional bits can be helpful due to the limited information.
  *
  * BIT_COST should be a power of 2.  A value of 8 or 16 works well.  A higher
  * value isn't very useful since the calculations are approximate anyway.
@@ -122,12 +146,9 @@
 #define OFFSET_NOSTAT_BITS	10
 
 /*
- * This is (approximately) the maximum number of matches that the compressor
- * will cache per block.  If the match cache becomes full, then the compressor
- * will be forced to end the block early.  This value should be large enough so
- * that this rarely happens, due to the block being ended normally before the
- * cache fills up.  Increasing/decreasing this parameter will increase/decrease
- * per-compressor memory usage linearly.
+ * This is (slightly less than) the maximum number of matches that the
+ * near-optimal compressor will cache per block.  This behaves similarly to
+ * SEQ_STORE_LENGTH for the other compressors.
  */
 #define MATCH_CACHE_LENGTH	(SOFT_MAX_BLOCK_LENGTH * 5)
 
@@ -151,6 +172,47 @@
 #define MAX_MATCHES_PER_POS	\
 	(DEFLATE_MAX_MATCH_LEN - DEFLATE_MIN_MATCH_LEN + 1)
 #endif
+
+static forceinline void
+check_buildtime_parameters(void)
+{
+	/*
+	 * Verify that MIN_BLOCK_LENGTH is being honored, as
+	 * libdeflate_compress_bound() depends on it.
+	 */
+	STATIC_ASSERT(SOFT_MAX_BLOCK_LENGTH >= MIN_BLOCK_LENGTH);
+	STATIC_ASSERT(FAST_SOFT_MAX_BLOCK_LENGTH >= MIN_BLOCK_LENGTH);
+	STATIC_ASSERT(
+		(SEQ_STORE_LENGTH - 1) * DEFLATE_MIN_MATCH_LEN >=
+		MIN_BLOCK_LENGTH);
+	STATIC_ASSERT(
+		(FAST_SEQ_STORE_LENGTH - 1) * HT_MATCHFINDER_MIN_MATCH_LEN >=
+		MIN_BLOCK_LENGTH);
+
+	/* Verify that the sequence stores aren't uselessly large. */
+	STATIC_ASSERT(
+		(SEQ_STORE_LENGTH - 1) * DEFLATE_MIN_MATCH_LEN <=
+		SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH);
+	STATIC_ASSERT(
+		(FAST_SEQ_STORE_LENGTH - 1) * HT_MATCHFINDER_MIN_MATCH_LEN <=
+		FAST_SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH);
+
+	/* Verify that the maximum codeword lengths are valid. */
+	STATIC_ASSERT(
+		MAX_LITLEN_CODEWORD_LEN <= DEFLATE_MAX_LITLEN_CODEWORD_LEN);
+	STATIC_ASSERT(
+		MAX_OFFSET_CODEWORD_LEN <= DEFLATE_MAX_OFFSET_CODEWORD_LEN);
+	STATIC_ASSERT(
+		MAX_PRE_CODEWORD_LEN <= DEFLATE_MAX_PRE_CODEWORD_LEN);
+	STATIC_ASSERT(
+		(1U << MAX_LITLEN_CODEWORD_LEN) >= DEFLATE_NUM_LITLEN_SYMS);
+	STATIC_ASSERT(
+		(1U << MAX_OFFSET_CODEWORD_LEN) >= DEFLATE_NUM_OFFSET_SYMS);
+	STATIC_ASSERT(
+		(1U << MAX_PRE_CODEWORD_LEN) >= DEFLATE_NUM_PRECODE_SYMS);
+}
+
+/******************************************************************************/
 
 /* Table: length slot => length slot base value  */
 static const unsigned deflate_length_slot_base[] = {
@@ -424,14 +486,12 @@ struct libdeflate_compressor {
 			/* Hash chains matchfinder */
 			struct hc_matchfinder hc_mf;
 
-			/* The matches and literals that the parser has chosen
-			 * for the current block.  The required length of this
-			 * array is limited by the maximum number of matches
-			 * that can ever be chosen for a single block, plus one
-			 * for the special entry at the end.  */
-			struct deflate_sequence sequences[
-				DIV_ROUND_UP(SOFT_MAX_BLOCK_LENGTH,
-					     DEFLATE_MIN_MATCH_LEN) + 1];
+			/*
+			 * The matches and literals that the parser has chosen
+			 * for the current block.
+			 */
+			struct deflate_sequence sequences[SEQ_STORE_LENGTH];
+
 		} g; /* (g)reedy */
 
 		/* Data for fastest parsing */
@@ -440,8 +500,8 @@ struct libdeflate_compressor {
 			struct ht_matchfinder ht_mf;
 
 			struct deflate_sequence sequences[
-				DIV_ROUND_UP(FAST_BLOCK_LENGTH,
-					     HT_MATCHFINDER_MIN_MATCH_LEN) + 1];
+						FAST_SEQ_STORE_LENGTH];
+
 		} f; /* (f)astest */
 
 	#if SUPPORT_NEAR_OPTIMAL_PARSING
@@ -485,15 +545,17 @@ struct libdeflate_compressor {
 			 * minimum-cost path algorithm.
 			 *
 			 * This array must be large enough to accommodate the
-			 * worst-case number of nodes, which occurs if we find a
-			 * match of length DEFLATE_MAX_MATCH_LEN at position
-			 * SOFT_MAX_BLOCK_LENGTH - 1, producing a block of
-			 * length SOFT_MAX_BLOCK_LENGTH - 1 +
-			 * DEFLATE_MAX_MATCH_LEN.  Add one for the end-of-block
-			 * node.
+			 * worst-case number of nodes, which occurs when the
+			 * final block is of length SOFT_MAX_BLOCK_LENGTH +
+			 * MIN_BLOCK_LENGTH, or when any block is of length
+			 * SOFT_MAX_BLOCK_LENGTH + DEFLATE_MAX_MATCH_LEN
+			 * - 1.  Add one for the end-of-block node.
 			 */
-			struct deflate_optimum_node optimum_nodes[SOFT_MAX_BLOCK_LENGTH - 1 +
-								  DEFLATE_MAX_MATCH_LEN + 1];
+			struct deflate_optimum_node optimum_nodes[
+						SOFT_MAX_BLOCK_LENGTH +
+						MAX(MIN_BLOCK_LENGTH,
+						    DEFLATE_MAX_MATCH_LEN - 1)
+						+ 1];
 
 			/* The current cost model being used.  */
 			struct deflate_costs costs;
@@ -2160,6 +2222,14 @@ recalculate_min_match_len(const struct deflate_freqs *freqs,
 	return choose_min_match_len(num_used_literals, max_search_depth);
 }
 
+static forceinline const u8 *
+choose_max_block_end(const u8 *in_next, const u8 *in_end, size_t soft_max_len)
+{
+	if (in_end - in_next < soft_max_len + MIN_BLOCK_LENGTH)
+		return in_end;
+	return in_next + soft_max_len;
+}
+
 /*
  * This is the level 0 "compressor".  It always outputs uncompressed blocks.
  */
@@ -2203,8 +2273,8 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 		/* Starting a new DEFLATE block. */
 
 		const u8 * const in_block_begin = in_next;
-		const u8 * const in_max_block_end =
-			in_next + MIN(in_end - in_next, FAST_BLOCK_LENGTH);
+		const u8 * const in_max_block_end = choose_max_block_end(
+				in_next, in_end, FAST_SOFT_MAX_BLOCK_LENGTH);
 		struct deflate_sequence *seq = c->p.f.sequences;
 
 		deflate_begin_sequences(c, seq);
@@ -2248,7 +2318,8 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 			}
 
 			/* Check if it's time to output another block. */
-		} while (in_next < in_max_block_end);
+		} while (in_next < in_max_block_end &&
+			 seq < &c->p.f.sequences[ARRAY_LEN(c->p.f.sequences)]);
 
 		deflate_flush_block(c, &os, in_block_begin,
 				    in_next - in_block_begin,
@@ -2281,8 +2352,8 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 		/* Starting a new DEFLATE block. */
 
 		const u8 * const in_block_begin = in_next;
-		const u8 * const in_max_block_end =
-			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
+		const u8 * const in_max_block_end = choose_max_block_end(
+				in_next, in_end, SOFT_MAX_BLOCK_LENGTH);
 		unsigned min_len;
 		struct deflate_sequence *seq = c->p.g.sequences;
 
@@ -2332,6 +2403,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 
 			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
+			 seq < &c->p.g.sequences[ARRAY_LEN(c->p.g.sequences)] &&
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 
@@ -2364,8 +2436,8 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 		/* Starting a new DEFLATE block. */
 
 		const u8 * const in_block_begin = in_next;
-		const u8 * const in_max_block_end =
-			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
+		const u8 * const in_max_block_end = choose_max_block_end(
+				in_next, in_end, SOFT_MAX_BLOCK_LENGTH);
 		const u8 *next_recalc_min_len =
 			in_next + MIN(in_end - in_next, 10000);
 		unsigned min_len = DEFLATE_MIN_MATCH_LEN;
@@ -2544,6 +2616,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			}
 			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
+			 seq < &c->p.g.sequences[ARRAY_LEN(c->p.g.sequences)] &&
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 
@@ -3178,8 +3251,8 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 
 		struct lz_match *cache_ptr = c->p.n.match_cache;
 		const u8 * const in_block_begin = in_next;
-		const u8 * const in_max_block_end =
-			in_next + MIN(in_end - in_next, SOFT_MAX_BLOCK_LENGTH);
+		const u8 * const in_max_block_end = choose_max_block_end(
+				in_next, in_end, SOFT_MAX_BLOCK_LENGTH);
 		const u8 *next_observation = in_next;
 
 		deflate_near_optimal_begin_block(c, in_block_begin == in);
@@ -3346,6 +3419,8 @@ libdeflate_alloc_compressor(int compression_level)
 {
 	struct libdeflate_compressor *c;
 	size_t size = offsetof(struct libdeflate_compressor, p);
+
+	check_buildtime_parameters();
 
 	if (compression_level < 0 || compression_level > 12)
 		return NULL;
