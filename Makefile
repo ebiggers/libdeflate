@@ -119,6 +119,13 @@ else ifneq ($(findstring -darwin,$(shell $(CC) -dumpmachine 2>/dev/null)),)
    SHARED_LIB_CFLAGS  := -fPIC
    SHARED_LIB_LDFLAGS := -install_name $(SHARED_LIB)
 
+# Android?
+else ifneq ($(findstring -android,$(shell $(CC) -dumpmachine 2>/dev/null)),)
+   SHARED_LIB         := libdeflate.so
+   SHARED_LIB_SYMLINK :=
+   SHARED_LIB_CFLAGS  := -fPIC
+   SHARED_LIB_LDFLAGS := -Wl,-soname=$(SHARED_LIB)
+
 # Linux, FreeBSD, etc.
 else
    SHARED_LIB         := libdeflate.so.$(SOVERSION)
