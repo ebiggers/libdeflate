@@ -99,11 +99,7 @@ struct bt_matchfinder {
 	 * 'child_tab[pos * 2]' and 'child_tab[pos * 2 + 1]', respectively.  */
 	mf_pos_t child_tab[2UL * MATCHFINDER_WINDOW_SIZE];
 
-}
-#ifdef _aligned_attribute
-_aligned_attribute(MATCHFINDER_MEM_ALIGNMENT)
-#endif
-;
+} MATCHFINDER_ALIGNED;
 
 /* Prepare the matchfinder for a new input buffer.  */
 static forceinline void
