@@ -81,12 +81,12 @@
 /*
  * For the greedy, lazy, and lazy2 compressors: this is the length of the
  * sequence store, which is an array where the compressor temporarily stores
- * matches that it's going to use in the current block.  This value is 1 more
- * than the number of matches that can be used in a block.  If the sequence
- * store fills up, then the compressor will be forced to end the block early.
- * This value should be large enough so that this rarely happens, due to the
- * block being ended normally before then.  Increasing/decreasing this value
- * will increase/decrease per-compressor memory usage linearly.
+ * matches that it's going to use in the current block.  This value is the
+ * maximum number of matches that can be used in a block.  If the sequence store
+ * fills up, then the compressor will be forced to end the block early.  This
+ * value should be large enough so that this rarely happens, due to the block
+ * being ended normally before then.  Increasing/decreasing this value will
+ * increase/decrease per-compressor memory usage linearly.
  */
 #define SEQ_STORE_LENGTH	50000
 
@@ -184,20 +184,16 @@ check_buildtime_parameters(void)
 	 */
 	STATIC_ASSERT(SOFT_MAX_BLOCK_LENGTH >= MIN_BLOCK_LENGTH);
 	STATIC_ASSERT(FAST_SOFT_MAX_BLOCK_LENGTH >= MIN_BLOCK_LENGTH);
-	STATIC_ASSERT(
-		(SEQ_STORE_LENGTH - 1) * DEFLATE_MIN_MATCH_LEN >=
-		MIN_BLOCK_LENGTH);
-	STATIC_ASSERT(
-		(FAST_SEQ_STORE_LENGTH - 1) * HT_MATCHFINDER_MIN_MATCH_LEN >=
-		MIN_BLOCK_LENGTH);
+	STATIC_ASSERT(SEQ_STORE_LENGTH * DEFLATE_MIN_MATCH_LEN >=
+		      MIN_BLOCK_LENGTH);
+	STATIC_ASSERT(FAST_SEQ_STORE_LENGTH * HT_MATCHFINDER_MIN_MATCH_LEN >=
+		      MIN_BLOCK_LENGTH);
 
 	/* Verify that the sequence stores aren't uselessly large. */
-	STATIC_ASSERT(
-		(SEQ_STORE_LENGTH - 1) * DEFLATE_MIN_MATCH_LEN <=
-		SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH);
-	STATIC_ASSERT(
-		(FAST_SEQ_STORE_LENGTH - 1) * HT_MATCHFINDER_MIN_MATCH_LEN <=
-		FAST_SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH);
+	STATIC_ASSERT(SEQ_STORE_LENGTH * DEFLATE_MIN_MATCH_LEN <=
+		      SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH);
+	STATIC_ASSERT(FAST_SEQ_STORE_LENGTH * HT_MATCHFINDER_MIN_MATCH_LEN <=
+		      FAST_SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH);
 
 	/* Verify that the maximum codeword lengths are valid. */
 	STATIC_ASSERT(
@@ -488,11 +484,8 @@ struct libdeflate_compressor {
 			/* Hash chains matchfinder */
 			struct hc_matchfinder hc_mf;
 
-			/*
-			 * The matches and literals that the parser has chosen
-			 * for the current block.
-			 */
-			struct deflate_sequence sequences[SEQ_STORE_LENGTH];
+			/* Matches and literals chosen for the current block */
+			struct deflate_sequence sequences[SEQ_STORE_LENGTH + 1];
 
 		} g; /* (g)reedy */
 
@@ -501,8 +494,9 @@ struct libdeflate_compressor {
 			/* Hash table matchfinder */
 			struct ht_matchfinder ht_mf;
 
+			/* Matches and literals chosen for the current block */
 			struct deflate_sequence sequences[
-						FAST_SEQ_STORE_LENGTH];
+						FAST_SEQ_STORE_LENGTH + 1];
 
 		} f; /* (f)astest */
 
@@ -2320,7 +2314,7 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 
 			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
-			 seq < &c->p.f.sequences[ARRAY_LEN(c->p.f.sequences)]);
+			 seq < &c->p.f.sequences[FAST_SEQ_STORE_LENGTH]);
 
 		deflate_flush_block(c, &os, in_block_begin,
 				    in_next - in_block_begin,
@@ -2402,7 +2396,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 
 			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
-			 seq < &c->p.g.sequences[ARRAY_LEN(c->p.g.sequences)] &&
+			 seq < &c->p.g.sequences[SEQ_STORE_LENGTH] &&
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 
@@ -2614,7 +2608,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			}
 			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
-			 seq < &c->p.g.sequences[ARRAY_LEN(c->p.g.sequences)] &&
+			 seq < &c->p.g.sequences[SEQ_STORE_LENGTH] &&
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 
