@@ -1,0 +1,104 @@
+name: cross compile with android-ndk
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  cross-compile-for-android:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11]
+        target-abi: [armeabi-v7a, arm64-v8a, x86, x86_64]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - run:  brew install tree file
+
+      - run:  tree --version
+      - run:  file --version
+      - run:  make --version
+
+      - uses: actions/checkout@v2
+
+      - name: build for ${{ matrix.target-abi }}
+        run: |
+          COLOR_GREEN='\033[0;32m'        # Green
+          COLOR_PURPLE='\033[0;35m'       # Purple
+          COLOR_OFF='\033[0m'             # Reset
+
+          run() {
+            printf '%b\n' "$COLOR_PURPLE==>$COLOR_OFF $COLOR_GREEN$*$COLOR_OFF"
+            eval "$*"
+          }
+
+          BUILD_MACHINE_OS_TYPE=$(uname | tr A-Z a-z)
+          BUILD_MACHINE_OS_ARCH=$(uname -m)
+
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+
+          env | sed -n '/^ANDROID_/p'
+
+          ANDROID_NDK_VERS=$(grep "Pkg.Revision" "$ANDROID_NDK_HOME/source.properties" | cut -d " " -f3)
+          ANDROID_NDK_BASE=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$BUILD_MACHINE_OS_TYPE-$BUILD_MACHINE_OS_ARCH
+          ANDROID_NDK_BIND=$ANDROID_NDK_BASE/bin
+          SYSROOT=$ANDROID_NDK_BASE/sysroot
+
+          printf '%s = %s\n' ANDROID_NDK_HOME "$ANDROID_NDK_HOME"
+          printf '%s = %s\n' ANDROID_NDK_BIND "$ANDROID_NDK_BIND"
+          printf '%s = %s\n' ANDROID_NDK_VERS "$ANDROID_NDK_VERS"
+          printf '%s\n'
+
+          export CPPFLAGS="--sysroot $SYSROOT"
+          export   CFLAGS="--sysroot $SYSROOT -fpic"
+          export  LDFLAGS="--sysroot $SYSROOT"
+
+          case ${{ matrix.target-abi }} in
+            armeabi-v7a) CC=armv7a-linux-androideabi21-clang ;;
+            arm64-v8a)   CC=aarch64-linux-android21-clang    ;;
+            x86)         CC=i686-linux-android21-clang       ;;
+            x86_64)      CC=x86_64-linux-android21-clang     ;;
+          esac
+
+          AR=llvm-ar
+
+          export PATH="$ANDROID_NDK_BIND:$PATH"
+
+          printf '%b\n' "$COLOR_PURPLE==>$COLOR_OFF ${COLOR_GREEN}show PATH$COLOR_OFF"
+          printf '%s\n' "$PATH" | tr ':' '\n'
+          printf '%s\n'
+
+          run make clean install PREFIX=$PWD/install.d CC="$CC" CPPFLAGS="'$CPPFLAGS'" CFLAGS="'$CFLAGS'" AR="$AR" V=1
+
+      - run:  tree install.d
+
+      - run:  |
+          file install.d/lib/libdeflate.so
+          case ${{ matrix.target-abi }} in
+            armeabi-v7a) file install.d/lib/libdeflate.so     | grep 'ELF 32-bit LSB shared object, ARM, EABI5'   ;;
+            arm64-v8a)   file install.d/lib/libdeflate.so     | grep 'ELF 64-bit LSB shared object, ARM aarch64,' ;;
+            x86)         file install.d/lib/libdeflate.so     | grep 'ELF 32-bit LSB shared object, Intel 80386,' ;;
+            x86_64)      file install.d/lib/libdeflate.so     | grep 'ELF 64-bit LSB shared object, x86-64,'      ;;
+          esac
+
+      - run:  |
+          file install.d/bin/libdeflate-gzip
+          case ${{ matrix.target-abi }} in
+            armeabi-v7a) file install.d/bin/libdeflate-gzip   | grep 'ELF 32-bit LSB pie executable, ARM, EABI5'   ;;
+            arm64-v8a)   file install.d/bin/libdeflate-gzip   | grep 'ELF 64-bit LSB pie executable, ARM aarch64,' ;;
+            x86)         file install.d/bin/libdeflate-gzip   | grep 'ELF 32-bit LSB pie executable, Intel 80386,' ;;
+            x86_64)      file install.d/bin/libdeflate-gzip   | grep 'ELF 64-bit LSB pie executable, x86-64,'      ;;
+          esac
+
+      - run:  |
+          file install.d/bin/libdeflate-gunzip
+          case ${{ matrix.target-abi }} in
+            armeabi-v7a) file install.d/bin/libdeflate-gunzip | grep 'ELF 32-bit LSB pie executable, ARM, EABI5'   ;;
+            arm64-v8a)   file install.d/bin/libdeflate-gunzip | grep 'ELF 64-bit LSB pie executable, ARM aarch64,' ;;
+            x86)         file install.d/bin/libdeflate-gunzip | grep 'ELF 32-bit LSB pie executable, Intel 80386,' ;;
+            x86_64)      file install.d/bin/libdeflate-gunzip | grep 'ELF 64-bit LSB pie executable, x86-64,'      ;;
+          esac
