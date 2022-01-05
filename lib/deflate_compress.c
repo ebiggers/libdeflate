@@ -1592,6 +1592,74 @@ deflate_write_huffman_header(struct libdeflate_compressor *c,
 	}
 }
 
+static forceinline void
+deflate_write_literal_run(struct deflate_output_bitstream *os,
+			  const u8 *in_next, u32 litrunlen,
+			  const struct deflate_codes *codes)
+{
+#if 1
+	while (litrunlen >= 4) {
+		unsigned lit0 = in_next[0];
+		unsigned lit1 = in_next[1];
+		unsigned lit2 = in_next[2];
+		unsigned lit3 = in_next[3];
+
+		deflate_add_bits(os, codes->codewords.litlen[lit0],
+				 codes->lens.litlen[lit0]);
+		if (!CAN_BUFFER(2 * MAX_LITLEN_CODEWORD_LEN))
+			deflate_flush_bits(os);
+
+		deflate_add_bits(os, codes->codewords.litlen[lit1],
+				 codes->lens.litlen[lit1]);
+		if (!CAN_BUFFER(4 * MAX_LITLEN_CODEWORD_LEN))
+			deflate_flush_bits(os);
+
+		deflate_add_bits(os, codes->codewords.litlen[lit2],
+				 codes->lens.litlen[lit2]);
+		if (!CAN_BUFFER(2 * MAX_LITLEN_CODEWORD_LEN))
+			deflate_flush_bits(os);
+
+		deflate_add_bits(os, codes->codewords.litlen[lit3],
+				 codes->lens.litlen[lit3]);
+		deflate_flush_bits(os);
+		in_next += 4;
+		litrunlen -= 4;
+	}
+	if (litrunlen-- != 0) {
+		deflate_add_bits(os, codes->codewords.litlen[*in_next],
+				 codes->lens.litlen[*in_next]);
+		if (!CAN_BUFFER(3 * MAX_LITLEN_CODEWORD_LEN))
+			deflate_flush_bits(os);
+		in_next++;
+		if (litrunlen-- != 0) {
+			deflate_add_bits(os, codes->codewords.litlen[*in_next],
+					 codes->lens.litlen[*in_next]);
+			if (!CAN_BUFFER(3 * MAX_LITLEN_CODEWORD_LEN))
+				deflate_flush_bits(os);
+			in_next++;
+			if (litrunlen-- != 0) {
+				deflate_add_bits(os,
+					codes->codewords.litlen[*in_next],
+					codes->lens.litlen[*in_next]);
+				if (!CAN_BUFFER(3 * MAX_LITLEN_CODEWORD_LEN))
+					deflate_flush_bits(os);
+				in_next++;
+			}
+		}
+		if (CAN_BUFFER(3 * MAX_LITLEN_CODEWORD_LEN))
+			deflate_flush_bits(os);
+	}
+#else
+	do {
+		unsigned lit = *in_next++;
+
+		deflate_add_bits(os, codes->codewords.litlen[lit],
+				 codes->lens.litlen[lit]);
+		deflate_flush_bits(os);
+	} while (--litrunlen);
+#endif
+}
+
 static void
 deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 			const struct deflate_codes * restrict codes,
@@ -1608,65 +1676,9 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 		unsigned offset_symbol;
 
 		if (litrunlen) {
-		#if 1
-			while (litrunlen >= 4) {
-				unsigned lit0 = in_next[0];
-				unsigned lit1 = in_next[1];
-				unsigned lit2 = in_next[2];
-				unsigned lit3 = in_next[3];
-
-				deflate_add_bits(os, codes->codewords.litlen[lit0],
-						 codes->lens.litlen[lit0]);
-				if (!CAN_BUFFER(2 * MAX_LITLEN_CODEWORD_LEN))
-					deflate_flush_bits(os);
-
-				deflate_add_bits(os, codes->codewords.litlen[lit1],
-						 codes->lens.litlen[lit1]);
-				if (!CAN_BUFFER(4 * MAX_LITLEN_CODEWORD_LEN))
-					deflate_flush_bits(os);
-
-				deflate_add_bits(os, codes->codewords.litlen[lit2],
-						 codes->lens.litlen[lit2]);
-				if (!CAN_BUFFER(2 * MAX_LITLEN_CODEWORD_LEN))
-					deflate_flush_bits(os);
-
-				deflate_add_bits(os, codes->codewords.litlen[lit3],
-						 codes->lens.litlen[lit3]);
-				deflate_flush_bits(os);
-				in_next += 4;
-				litrunlen -= 4;
-			}
-			if (litrunlen-- != 0) {
-				deflate_add_bits(os, codes->codewords.litlen[*in_next],
-						 codes->lens.litlen[*in_next]);
-				if (!CAN_BUFFER(3 * MAX_LITLEN_CODEWORD_LEN))
-					deflate_flush_bits(os);
-				in_next++;
-				if (litrunlen-- != 0) {
-					deflate_add_bits(os, codes->codewords.litlen[*in_next],
-							 codes->lens.litlen[*in_next]);
-					if (!CAN_BUFFER(3 * MAX_LITLEN_CODEWORD_LEN))
-						deflate_flush_bits(os);
-					in_next++;
-					if (litrunlen-- != 0) {
-						deflate_add_bits(os, codes->codewords.litlen[*in_next],
-								 codes->lens.litlen[*in_next]);
-						if (!CAN_BUFFER(3 * MAX_LITLEN_CODEWORD_LEN))
-							deflate_flush_bits(os);
-						in_next++;
-					}
-				}
-				if (CAN_BUFFER(3 * MAX_LITLEN_CODEWORD_LEN))
-					deflate_flush_bits(os);
-			}
-		#else
-			do {
-				unsigned lit = *in_next++;
-				deflate_add_bits(os, codes->codewords.litlen[lit],
-						 codes->lens.litlen[lit]);
-				deflate_flush_bits(os);
-			} while (--litrunlen);
-		#endif
+			deflate_write_literal_run(os, in_next, litrunlen,
+						  codes);
+			in_next += litrunlen;
 		}
 
 		if (length == 0)
