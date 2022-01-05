@@ -2143,7 +2143,7 @@ do_end_block_check(struct block_split_stats *stats, u32 block_length)
 		/* Ready to end the block? */
 		if (total_delta +
 		    (block_length / 4096) * stats->num_observations >=
-		    NUM_OBSERVATIONS_PER_BLOCK_CHECK * 200 / 512 *
+		    stats->num_new_observations * 200 / 512 *
 		    stats->num_observations)
 			return true;
 	}
