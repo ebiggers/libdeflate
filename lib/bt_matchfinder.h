@@ -146,7 +146,6 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 				const u32 nice_len,
 				const u32 max_search_depth,
 				u32 * const restrict next_hashes,
-				u32 * const restrict best_len_ret,
 				struct lz_match * restrict lz_matchptr,
 				const bool record_matches)
 {
@@ -212,7 +211,6 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 	if (cur_node <= cutoff) {
 		*pending_lt_ptr = MATCHFINDER_INITVAL;
 		*pending_gt_ptr = MATCHFINDER_INITVAL;
-		*best_len_ret = best_len;
 		return lz_matchptr;
 	}
 
@@ -235,7 +233,6 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 				if (len >= nice_len) {
 					*pending_lt_ptr = *bt_left_child(mf, cur_node);
 					*pending_gt_ptr = *bt_right_child(mf, cur_node);
-					*best_len_ret = best_len;
 					return lz_matchptr;
 				}
 			}
@@ -260,7 +257,6 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
 		if (cur_node <= cutoff || !--depth_remaining) {
 			*pending_lt_ptr = MATCHFINDER_INITVAL;
 			*pending_gt_ptr = MATCHFINDER_INITVAL;
-			*best_len_ret = best_len;
 			return lz_matchptr;
 		}
 	}
@@ -289,12 +285,6 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
  *	The precomputed hash codes for the sequence beginning at @in_next.
  *	These will be used and then updated with the precomputed hashcodes for
  *	the sequence beginning at @in_next + 1.
- * @best_len_ret
- *	If a match of length >= 4 was found, then the length of the longest such
- *	match is written here; otherwise 3 is written here.  (Note: this is
- *	redundant with the 'struct lz_match' array, but this is easier for the
- *	compiler to optimize when inlined and the caller immediately does a
- *	check against 'best_len'.)
  * @lz_matchptr
  *	An array in which this function will record the matches.  The recorded
  *	matches will be sorted by strictly increasing length and (non-strictly)
@@ -312,7 +302,6 @@ bt_matchfinder_get_matches(struct bt_matchfinder *mf,
 			   u32 nice_len,
 			   u32 max_search_depth,
 			   u32 next_hashes[2],
-			   u32 *best_len_ret,
 			   struct lz_match *lz_matchptr)
 {
 	return bt_matchfinder_advance_one_byte(mf,
@@ -322,7 +311,6 @@ bt_matchfinder_get_matches(struct bt_matchfinder *mf,
 					       nice_len,
 					       max_search_depth,
 					       next_hashes,
-					       best_len_ret,
 					       lz_matchptr,
 					       true);
 }
@@ -341,7 +329,6 @@ bt_matchfinder_skip_byte(struct bt_matchfinder *mf,
 			 u32 max_search_depth,
 			 u32 next_hashes[2])
 {
-	u32 best_len;
 	bt_matchfinder_advance_one_byte(mf,
 					in_base,
 					cur_pos,
@@ -349,7 +336,6 @@ bt_matchfinder_skip_byte(struct bt_matchfinder *mf,
 					nice_len,
 					max_search_depth,
 					next_hashes,
-					&best_len,
 					NULL,
 					false);
 }

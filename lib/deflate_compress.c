@@ -3415,8 +3415,9 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						nice_len,
 						c->max_search_depth,
 						next_hashes,
-						&best_len,
 						matches);
+				if (cache_ptr > matches)
+					best_len = cache_ptr[-1].length;
 			}
 			c->freqs.litlen[*in_next]++;
 			if (in_next >= next_observation) {
