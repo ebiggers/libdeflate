@@ -3362,8 +3362,12 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		const u8 * const in_max_block_end = choose_max_block_end(
 				in_next, in_end, SOFT_MAX_BLOCK_LENGTH);
 		const u8 *next_observation = in_next;
+		unsigned min_len;
 
 		deflate_near_optimal_begin_block(c, in_block_begin == in);
+		min_len = calculate_min_match_len(in_next,
+						  in_max_block_end - in_next,
+						  c->max_search_depth);
 
 		/*
 		 * Find matches until we decide to end the block.  We end the
@@ -3421,7 +3425,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			}
 			c->freqs.litlen[*in_next]++;
 			if (in_next >= next_observation) {
-				if (best_len >= 4) {
+				if (best_len >= min_len) {
 					observe_match(&c->split_stats,
 						      best_len);
 					next_observation = in_next + best_len;
