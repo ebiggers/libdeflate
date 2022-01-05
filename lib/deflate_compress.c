@@ -2029,44 +2029,6 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	}
 }
 
-static void
-deflate_begin_sequences(struct libdeflate_compressor *c,
-			struct deflate_sequence *first_seq)
-{
-	deflate_reset_symbol_frequencies(c);
-	first_seq->litrunlen_and_length = 0;
-}
-
-static forceinline void
-deflate_choose_literal(struct libdeflate_compressor *c, unsigned literal,
-		       struct deflate_sequence *seq)
-{
-	c->freqs.litlen[literal]++;
-	seq->litrunlen_and_length++;
-}
-
-static forceinline void
-deflate_choose_match(struct libdeflate_compressor *c,
-		     unsigned length, unsigned offset,
-		     struct deflate_sequence **seq_p)
-{
-	struct deflate_sequence *seq = *seq_p;
-	unsigned length_slot = deflate_length_slot[length];
-	unsigned offset_slot = deflate_get_offset_slot(offset);
-
-	c->freqs.litlen[DEFLATE_FIRST_LEN_SYM + length_slot]++;
-	c->freqs.offset[offset_slot]++;
-
-	seq->litrunlen_and_length |= (u32)length << 23;
-	seq->offset = offset;
-	seq->length_slot = length_slot;
-	seq->offset_symbol = offset_slot;
-
-	seq++;
-	seq->litrunlen_and_length = 0;
-	*seq_p = seq;
-}
-
 /******************************************************************************/
 
 /*
@@ -2203,6 +2165,48 @@ should_end_block(struct block_split_stats *stats,
 }
 
 /******************************************************************************/
+
+static void
+deflate_begin_sequences(struct libdeflate_compressor *c,
+			struct deflate_sequence *first_seq)
+{
+	deflate_reset_symbol_frequencies(c);
+	first_seq->litrunlen_and_length = 0;
+}
+
+static forceinline void
+deflate_choose_literal(struct libdeflate_compressor *c, unsigned literal,
+		       bool gather_split_stats, struct deflate_sequence *seq)
+{
+	c->freqs.litlen[literal]++;
+	if (gather_split_stats)
+		observe_literal(&c->split_stats, literal);
+	seq->litrunlen_and_length++;
+}
+
+static forceinline void
+deflate_choose_match(struct libdeflate_compressor *c,
+		     unsigned length, unsigned offset, bool gather_split_stats,
+		     struct deflate_sequence **seq_p)
+{
+	struct deflate_sequence *seq = *seq_p;
+	unsigned length_slot = deflate_length_slot[length];
+	unsigned offset_slot = deflate_get_offset_slot(offset);
+
+	c->freqs.litlen[DEFLATE_FIRST_LEN_SYM + length_slot]++;
+	c->freqs.offset[offset_slot]++;
+	if (gather_split_stats)
+		observe_match(&c->split_stats, length);
+
+	seq->litrunlen_and_length |= (u32)length << 23;
+	seq->offset = offset;
+	seq->length_slot = length_slot;
+	seq->offset_symbol = offset_slot;
+
+	seq++;
+	seq->litrunlen_and_length = 0;
+	*seq_p = seq;
+}
 
 /*
  * Decrease the maximum and nice match lengths if we're approaching the end of
@@ -2378,8 +2382,8 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 				max_len = remaining;
 				if (max_len < HT_MATCHFINDER_REQUIRED_NBYTES) {
 					do {
-						deflate_choose_literal(
-							c, *in_next++, seq);
+						deflate_choose_literal(c,
+							*in_next++, false, seq);
 					} while (--max_len);
 					break;
 				}
@@ -2394,7 +2398,8 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 							      &offset);
 			if (length) {
 				/* Match found */
-				deflate_choose_match(c, length, offset, &seq);
+				deflate_choose_match(c, length, offset, false,
+						     &seq);
 				ht_matchfinder_skip_bytes(&c->p.f.ht_mf,
 							  &in_cur_base,
 							  in_next + 1,
@@ -2404,7 +2409,8 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 				in_next += length;
 			} else {
 				/* No match found */
-				deflate_choose_literal(c, *in_next++, seq);
+				deflate_choose_literal(c, *in_next++, false,
+						       seq);
 			}
 
 			/* Check if it's time to output another block. */
@@ -2473,8 +2479,8 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 			    (length > DEFLATE_MIN_MATCH_LEN ||
 			     offset <= 4096)) {
 				/* Match found */
-				deflate_choose_match(c, length, offset, &seq);
-				observe_match(&c->split_stats, length);
+				deflate_choose_match(c, length, offset, true,
+						     &seq);
 				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
 							  &in_cur_base,
 							  in_next + 1,
@@ -2484,8 +2490,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 				in_next += length;
 			} else {
 				/* No match found */
-				deflate_choose_literal(c, *in_next, seq);
-				observe_literal(&c->split_stats, *in_next);
+				deflate_choose_literal(c, *in_next, true, seq);
 				in_next++;
 			}
 
@@ -2572,22 +2577,20 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
 			     cur_offset > 8192)) {
 				/* No match found.  Choose a literal. */
-				deflate_choose_literal(c, *in_next, seq);
-				observe_literal(&c->split_stats, *in_next);
+				deflate_choose_literal(c, *in_next, true, seq);
 				in_next++;
 				continue;
 			}
 			in_next++;
 
 have_cur_match:
-			observe_match(&c->split_stats, cur_len);
 			/*
 			 * We have a match at the current position.
 			 * If it's very long, choose it immediately.
 			 */
 			if (cur_len >= nice_len) {
 				deflate_choose_match(c, cur_len, cur_offset,
-						     &seq);
+						     true, &seq);
 				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
 							  &in_cur_base,
 							  in_next,
@@ -2635,7 +2638,8 @@ have_cur_match:
 				 * Output a literal.  Then the next match
 				 * becomes the current match.
 				 */
-				deflate_choose_literal(c, *(in_next - 2), seq);
+				deflate_choose_literal(c, *(in_next - 2), true,
+						       seq);
 				cur_len = next_len;
 				cur_offset = next_offset;
 				goto have_cur_match;
@@ -2664,9 +2668,9 @@ have_cur_match:
 					 * positions ahead, so use two literals.
 					 */
 					deflate_choose_literal(
-						c, *(in_next - 3), seq);
+						c, *(in_next - 3), true, seq);
 					deflate_choose_literal(
-						c, *(in_next - 2), seq);
+						c, *(in_next - 2), true, seq);
 					cur_len = next_len;
 					cur_offset = next_offset;
 					goto have_cur_match;
@@ -2676,7 +2680,7 @@ have_cur_match:
 				 * positions.  Output the current match.
 				 */
 				deflate_choose_match(c, cur_len, cur_offset,
-						     &seq);
+						     true, &seq);
 				if (cur_len > 3) {
 					hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
 								  &in_cur_base,
@@ -2692,7 +2696,7 @@ have_cur_match:
 				 * the current match.
 				 */
 				deflate_choose_match(c, cur_len, cur_offset,
-						     &seq);
+						     true, &seq);
 				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
 							  &in_cur_base,
 							  in_next,
