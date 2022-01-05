@@ -61,7 +61,7 @@
  * reasonable upper bound on the compressed size.  It's also needed because our
  * block splitting algorithm doesn't work well on very short blocks.
  */
-#define MIN_BLOCK_LENGTH	10000
+#define MIN_BLOCK_LENGTH	5000
 
 /*
  * For the greedy, lazy, lazy2, and near-optimal compressors: This is the soft
@@ -2127,6 +2127,8 @@ do_end_block_check(struct block_split_stats *stats, u32 block_length)
 		 * multiplied by 'num_observations'.
 		 */
 		u32 total_delta = 0;
+		u32 num_items;
+		u32 cutoff;
 		int i;
 
 		for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
@@ -2140,11 +2142,22 @@ do_end_block_check(struct block_split_stats *stats, u32 block_length)
 			total_delta += delta;
 		}
 
+		num_items = stats->num_observations +
+			    stats->num_new_observations;
+		cutoff = stats->num_new_observations * 200 / 512 *
+			 stats->num_observations;
+		/*
+		 * Very short blocks have a lot of overhead for the Huffman
+		 * codes, so only use them if it clearly seems worthwhile.
+		 * (This is an additional penalty, which adds to the smaller
+		 * penalty below which scales more slowly.)
+		 */
+		if (block_length < 10000 && num_items < 8192)
+			cutoff += (u64)cutoff * (8192 - num_items) / 8192;
+
 		/* Ready to end the block? */
 		if (total_delta +
-		    (block_length / 4096) * stats->num_observations >=
-		    stats->num_new_observations * 200 / 512 *
-		    stats->num_observations)
+		    (block_length / 4096) * stats->num_observations >= cutoff)
 			return true;
 	}
 	merge_new_observations(stats);
