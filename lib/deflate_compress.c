@@ -453,23 +453,11 @@ struct libdeflate_compressor {
 	size_t (*impl)(struct libdeflate_compressor *c, const u8 *in,
 		       size_t in_nbytes, u8 *out, size_t out_nbytes_avail);
 
-	/* Frequency counters for the current block */
-	struct deflate_freqs freqs;
+	/* The compression level with which this compressor was created */
+	unsigned compression_level;
 
-	/* Dynamic Huffman codes for the current block */
-	struct deflate_codes codes;
-
-	/* The static Huffman codes defined by the DEFLATE format */
-	struct deflate_codes static_codes;
-
-	/* Block split statistics for the currently pending block */
-	struct block_split_stats split_stats;
-
-	/*
-	 * The "nice" match length: if a match of this length is found, choose
-	 * it immediately without further consideration
-	 */
-	unsigned nice_match_length;
+	/* Anything smaller than this we won't bother trying to compress. */
+	unsigned min_size_to_compress;
 
 	/*
 	 * The maximum search depth: consider at most this many potential
@@ -477,11 +465,23 @@ struct libdeflate_compressor {
 	 */
 	unsigned max_search_depth;
 
-	/* The compression level with which this compressor was created */
-	unsigned compression_level;
+	/*
+	 * The "nice" match length: if a match of this length is found, choose
+	 * it immediately without further consideration
+	 */
+	unsigned nice_match_length;
 
-	/* Anything smaller than this we won't bother trying to compress. */
-	unsigned min_size_to_compress;
+	/* Frequency counters for the current block */
+	struct deflate_freqs freqs;
+
+	/* Block split statistics for the currently pending block */
+	struct block_split_stats split_stats;
+
+	/* Dynamic Huffman codes for the current block */
+	struct deflate_codes codes;
+
+	/* The static Huffman codes defined by the DEFLATE format */
+	struct deflate_codes static_codes;
 
 	/* Temporary space for Huffman code output */
 	u32 precode_freqs[DEFLATE_NUM_PRECODE_SYMS];
