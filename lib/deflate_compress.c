@@ -592,6 +592,7 @@ struct libdeflate_compressor {
 			 * greedy parse, gathered during matchfinding.  This is
 			 * used for setting the initial symbol costs.
 			 */
+			u32 new_match_len_freqs[DEFLATE_MAX_MATCH_LEN + 1];
 			u32 match_len_freqs[DEFLATE_MAX_MATCH_LEN + 1];
 
 			unsigned num_optim_passes;
@@ -2165,13 +2166,21 @@ do_end_block_check(struct block_split_stats *stats, u32 block_length)
 }
 
 static forceinline bool
+ready_to_check_block(const struct block_split_stats *stats,
+		     const u8 *in_block_begin, const u8 *in_next,
+		     const u8 *in_end)
+{
+	return stats->num_new_observations >= NUM_OBSERVATIONS_PER_BLOCK_CHECK
+		&& in_next - in_block_begin >= MIN_BLOCK_LENGTH
+		&& in_end - in_next >= MIN_BLOCK_LENGTH;
+}
+
+static forceinline bool
 should_end_block(struct block_split_stats *stats,
 		 const u8 *in_block_begin, const u8 *in_next, const u8 *in_end)
 {
-	/* Ready to check block split statistics? */
-	if (stats->num_new_observations < NUM_OBSERVATIONS_PER_BLOCK_CHECK ||
-	    in_next - in_block_begin < MIN_BLOCK_LENGTH ||
-	    in_end - in_next < MIN_BLOCK_LENGTH)
+	/* Ready to try to end the block (again)? */
+	if (!ready_to_check_block(stats, in_block_begin, in_next, in_end))
 		return false;
 
 	return do_end_block_check(stats, in_next - in_block_begin);
@@ -2330,11 +2339,12 @@ recalculate_min_match_len(const struct deflate_freqs *freqs,
 }
 
 static forceinline const u8 *
-choose_max_block_end(const u8 *in_next, const u8 *in_end, size_t soft_max_len)
+choose_max_block_end(const u8 *in_block_begin, const u8 *in_end,
+		     size_t soft_max_len)
 {
-	if (in_end - in_next < soft_max_len + MIN_BLOCK_LENGTH)
+	if (in_end - in_block_begin < soft_max_len + MIN_BLOCK_LENGTH)
 		return in_end;
-	return in_next + soft_max_len;
+	return in_block_begin + soft_max_len;
 }
 
 /*
@@ -2981,17 +2991,21 @@ static const struct {
  */
 static void
 deflate_choose_default_litlen_costs(struct libdeflate_compressor *c,
-				    u32 block_length,
+				    const u8 *block_begin, u32 block_length,
 				    u32 *lit_cost, u32 *len_sym_cost)
 {
 	unsigned num_used_literals = 0;
 	u32 literal_freq = block_length;
 	u32 match_freq = 0;
 	u32 cutoff;
-	unsigned i;
+	u32 i;
 
 	/* Calculate the number of distinct literals that exist in the data. */
+	memset(c->freqs.litlen, 0,
+	       DEFLATE_NUM_LITERALS * sizeof(c->freqs.litlen[0]));
 	cutoff = literal_freq >> 11; /* Ignore literals used very rarely. */
+	for (i = 0; i < block_length; i++)
+		c->freqs.litlen[block_begin[i]]++;
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++) {
 		if (c->freqs.litlen[i] > cutoff)
 			num_used_literals++;
@@ -3258,7 +3272,8 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
  * as the costs.
  */
 static void
-deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
+deflate_optimize_block(struct libdeflate_compressor *c,
+		       const u8 *block_begin, u32 block_length,
 		       const struct lz_match *cache_ptr, bool is_first_block,
 		       bool is_final_block)
 {
@@ -3275,11 +3290,8 @@ deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
 		      ARRAY_LEN(c->p.n.optimum_nodes) - 1); i++)
 		c->p.n.optimum_nodes[i].cost_to_end = 0x80000000;
 
-	/* Make sure the literal/match statistics are up to date. */
-	merge_new_observations(&c->split_stats);
-
 	/* Set the initial costs. */
-	deflate_choose_default_litlen_costs(c, block_length,
+	deflate_choose_default_litlen_costs(c, block_begin, block_length,
 					    &lit_cost, &len_sym_cost);
 	if (is_first_block)
 		deflate_set_default_costs(c, lit_cost, len_sym_cost);
@@ -3308,31 +3320,49 @@ deflate_optimize_block(struct libdeflate_compressor *c, u32 block_length,
 }
 
 static void
-deflate_near_optimal_begin_block(struct libdeflate_compressor *c,
-				 bool is_first_block)
+deflate_near_optimal_init_stats(struct libdeflate_compressor *c)
+{
+	init_block_split_stats(&c->split_stats);
+	memset(c->p.n.new_match_len_freqs, 0,
+	       sizeof(c->p.n.new_match_len_freqs));
+	memset(c->p.n.match_len_freqs, 0, sizeof(c->p.n.match_len_freqs));
+}
+
+static void
+deflate_near_optimal_merge_stats(struct libdeflate_compressor *c)
+{
+	unsigned i;
+
+	merge_new_observations(&c->split_stats);
+	for (i = 0; i < ARRAY_LEN(c->p.n.match_len_freqs); i++) {
+		c->p.n.match_len_freqs[i] += c->p.n.new_match_len_freqs[i];
+		c->p.n.new_match_len_freqs[i] = 0;
+	}
+}
+
+/*
+ * Save some literal/match statistics from the previous block so that
+ * deflate_adjust_costs() will be able to decide how much the current block
+ * differs from the previous one.
+ */
+static void
+deflate_near_optimal_save_stats(struct libdeflate_compressor *c)
 {
 	int i;
 
-	if (!is_first_block) {
-		/*
-		 * Save some literal/match statistics from the previous block so
-		 * that deflate_adjust_costs() will be able to decide how much
-		 * the current block differs from the previous one.
-		 */
-		for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
-			c->p.n.prev_observations[i] =
-				c->split_stats.observations[i];
-		}
-		c->p.n.prev_num_observations = c->split_stats.num_observations;
-	}
-	init_block_split_stats(&c->split_stats);
+	for (i = 0; i < NUM_OBSERVATION_TYPES; i++)
+		c->p.n.prev_observations[i] = c->split_stats.observations[i];
+	c->p.n.prev_num_observations = c->split_stats.num_observations;
+}
 
-	/*
-	 * During matchfinding, we keep track of approximate literal and match
-	 * length frequencies for the purpose of setting the initial costs.
-	 */
-	memset(c->freqs.litlen, 0,
-	       DEFLATE_NUM_LITERALS * sizeof(c->freqs.litlen[0]));
+static void
+deflate_near_optimal_clear_old_stats(struct libdeflate_compressor *c)
+{
+	int i;
+
+	for (i = 0; i < NUM_OBSERVATION_TYPES; i++)
+		c->split_stats.observations[i] = 0;
+	c->split_stats.num_observations = 0;
 	memset(c->p.n.match_len_freqs, 0, sizeof(c->p.n.match_len_freqs));
 }
 
@@ -3355,6 +3385,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			      u8 * restrict out, size_t out_nbytes_avail)
 {
 	const u8 *in_next = in;
+	const u8 *in_block_begin = in_next;
 	const u8 *in_end = in_next + in_nbytes;
 	struct deflate_output_bitstream os;
 	const u8 *in_cur_base = in_next;
@@ -3362,23 +3393,29 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		in_next + MIN(in_end - in_next, MATCHFINDER_WINDOW_SIZE);
 	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
 	unsigned nice_len = MIN(c->nice_match_length, max_len);
+	struct lz_match *cache_ptr = c->p.n.match_cache;
 	u32 next_hashes[2] = {0, 0};
 
 	deflate_init_output(&os, out, out_nbytes_avail);
 	bt_matchfinder_init(&c->p.n.bt_mf);
+	deflate_near_optimal_init_stats(c);
 
 	do {
 		/* Starting a new DEFLATE block */
-
-		struct lz_match *cache_ptr = c->p.n.match_cache;
-		const u8 * const in_block_begin = in_next;
 		const u8 * const in_max_block_end = choose_max_block_end(
-				in_next, in_end, SOFT_MAX_BLOCK_LENGTH);
+				in_block_begin, in_end, SOFT_MAX_BLOCK_LENGTH);
+		const u8 *prev_end_block_check = NULL;
+		bool change_detected = false;
 		const u8 *next_observation = in_next;
 		unsigned min_len;
 
-		deflate_near_optimal_begin_block(c, in_block_begin == in);
-		min_len = calculate_min_match_len(in_next,
+		/*
+		 * Use the minimum match length heuristic to improve the
+		 * literal/match statistics gathered during matchfinding.
+		 * However, the actual near-optimal parse won't respect min_len,
+		 * as it can accurately assess the costs of different matches.
+		 */
+		min_len = calculate_min_match_len(in_block_begin,
 						  in_max_block_end - in_next,
 						  c->max_search_depth);
 
@@ -3390,7 +3427,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		 * (2) Match catch may overflow.
 		 * (3) Block split heuristic says to split now.
 		 */
-		do {
+		for (;;) {
 			struct lz_match *matches;
 			unsigned best_len;
 			size_t remaining = in_end - in_next;
@@ -3436,13 +3473,12 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 				if (cache_ptr > matches)
 					best_len = cache_ptr[-1].length;
 			}
-			c->freqs.litlen[*in_next]++;
 			if (in_next >= next_observation) {
 				if (best_len >= min_len) {
 					observe_match(&c->split_stats,
 						      best_len);
 					next_observation = in_next + best_len;
-					c->p.n.match_len_freqs[best_len]++;
+					c->p.n.new_match_len_freqs[best_len]++;
 				} else {
 					observe_literal(&c->split_stats,
 							*in_next);
@@ -3495,24 +3531,101 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 					}
 					cache_ptr->length = 0;
 					cache_ptr->offset = *in_next;
-					c->freqs.litlen[*in_next]++;
 					in_next++;
 					cache_ptr++;
 				} while (--best_len);
 			}
-		} while (in_next < in_max_block_end &&
-			 cache_ptr < &c->p.n.match_cache[MATCH_CACHE_LENGTH] &&
-			 !should_end_block(&c->split_stats,
-					   in_block_begin, in_next, in_end));
+			/* Maximum block length or end of input reached? */
+			if (in_next >= in_max_block_end)
+				break;
+			/* Match cache overflowed? */
+			if (cache_ptr >=
+			    &c->p.n.match_cache[MATCH_CACHE_LENGTH])
+				break;
+			/* Not ready to try to end the block (again)? */
+			if (!ready_to_check_block(&c->split_stats,
+						  in_block_begin, in_next,
+						  in_end))
+				continue;
+			/* Check if it would be worthwhile to end the block. */
+			if (do_end_block_check(&c->split_stats,
+					       in_next - in_block_begin)) {
+				change_detected = true;
+				break;
+			}
+			/* Ending the block doesn't seem worthwhile here. */
+			deflate_near_optimal_merge_stats(c);
+			prev_end_block_check = in_next;
+		}
 		/*
 		 * All the matches for this block have been cached.  Now choose
-		 * the sequence of items to output and flush the block.
+		 * the precise end of the block and the sequence of items to
+		 * output to represent it, then flush the block.
 		 */
-		deflate_optimize_block(c, in_next - in_block_begin, cache_ptr,
-				       in_block_begin == in, in_next == in_end);
-		deflate_flush_block(c, &os, in_block_begin,
-				    in_next - in_block_begin,
-				    NULL, in_next == in_end);
+		if (change_detected && prev_end_block_check != NULL) {
+			/*
+			 * The block is being ended because a recent chunk of
+			 * data differs from the rest of the block.  We could
+			 * end the block at 'in_next' like the greedy and lazy
+			 * compressors do, but that's not ideal since it would
+			 * include the differing chunk in the block.  The
+			 * near-optimal compressor has time to do a better job.
+			 * Therefore, we rewind to just before the chunk, and
+			 * output a block that only goes up to there.
+			 *
+			 * We then set things up to correctly start the next
+			 * block, considering that some work has already been
+			 * done on it (some matches found and stats gathered).
+			 */
+			struct lz_match *orig_cache_ptr = cache_ptr;
+			const u8 *in_block_end = prev_end_block_check;
+			u32 block_length = in_block_end - in_block_begin;
+			bool is_first = (in_block_begin == in);
+			bool is_final = false;
+			u32 num_bytes_to_rewind = in_next - in_block_end;
+			size_t cache_len_rewound;
+
+			/* Rewind the match cache. */
+			do {
+				cache_ptr--;
+				cache_ptr -= cache_ptr->length;
+			} while (--num_bytes_to_rewind);
+			cache_len_rewound = orig_cache_ptr - cache_ptr;
+
+			deflate_optimize_block(c, in_block_begin, block_length,
+					       cache_ptr, is_first, is_final);
+			deflate_flush_block(c, &os, in_block_begin,
+					    block_length, NULL, is_final);
+			memmove(c->p.n.match_cache, cache_ptr,
+				cache_len_rewound * sizeof(*cache_ptr));
+			cache_ptr = &c->p.n.match_cache[cache_len_rewound];
+			deflate_near_optimal_save_stats(c);
+			/*
+			 * Clear the stats for the just-flushed block, leaving
+			 * just the stats for the beginning of the next block.
+			 */
+			deflate_near_optimal_clear_old_stats(c);
+			in_block_begin = in_block_end;
+		} else {
+			/*
+			 * The block is being ended for a reason other than a
+			 * differing data chunk being detected.  Don't rewind at
+			 * all; just end the block at the current position.
+			 */
+			u32 block_length = in_next - in_block_begin;
+			bool is_first = (in_block_begin == in);
+			bool is_final = (in_next == in_end);
+
+			deflate_near_optimal_merge_stats(c);
+			deflate_optimize_block(c, in_block_begin, block_length,
+					       cache_ptr, is_first, is_final);
+			deflate_flush_block(c, &os, in_block_begin,
+					    block_length, NULL, is_final);
+			cache_ptr = &c->p.n.match_cache[0];
+			deflate_near_optimal_save_stats(c);
+			deflate_near_optimal_init_stats(c);
+			in_block_begin = in_next;
+		}
 	} while (in_next != in_end);
 
 	return deflate_flush_output(&os);
