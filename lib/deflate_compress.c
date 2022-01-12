@@ -175,6 +175,17 @@
 	(DEFLATE_MAX_MATCH_LEN - DEFLATE_MIN_MATCH_LEN + 1)
 #endif
 
+/*
+ * The largest block length we will ever use is when the final block is of
+ * length SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH - 1, or when any block is of
+ * length SOFT_MAX_BLOCK_LENGTH + 1 + DEFLATE_MAX_MATCH_LEN.  The latter case
+ * occurs when the lazy2 compressor chooses two literals and a maximum-length
+ * match, starting at SOFT_MAX_BLOCK_LENGTH - 1.
+ */
+#define MAX_BLOCK_LENGTH	\
+	MAX(SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH - 1,	\
+	    SOFT_MAX_BLOCK_LENGTH + 1 + DEFLATE_MAX_MATCH_LEN)
+
 static forceinline void
 check_buildtime_parameters(void)
 {
@@ -188,6 +199,9 @@ check_buildtime_parameters(void)
 		      MIN_BLOCK_LENGTH);
 	STATIC_ASSERT(FAST_SEQ_STORE_LENGTH * HT_MATCHFINDER_MIN_MATCH_LEN >=
 		      MIN_BLOCK_LENGTH);
+
+	/* The definition of MAX_BLOCK_LENGTH assumes this. */
+	STATIC_ASSERT(FAST_SOFT_MAX_BLOCK_LENGTH <= SOFT_MAX_BLOCK_LENGTH);
 
 	/* Verify that the sequence stores aren't uselessly large. */
 	STATIC_ASSERT(SEQ_STORE_LENGTH * DEFLATE_MIN_MATCH_LEN <=
@@ -348,14 +362,16 @@ struct deflate_sequence {
 
 	/*
 	 * Bits 0..22: the number of literals in this run.  This may be 0 and
-	 * can be at most about SOFT_MAX_BLOCK_LENGTH.  The literals are not
-	 * stored explicitly in this structure; instead, they are read directly
-	 * from the uncompressed data.
+	 * can be at most MAX_BLOCK_LENGTH.  The literals are not stored
+	 * explicitly in this structure; instead, they are read directly from
+	 * the uncompressed data.
 	 *
 	 * Bits 23..31: the length of the match which follows the literals, or 0
 	 * if this literal run was the last in the block, so there is no match
 	 * which follows it.
 	 */
+#define SEQ_LENGTH_SHIFT 23
+#define SEQ_LITRUNLEN_MASK (((u32)1 << SEQ_LENGTH_SHIFT) - 1)
 	u32 litrunlen_and_length;
 
 	/*
@@ -557,16 +573,11 @@ struct libdeflate_compressor {
 			 * minimum-cost path algorithm.
 			 *
 			 * This array must be large enough to accommodate the
-			 * worst-case number of nodes, which occurs when the
-			 * final block is of length SOFT_MAX_BLOCK_LENGTH +
-			 * MIN_BLOCK_LENGTH, or when any block is of length
-			 * SOFT_MAX_BLOCK_LENGTH - 1 + DEFLATE_MAX_MATCH_LEN.
-			 * Add 1 for the end-of-block node.
+			 * worst-case number of nodes, which is MAX_BLOCK_LENGTH
+			 * plus 1 for the end-of-block node.
 			 */
 			struct deflate_optimum_node optimum_nodes[
-				MAX(SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH,
-				    SOFT_MAX_BLOCK_LENGTH - 1 +
-				    DEFLATE_MAX_MATCH_LEN) + 1];
+				MAX_BLOCK_LENGTH + 1];
 
 			/* The current cost model being used */
 			struct deflate_costs costs;
@@ -731,8 +742,8 @@ deflate_flush_output(struct deflate_output_bitstream *os)
 /*
  * Given the binary tree node A[subtree_idx] whose children already satisfy the
  * maxheap property, swap the node with its greater child until it is greater
- * than both its children, so that the maxheap property is satisfied in the
- * subtree rooted at A[subtree_idx].
+ * than or equal to both of its children, so that the maxheap property is
+ * satisfied in the subtree rooted at A[subtree_idx].
  */
 static void
 heapify_subtree(u32 A[], unsigned length, unsigned subtree_idx)
@@ -1393,11 +1404,6 @@ static void
 deflate_make_huffman_codes(const struct deflate_freqs *freqs,
 			   struct deflate_codes *codes)
 {
-	STATIC_ASSERT(MAX_LITLEN_CODEWORD_LEN <=
-		      DEFLATE_MAX_LITLEN_CODEWORD_LEN);
-	STATIC_ASSERT(MAX_OFFSET_CODEWORD_LEN <=
-		      DEFLATE_MAX_OFFSET_CODEWORD_LEN);
-
 	deflate_make_huffman_code(DEFLATE_NUM_LITLEN_SYMS,
 				  MAX_LITLEN_CODEWORD_LEN,
 				  freqs->litlen,
@@ -1592,7 +1598,6 @@ deflate_precompute_huffman_header(struct libdeflate_compressor *c)
 					      c->precode_items);
 
 	/* Build the precode. */
-	STATIC_ASSERT(MAX_PRE_CODEWORD_LEN <= DEFLATE_MAX_PRE_CODEWORD_LEN);
 	deflate_make_huffman_code(DEFLATE_NUM_PRECODE_SYMS,
 				  MAX_PRE_CODEWORD_LEN,
 				  c->precode_freqs, c->precode_lens,
@@ -1730,8 +1735,8 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 	const struct deflate_sequence *seq = sequences;
 
 	for (;;) {
-		u32 litrunlen = seq->litrunlen_and_length & 0x7FFFFF;
-		unsigned length = seq->litrunlen_and_length >> 23;
+		u32 litrunlen = seq->litrunlen_and_length & SEQ_LITRUNLEN_MASK;
+		unsigned length = seq->litrunlen_and_length >> SEQ_LENGTH_SHIFT;
 		unsigned length_slot;
 		unsigned litlen_symbol;
 		unsigned offset_symbol;
@@ -1944,6 +1949,7 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	dynamic_cost += 5 + 5 + 4 + (3 * c->num_explicit_lens);
 	for (sym = 0; sym < DEFLATE_NUM_PRECODE_SYMS; sym++) {
 		u32 extra = deflate_extra_precode_bits[sym];
+
 		dynamic_cost += c->precode_freqs[sym] *
 				(extra + c->precode_lens[sym]);
 	}
@@ -1978,6 +1984,7 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
 	/* Account for the cost of encoding offsets. */
 	for (sym = 0; sym < ARRAY_LEN(deflate_extra_offset_bits); sym++) {
 		u32 extra = deflate_extra_offset_bits[sym];
+
 		dynamic_cost += c->freqs.offset[sym] *
 				(extra + c->codes.lens.offset[sym]);
 		static_cost += c->freqs.offset[sym] * (extra + 5);
@@ -2201,8 +2208,11 @@ deflate_choose_literal(struct libdeflate_compressor *c, unsigned literal,
 		       bool gather_split_stats, struct deflate_sequence *seq)
 {
 	c->freqs.litlen[literal]++;
+
 	if (gather_split_stats)
 		observe_literal(&c->split_stats, literal);
+
+	STATIC_ASSERT(MAX_BLOCK_LENGTH <= SEQ_LITRUNLEN_MASK);
 	seq->litrunlen_and_length++;
 }
 
@@ -2220,7 +2230,7 @@ deflate_choose_match(struct libdeflate_compressor *c,
 	if (gather_split_stats)
 		observe_match(&c->split_stats, length);
 
-	seq->litrunlen_and_length |= (u32)length << 23;
+	seq->litrunlen_and_length |= (u32)length << SEQ_LENGTH_SHIFT;
 	seq->offset = offset;
 	seq->length_slot = length_slot;
 	seq->offset_symbol = offset_slot;
@@ -2513,8 +2523,8 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 				in_next += length;
 			} else {
 				/* No match found */
-				deflate_choose_literal(c, *in_next, true, seq);
-				in_next++;
+				deflate_choose_literal(c, *in_next++, true,
+						       seq);
 			}
 
 			/* Check if it's time to output another block. */
@@ -2600,8 +2610,8 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
 			     cur_offset > 8192)) {
 				/* No match found.  Choose a literal. */
-				deflate_choose_literal(c, *in_next, true, seq);
-				in_next++;
+				deflate_choose_literal(c, *in_next++, true,
+						       seq);
 				continue;
 			}
 			in_next++;
@@ -2865,7 +2875,7 @@ deflate_set_costs_from_codes(struct libdeflate_compressor *c,
  *	int(-log2(match_prob/NUM_LEN_SLOTS) * BIT_COST)
  *
  * Note: we don't currently assign different costs to different literal symbols,
- * or to different length symbols, as this is hard to do.
+ * or to different length symbols, as this is hard to do in a useful way.
  */
 static const struct {
 	u8 used_lits_to_lit_cost[257];
@@ -3415,9 +3425,10 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		 * However, the actual near-optimal parse won't respect min_len,
 		 * as it can accurately assess the costs of different matches.
 		 */
-		min_len = calculate_min_match_len(in_block_begin,
-						  in_max_block_end - in_next,
-						  c->max_search_depth);
+		min_len = calculate_min_match_len(
+					in_block_begin,
+					in_max_block_end - in_block_begin,
+					c->max_search_depth);
 
 		/*
 		 * Find matches until we decide to end the block.  We end the
@@ -3442,8 +3453,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 
 			/*
 			 * Find matches with the current position using the
-			 * binary tree matchfinder and save them in
-			 * 'match_cache'.
+			 * binary tree matchfinder and save them in match_cache.
 			 *
 			 * Note: the binary tree matchfinder is more suited for
 			 * optimal parsing than the hash chain matchfinder.  The
