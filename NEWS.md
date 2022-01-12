@@ -1,5 +1,40 @@
 # libdeflate release notes
 
+## Version 1.9
+
+* Made many improvements to the compression algorithms, and rebalanced the
+  compression levels:
+
+  * Heuristics were implemented which significantly improve the compression
+    ratio on data where short matches aren't useful, such as DNA sequencing
+    data.  This applies to all compression levels, but primarily to levels 1-9.
+
+  * Levels 1 was made much faster, though it often compresses slightly worse
+    than before (but still better than zlib).
+
+  * Levels 8-9 were also made faster, though they often compress slightly worse
+    than before (but still better than zlib).  On some data, levels 8-9 are much
+    faster and compress much better than before; this change addressed an issue
+    where levels 8-9 did poorly on certain files.  The algorithm used by levels
+    8-9 is now more similar to that of levels 6-7 than to that of levels 10-12.
+
+  * Levels 2-3, 7, and 10-12 were strengthened slightly.
+
+  * Levels 4-6 were also strengthened slightly, but some of this improvement was
+    traded off to speed them up slightly as well.
+
+  * Levels 1-9 had their per-compressor memory usage greatly reduced.
+
+  As always, compression ratios will vary depending on the input data, and
+  compression speeds will vary depending on the input data and target platform.
+
+* `make install` will now install a pkg-config file for libdeflate.
+
+* The Makefile now supports the `DISABLE_SHARED` parameter to disable building
+  the shared library.
+
+* Improved the Android build support in the Makefile.
+
 ## Version 1.8
 
 * Added `-t` (test) option to `libdeflate-gunzip`.
