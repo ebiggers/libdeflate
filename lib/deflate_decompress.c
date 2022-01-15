@@ -204,25 +204,27 @@ typedef machine_word_t bitbuf_t;
  *
  * If we would overread the input buffer, we just don't read anything, leaving
  * the bits zeroed but marking them filled.  This simplifies the decompressor
- * because it removes the need to distinguish between real overreads and
- * overreads that occur only because of the decompressor's own lookahead.
+ * because it removes the need to always be able to distinguish between real
+ * overreads and overreads caused only by the decompressor's own lookahead.
  *
- * The disadvantage is that real overreads are not detected immediately.
- * However, this is safe because the decompressor is still guaranteed to make
- * forward progress when presented never-ending 0 bits.  In an existing block
- * output will be getting generated, whereas new blocks can only be uncompressed
- * (since the type code for uncompressed blocks is 0), for which we check for
- * previous overread.  But even if we didn't check, uncompressed blocks would
- * fail to validate because LEN would not equal ~NLEN.  So the decompressor will
- * eventually either detect that the output buffer is full, or detect invalid
- * input, or finish the final block.
+ * We do still keep track of the number of bytes that have been overread, for
+ * two reasons.  First, it allows us to determine the exact number of bytes that
+ * were consumed once the stream ends or an uncompressed block is reached.
+ * Second, it allows us to stop early if the overread amount gets so large (more
+ * than sizeof bitbuf) that it can only be caused by a real overread.  (The
+ * second part is arguably unneeded, since libdeflate is buffer-based; given
+ * infinite zeroes, it will eventually either completely fill the output buffer
+ * or return an error.  However, we do it to be slightly more friendly to the
+ * not-recommended use case of decompressing with an unknown output size.)
  */
 #define FILL_BITS_BYTEWISE()					\
 do {								\
-	if (likely(in_next != in_end))				\
+	if (likely(in_next != in_end)) {			\
 		bitbuf |= (bitbuf_t)*in_next++ << bitsleft;	\
-	else							\
+	} else {						\
 		overread_count++;				\
+		SAFETY_CHECK(overread_count <= sizeof(bitbuf));	\
+	}							\
 	bitsleft += 8;						\
 } while (bitsleft <= BITBUF_NBITS - 8)
 
