@@ -192,6 +192,7 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 	size_t compressed_size = in->mmap_size;
 	void *uncompressed_data = NULL;
 	size_t uncompressed_size;
+	size_t max_uncompressed_size;
 	size_t actual_in_nbytes;
 	size_t actual_out_nbytes;
 	enum libdeflate_result result;
@@ -214,8 +215,23 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 	if (uncompressed_size == 0)
 		uncompressed_size = 1;
 
+	/*
+	 * DEFLATE cannot expand data more than 1032x, so there's no need to
+	 * ever allocate a buffer more than 1032 times larger than the
+	 * compressed data.  This is a fail-safe, albeit not a very good one, if
+	 * ISIZE becomes corrupted on a small file.  (The 1032x number comes
+	 * from each 2 bits generating a 258-byte match.  This is a hard upper
+	 * bound; the real upper bound is slightly smaller due to overhead.)
+	 */
+	if (compressed_size <= SIZE_MAX / 1032)
+		max_uncompressed_size = compressed_size * 1032;
+	else
+		max_uncompressed_size = SIZE_MAX;
+
 	do {
 		if (uncompressed_data == NULL) {
+			uncompressed_size = MIN(uncompressed_size,
+						max_uncompressed_size);
 			uncompressed_data = xmalloc(uncompressed_size);
 			if (uncompressed_data == NULL) {
 				msg("%"TS": file is probably too large to be "
@@ -234,6 +250,11 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 						       &actual_out_nbytes);
 
 		if (result == LIBDEFLATE_INSUFFICIENT_SPACE) {
+			if (uncompressed_size >= max_uncompressed_size) {
+				msg("Bug in libdeflate_gzip_decompress_ex(): data expanded too much!");
+				ret = -1;
+				goto out;
+			}
 			if (uncompressed_size * 2 <= uncompressed_size) {
 				msg("%"TS": file corrupt or too large to be "
 				    "processed by this program", in->name);
@@ -256,7 +277,7 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 		if (actual_in_nbytes == 0 ||
 		    actual_in_nbytes > compressed_size ||
 		    actual_out_nbytes > uncompressed_size) {
-			msg("Bug in libdeflate_gzip_decompress_ex()!");
+			msg("Bug in libdeflate_gzip_decompress_ex(): impossible actual_nbytes value!");
 			ret = -1;
 			goto out;
 		}
