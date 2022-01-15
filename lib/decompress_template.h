@@ -43,7 +43,7 @@ FUNCNAME(struct libdeflate_decompressor * restrict d,
 	const u8 * const in_end = in_next + in_nbytes;
 	bitbuf_t bitbuf = 0;
 	unsigned bitsleft = 0;
-	size_t overrun_count = 0;
+	size_t overread_count = 0;
 	unsigned i;
 	unsigned is_final_block;
 	unsigned block_type;
