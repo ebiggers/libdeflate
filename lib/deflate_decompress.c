@@ -222,7 +222,7 @@ do {								\
 	if (likely(in_next != in_end))				\
 		bitbuf |= (bitbuf_t)*in_next++ << bitsleft;	\
 	else							\
-		overrun_count++;				\
+		overread_count++;				\
 	bitsleft += 8;						\
 } while (bitsleft <= BITBUF_NBITS - 8)
 
@@ -307,9 +307,9 @@ if (!HAVE_BITS(n)) {						\
  */
 #define ALIGN_INPUT()							\
 do {									\
-	SAFETY_CHECK(overrun_count <= (bitsleft >> 3));			\
-	in_next -= (bitsleft >> 3) - overrun_count;			\
-	overrun_count = 0;						\
+	SAFETY_CHECK(overread_count <= (bitsleft >> 3));			\
+	in_next -= (bitsleft >> 3) - overread_count;			\
+	overread_count = 0;						\
 	bitbuf = 0;							\
 	bitsleft = 0;							\
 } while(0)
