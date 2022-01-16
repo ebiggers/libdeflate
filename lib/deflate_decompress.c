@@ -99,11 +99,6 @@
 #define OFFSET_ENOUGH		402	/* enough 32 8 15	*/
 
 /*
- * Type for codeword lengths.
- */
-typedef u8 len_t;
-
-/*
  * The main DEFLATE decompressor structure.  Since this implementation only
  * supports full buffer decompression, this structure does not store the entire
  * decompression state, but rather only some arrays that are too large to
@@ -121,12 +116,12 @@ struct libdeflate_decompressor {
 	 */
 
 	union {
-		len_t precode_lens[DEFLATE_NUM_PRECODE_SYMS];
+		u8 precode_lens[DEFLATE_NUM_PRECODE_SYMS];
 
 		struct {
-			len_t lens[DEFLATE_NUM_LITLEN_SYMS +
-				   DEFLATE_NUM_OFFSET_SYMS +
-				   DEFLATE_MAX_LENS_OVERRUN];
+			u8 lens[DEFLATE_NUM_LITLEN_SYMS +
+				DEFLATE_NUM_OFFSET_SYMS +
+				DEFLATE_MAX_LENS_OVERRUN];
 
 			u32 precode_decode_table[PRECODE_ENOUGH];
 		} l;
@@ -556,7 +551,7 @@ static const u32 offset_decode_results[DEFLATE_NUM_OFFSET_SYMS] = {
  */
 static bool
 build_decode_table(u32 decode_table[],
-		   const len_t lens[],
+		   const u8 lens[],
 		   const unsigned num_syms,
 		   const u32 decode_results[],
 		   const unsigned table_bits,
