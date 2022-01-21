@@ -52,10 +52,10 @@
 
 /*
  * This is the minimum block length that the compressor will use, in
- * uncompressed bytes.  It is also the amount by which the final block is
- * allowed to grow past the soft maximum length in order to avoid using a very
- * short block at the end.  This should be a value below which using shorter
- * blocks is unlikely to be worthwhile, due to the per-block overhead.
+ * uncompressed bytes.  It is also approximately the amount by which the final
+ * block is allowed to grow past the soft maximum length in order to avoid using
+ * a very short block at the end.  This should be a value below which using
+ * shorter blocks is unlikely to be worthwhile, due to the per-block overhead.
  *
  * Defining a fixed minimum block length is needed in order to guarantee a
  * reasonable upper bound on the compressed size.  It's also needed because our
@@ -94,8 +94,8 @@
  * For deflate_compress_fastest(): This is the soft maximum block length.
  * deflate_compress_fastest() doesn't use the regular block splitting algorithm;
  * it only ends blocks when they reach FAST_SOFT_MAX_BLOCK_LENGTH bytes or
- * FAST_SEQ_STORE_LENGTH - 1 matches.  Therefore, this value should be lower
- * than the regular SOFT_MAX_BLOCK_LENGTH.
+ * FAST_SEQ_STORE_LENGTH matches.  Therefore, this value should be lower than
+ * the regular SOFT_MAX_BLOCK_LENGTH.
  */
 #define FAST_SOFT_MAX_BLOCK_LENGTH	65535
 
@@ -490,7 +490,7 @@ struct libdeflate_compressor {
 	/* Frequency counters for the current block */
 	struct deflate_freqs freqs;
 
-	/* Block split statistics for the currently pending block */
+	/* Block split statistics for the current block */
 	struct block_split_stats split_stats;
 
 	/* Dynamic Huffman codes for the current block */
@@ -648,7 +648,7 @@ struct deflate_output_bitstream {
 	 */
 	u8 *next;
 
-	/* Pointer just past the end of the output buffer */
+	/* Pointer to just past the end of the output buffer */
 	u8 *end;
 };
 
@@ -664,8 +664,7 @@ struct deflate_output_bitstream {
 #define OUTPUT_END_PADDING	8
 
 /*
- * Initialize the output bitstream.  'size' is assumed to be at least
- * OUTPUT_END_PADDING.
+ * Initialize the output bitstream.  'size' must be at least OUTPUT_END_PADDING.
  */
 static void
 deflate_init_output(struct deflate_output_bitstream *os,
@@ -680,7 +679,8 @@ deflate_init_output(struct deflate_output_bitstream *os,
 
 /*
  * Add some bits to the bitbuffer variable of the output bitstream.  The caller
- * must make sure there is enough room.
+ * must ensure that os->bitcount + num_bits <= BITBUF_NBITS, by calling
+ * deflate_flush_bits() frequently enough.
  */
 static forceinline void
 deflate_add_bits(struct deflate_output_bitstream *os,
@@ -734,7 +734,8 @@ deflate_align_bitstream(struct deflate_output_bitstream *os)
 
 /*
  * Flush any remaining bits to the output buffer if needed.  Return the total
- * number of bytes written to the output buffer, or 0 if an overflow occurred.
+ * number of bytes that have been written to the output buffer since
+ * deflate_init_output(), or 0 if an overflow occurred.
  */
 static size_t
 deflate_flush_output(struct deflate_output_bitstream *os)
@@ -755,7 +756,7 @@ deflate_flush_output(struct deflate_output_bitstream *os)
  * Given the binary tree node A[subtree_idx] whose children already satisfy the
  * maxheap property, swap the node with its greater child until it is greater
  * than or equal to both of its children, so that the maxheap property is
- * satisfied in the subtree rooted at A[subtree_idx].
+ * satisfied in the subtree rooted at A[subtree_idx].  'A' uses 1-based indices.
  */
 static void
 heapify_subtree(u32 A[], unsigned length, unsigned subtree_idx)
@@ -908,7 +909,7 @@ sort_symbols(unsigned num_syms, const u32 freqs[restrict],
 }
 
 /*
- * Build the Huffman tree.
+ * Build a Huffman tree.
  *
  * This is an optimized implementation that
  *	(a) takes advantage of the frequencies being already sorted;
@@ -1386,8 +1387,8 @@ deflate_reset_symbol_frequencies(struct libdeflate_compressor *c)
 /*
  * Build the literal/length and offset Huffman codes for a DEFLATE block.
  *
- * This takes as input the frequency tables for each code and produces as output
- * a set of tables that map symbols to codewords and codeword lengths.
+ * This takes as input the frequency tables for each alphabet and produces as
+ * output a set of tables that map symbols to codewords and codeword lengths.
  */
 static void
 deflate_make_huffman_codes(const struct deflate_freqs *freqs,
@@ -2005,19 +2006,19 @@ deflate_flush_block(struct libdeflate_compressor * restrict c,
  * literals we only look at the high bits and low bits, and for matches we only
  * look at whether the match is long or not.  The assumption is that for typical
  * "real" data, places that are good block boundaries will tend to be noticeable
- * based only on changes in these aggregate frequencies, without looking for
+ * based only on changes in these aggregate probabilities, without looking for
  * subtle differences in individual symbols.  For example, a change from ASCII
  * bytes to non-ASCII bytes, or from few matches (generally less compressible)
  * to many matches (generally more compressible), would be easily noticed based
  * on the aggregates.
  *
- * For determining whether the frequency distributions are "different enough" to
- * start a new block, the simply heuristic of splitting when the sum of absolute
- * differences exceeds a constant seems to be good enough.  We also add a number
- * proportional to the block length so that the algorithm is more likely to end
- * long blocks than short blocks.  This reflects the general expectation that it
- * will become increasingly beneficial to start a new block as the current
- * block grows longer.
+ * For determining whether the probability distributions are "different enough"
+ * to start a new block, the simple heuristic of splitting when the sum of
+ * absolute differences exceeds a constant seems to be good enough.  We also add
+ * a number proportional to the block length so that the algorithm is more
+ * likely to end long blocks than short blocks.  This reflects the general
+ * expectation that it will become increasingly beneficial to start a new block
+ * as the current block grows longer.
  *
  * Finally, for an approximation, it is not strictly necessary that the exact
  * symbols being used are considered.  With "near-optimal parsing", for example,
@@ -2081,9 +2082,14 @@ do_end_block_check(struct block_split_stats *stats, u32 block_length)
 {
 	if (stats->num_observations > 0) {
 		/*
-		 * Note: to avoid slow divisions, we do not divide by
-		 * 'num_observations', but rather do all math with the numbers
-		 * multiplied by 'num_observations'.
+		 * Compute the sum of absolute differences of probabilities.  To
+		 * avoid needing to use floating point arithmetic or do slow
+		 * divisions, we do all arithmetic with the probabilities
+		 * multiplied by num_observations * num_new_observations.  E.g.,
+		 * for the "old" observations the probabilities would be
+		 * (double)observations[i] / num_observations, but since we
+		 * multiply by both num_observations and num_new_observations we
+		 * really do observations[i] * num_new_observations.
 		 */
 		u32 total_delta = 0;
 		u32 num_items;
@@ -2103,6 +2109,12 @@ do_end_block_check(struct block_split_stats *stats, u32 block_length)
 
 		num_items = stats->num_observations +
 			    stats->num_new_observations;
+		/*
+		 * Heuristic: the cutoff is when the sum of absolute differences
+		 * of probabilities becomes at least 200/512.  As above, the
+		 * probability is multiplied by both num_new_observations and
+		 * num_observations.  Be careful to avoid integer overflow.
+		 */
 		cutoff = stats->num_new_observations * 200 / 512 *
 			 stats->num_observations;
 		/*
