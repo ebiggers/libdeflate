@@ -1703,6 +1703,45 @@ deflate_write_literal_run(struct deflate_output_bitstream *os,
 #endif
 }
 
+static forceinline void
+deflate_write_match(struct deflate_output_bitstream * restrict os,
+		    unsigned length, unsigned length_slot,
+		    unsigned offset, unsigned offset_symbol,
+		    const struct deflate_codes * restrict codes)
+{
+	unsigned litlen_symbol = DEFLATE_FIRST_LEN_SYM + length_slot;
+
+	/* Litlen symbol */
+	deflate_add_bits(os, codes->codewords.litlen[litlen_symbol],
+			 codes->lens.litlen[litlen_symbol]);
+
+	/* Extra length bits */
+	STATIC_ASSERT(CAN_BUFFER(MAX_LITLEN_CODEWORD_LEN +
+				 DEFLATE_MAX_EXTRA_LENGTH_BITS));
+	deflate_add_bits(os, length - deflate_length_slot_base[length_slot],
+			 deflate_extra_length_bits[length_slot]);
+
+	if (!CAN_BUFFER(MAX_LITLEN_CODEWORD_LEN +
+			DEFLATE_MAX_EXTRA_LENGTH_BITS +
+			MAX_OFFSET_CODEWORD_LEN +
+			DEFLATE_MAX_EXTRA_OFFSET_BITS))
+		deflate_flush_bits(os);
+
+	/* Offset symbol */
+	deflate_add_bits(os, codes->codewords.offset[offset_symbol],
+			 codes->lens.offset[offset_symbol]);
+
+	if (!CAN_BUFFER(MAX_OFFSET_CODEWORD_LEN +
+			DEFLATE_MAX_EXTRA_OFFSET_BITS))
+		deflate_flush_bits(os);
+
+	/* Extra offset bits */
+	deflate_add_bits(os, offset - deflate_offset_slot_base[offset_symbol],
+			 deflate_extra_offset_bits[offset_symbol]);
+
+	deflate_flush_bits(os);
+}
+
 static void
 deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 			const struct deflate_codes * restrict codes,
@@ -1714,9 +1753,6 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 	for (;;) {
 		u32 litrunlen = seq->litrunlen_and_length & SEQ_LITRUNLEN_MASK;
 		unsigned length = seq->litrunlen_and_length >> SEQ_LENGTH_SHIFT;
-		unsigned length_slot;
-		unsigned litlen_symbol;
-		unsigned offset_symbol;
 
 		if (litrunlen) {
 			deflate_write_literal_run(os, in_next, litrunlen,
@@ -1727,44 +1763,10 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
 		if (length == 0)
 			return;
 
+		deflate_write_match(os, length, seq->length_slot,
+				    seq->offset, seq->offset_symbol, codes);
+
 		in_next += length;
-
-		length_slot = seq->length_slot;
-		litlen_symbol = DEFLATE_FIRST_LEN_SYM + length_slot;
-
-		/* Litlen symbol */
-		deflate_add_bits(os, codes->codewords.litlen[litlen_symbol],
-				 codes->lens.litlen[litlen_symbol]);
-
-		/* Extra length bits */
-		STATIC_ASSERT(CAN_BUFFER(MAX_LITLEN_CODEWORD_LEN +
-					 DEFLATE_MAX_EXTRA_LENGTH_BITS));
-		deflate_add_bits(os,
-				 length - deflate_length_slot_base[length_slot],
-				 deflate_extra_length_bits[length_slot]);
-
-		if (!CAN_BUFFER(MAX_LITLEN_CODEWORD_LEN +
-				DEFLATE_MAX_EXTRA_LENGTH_BITS +
-				MAX_OFFSET_CODEWORD_LEN +
-				DEFLATE_MAX_EXTRA_OFFSET_BITS))
-			deflate_flush_bits(os);
-
-		/* Offset symbol */
-		offset_symbol = seq->offset_symbol;
-		deflate_add_bits(os, codes->codewords.offset[offset_symbol],
-				 codes->lens.offset[offset_symbol]);
-
-		if (!CAN_BUFFER(MAX_OFFSET_CODEWORD_LEN +
-				DEFLATE_MAX_EXTRA_OFFSET_BITS))
-			deflate_flush_bits(os);
-
-		/* Extra offset bits */
-		deflate_add_bits(os, seq->offset -
-				 deflate_offset_slot_base[offset_symbol],
-				 deflate_extra_offset_bits[offset_symbol]);
-
-		deflate_flush_bits(os);
-
 		seq++;
 	}
 }
@@ -1774,10 +1776,6 @@ deflate_write_sequences(struct deflate_output_bitstream * restrict os,
  * Follow the minimum-cost path in the graph of possible match/literal choices
  * for the current block and write out the matches/literals using the specified
  * Huffman codes.
- *
- * Note: this is slightly duplicated with deflate_write_sequences(), the reason
- * being that we don't want to waste time translating between intermediate
- * match/literal representations.
  */
 static void
 deflate_write_item_list(struct deflate_output_bitstream *os,
@@ -1791,51 +1789,19 @@ deflate_write_item_list(struct deflate_output_bitstream *os,
 	do {
 		unsigned length = cur_node->item & OPTIMUM_LEN_MASK;
 		unsigned offset = cur_node->item >> OPTIMUM_OFFSET_SHIFT;
-		unsigned litlen_symbol;
-		unsigned length_slot;
-		unsigned offset_slot;
 
 		if (length == 1) {
 			/* Literal */
-			litlen_symbol = offset;
-			deflate_add_bits(os,
-					 codes->codewords.litlen[litlen_symbol],
-					 codes->lens.litlen[litlen_symbol]);
+			deflate_add_bits(os, codes->codewords.litlen[offset],
+					 codes->lens.litlen[offset]);
 			deflate_flush_bits(os);
 		} else {
-			/* Match length */
-			length_slot = deflate_length_slot[length];
-			litlen_symbol = DEFLATE_FIRST_LEN_SYM + length_slot;
-			deflate_add_bits(os,
-				codes->codewords.litlen[litlen_symbol],
-				codes->lens.litlen[litlen_symbol]);
-
-			deflate_add_bits(os,
-				length - deflate_length_slot_base[length_slot],
-				deflate_extra_length_bits[length_slot]);
-
-			if (!CAN_BUFFER(MAX_LITLEN_CODEWORD_LEN +
-					DEFLATE_MAX_EXTRA_LENGTH_BITS +
-					MAX_OFFSET_CODEWORD_LEN +
-					DEFLATE_MAX_EXTRA_OFFSET_BITS))
-				deflate_flush_bits(os);
-
-
-			/* Match offset */
-			offset_slot = c->p.n.offset_slot_full[offset];
-			deflate_add_bits(os,
-				codes->codewords.offset[offset_slot],
-				codes->lens.offset[offset_slot]);
-
-			if (!CAN_BUFFER(MAX_OFFSET_CODEWORD_LEN +
-					DEFLATE_MAX_EXTRA_OFFSET_BITS))
-				deflate_flush_bits(os);
-
-			deflate_add_bits(os,
-				offset - deflate_offset_slot_base[offset_slot],
-				deflate_extra_offset_bits[offset_slot]);
-
-			deflate_flush_bits(os);
+			/* Match */
+			deflate_write_match(os, length,
+					    deflate_length_slot[length],
+					    offset,
+					    c->p.n.offset_slot_full[offset],
+					    codes);
 		}
 		cur_node += length;
 	} while (cur_node != end_node);
