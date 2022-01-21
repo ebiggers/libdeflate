@@ -1090,6 +1090,33 @@ compute_length_counts(u32 A[restrict], unsigned root_idx,
 	}
 }
 
+/* Reverse the Huffman codeword 'codeword', which is 'len' bits in length. */
+static u32
+reverse_codeword(u32 codeword, u8 len)
+{
+	/*
+	 * The following branchless algorithm is faster than going bit by bit.
+	 * Note: since no codewords are longer than 16 bits, we only need to
+	 * reverse the low 16 bits of the 'u32'.
+	 */
+	STATIC_ASSERT(DEFLATE_MAX_CODEWORD_LEN <= 16);
+
+	/* Flip adjacent 1-bit fields. */
+	codeword = ((codeword & 0x5555) << 1) | ((codeword & 0xAAAA) >> 1);
+
+	/* Flip adjacent 2-bit fields. */
+	codeword = ((codeword & 0x3333) << 2) | ((codeword & 0xCCCC) >> 2);
+
+	/* Flip adjacent 4-bit fields. */
+	codeword = ((codeword & 0x0F0F) << 4) | ((codeword & 0xF0F0) >> 4);
+
+	/* Flip adjacent 8-bit fields. */
+	codeword = ((codeword & 0x00FF) << 8) | ((codeword & 0xFF00) >> 8);
+
+	/* Return the high 'len' bits of the bit-reversed 16 bit value. */
+	return codeword >> (16 - len);
+}
+
 /*
  * Generate the codewords for a canonical Huffman code.
  *
@@ -1148,13 +1175,18 @@ gen_codewords(u32 A[restrict], u8 lens[restrict],
 		next_codewords[len] =
 			(next_codewords[len - 1] + len_counts[len - 1]) << 1;
 
-	for (sym = 0; sym < num_syms; sym++)
-		A[sym] = next_codewords[lens[sym]]++;
+	for (sym = 0; sym < num_syms; sym++) {
+		u8 len = lens[sym];
+		u32 codeword = next_codewords[len]++;
+
+		/* DEFLATE requires bit-reversed codewords. */
+		A[sym] = reverse_codeword(codeword, len);
+	}
 }
 
 /*
  * ---------------------------------------------------------------------
- *			make_canonical_huffman_code()
+ *			deflate_make_huffman_code()
  * ---------------------------------------------------------------------
  *
  * Given an alphabet and the frequency of each symbol in it, construct a
@@ -1253,9 +1285,9 @@ gen_codewords(u32 A[restrict], u8 lens[restrict],
  * file: C/HuffEnc.c), which was placed in the public domain by Igor Pavlov.
  */
 static void
-make_canonical_huffman_code(unsigned num_syms, unsigned max_codeword_len,
-			    const u32 freqs[restrict],
-			    u8 lens[restrict], u32 codewords[restrict])
+deflate_make_huffman_code(unsigned num_syms, unsigned max_codeword_len,
+			  const u32 freqs[restrict],
+			  u8 lens[restrict], u32 codewords[restrict])
 {
 	u32 *A = codewords;
 	unsigned num_used_syms;
@@ -1337,48 +1369,6 @@ static void
 deflate_reset_symbol_frequencies(struct libdeflate_compressor *c)
 {
 	memset(&c->freqs, 0, sizeof(c->freqs));
-}
-
-/* Reverse the Huffman codeword 'codeword', which is 'len' bits in length. */
-static u32
-deflate_reverse_codeword(u32 codeword, u8 len)
-{
-	/*
-	 * The following branchless algorithm is faster than going bit by bit.
-	 * Note: since no codewords are longer than 16 bits, we only need to
-	 * reverse the low 16 bits of the 'u32'.
-	 */
-	STATIC_ASSERT(DEFLATE_MAX_CODEWORD_LEN <= 16);
-
-	/* Flip adjacent 1-bit fields. */
-	codeword = ((codeword & 0x5555) << 1) | ((codeword & 0xAAAA) >> 1);
-
-	/* Flip adjacent 2-bit fields. */
-	codeword = ((codeword & 0x3333) << 2) | ((codeword & 0xCCCC) >> 2);
-
-	/* Flip adjacent 4-bit fields. */
-	codeword = ((codeword & 0x0F0F) << 4) | ((codeword & 0xF0F0) >> 4);
-
-	/* Flip adjacent 8-bit fields. */
-	codeword = ((codeword & 0x00FF) << 8) | ((codeword & 0xFF00) >> 8);
-
-	/* Return the high 'len' bits of the bit-reversed 16 bit value. */
-	return codeword >> (16 - len);
-}
-
-/* Make a canonical Huffman code with bit-reversed codewords. */
-static void
-deflate_make_huffman_code(unsigned num_syms, unsigned max_codeword_len,
-			  const u32 freqs[], u8 lens[], u32 codewords[])
-{
-	unsigned sym;
-
-	make_canonical_huffman_code(num_syms, max_codeword_len,
-				    freqs, lens, codewords);
-
-	for (sym = 0; sym < num_syms; sym++)
-		codewords[sym] = deflate_reverse_codeword(codewords[sym],
-							  lens[sym]);
 }
 
 /*
