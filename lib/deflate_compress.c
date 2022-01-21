@@ -805,7 +805,7 @@ heap_sort(u32 A[], unsigned length)
 #define NUM_SYMBOL_BITS 10
 #define SYMBOL_MASK ((1 << NUM_SYMBOL_BITS) - 1)
 
-#define GET_NUM_COUNTERS(num_syms)	((((num_syms) + 3 / 4) + 3) & ~3)
+#define GET_NUM_COUNTERS(num_syms)	(num_syms)
 
 /*
  * Sort the symbols primarily by frequency and secondarily by symbol value.
@@ -843,26 +843,13 @@ sort_symbols(unsigned num_syms, const u32 freqs[restrict],
 	unsigned counters[GET_NUM_COUNTERS(DEFLATE_MAX_NUM_SYMS)];
 
 	/*
-	 * We rely on heapsort, but with an added optimization.  Since it's
-	 * common for most symbol frequencies to be low, we first do a count
-	 * sort using a limited number of counters.  High frequencies will be
-	 * counted in the last counter, and only they will be sorted with
-	 * heapsort.
+	 * We use heapsort, but with an added optimization.  Since often most
+	 * symbol frequencies are low, we first do a count sort using a limited
+	 * number of counters.  High frequencies are counted in the last
+	 * counter, and only they will be sorted with heapsort.
 	 *
 	 * Note: with more symbols, it is generally beneficial to have more
-	 * counters.  About 1 counter per 4 symbols seems fast.
-	 *
-	 * Note: I also tested radix sort, but even for large symbol counts (>
-	 * 255) and frequencies bounded at 16 bits (enabling radix sort by just
-	 * two base-256 digits), it didn't seem any faster than the method
-	 * implemented here.
-	 *
-	 * Note: I tested the optimized quicksort implementation from glibc
-	 * (with indirection overhead removed), but it was only marginally
-	 * faster than the simple heapsort implemented here.
-	 *
-	 * Tests were done with building the codes for LZX.  Results may vary
-	 * for different compression algorithms...!
+	 * counters.  About 1 counter per symbol seems fastest.
 	 */
 
 	num_counters = GET_NUM_COUNTERS(num_syms);
