@@ -684,7 +684,7 @@ deflate_init_output(struct deflate_output_bitstream *os,
  */
 static forceinline void
 deflate_add_bits(struct deflate_output_bitstream *os,
-		 const bitbuf_t bits, const unsigned num_bits)
+		 bitbuf_t bits, unsigned num_bits)
 {
 	os->bitbuf |= bits << os->bitcount;
 	os->bitcount += num_bits;
@@ -710,6 +710,18 @@ deflate_flush_bits(struct deflate_output_bitstream *os)
 			os->bitbuf >>= 8;
 		}
 	}
+}
+
+/*
+ * Add bits, then flush right away.  Only use this where it is difficult to
+ * batch up calls to deflate_add_bits().
+ */
+static forceinline void
+deflate_write_bits(struct deflate_output_bitstream *os,
+		   bitbuf_t bits, unsigned num_bits)
+{
+	deflate_add_bits(os, bits, num_bits);
+	deflate_flush_bits(os);
 }
 
 /* Align the bitstream on a byte boundary. */
@@ -1610,9 +1622,8 @@ deflate_write_huffman_header(struct libdeflate_compressor *c,
 
 	/* Output the lengths of the codewords in the precode. */
 	for (i = 0; i < c->num_explicit_lens; i++) {
-		deflate_add_bits(os, c->precode_lens[
+		deflate_write_bits(os, c->precode_lens[
 				       deflate_precode_lens_permutation[i]], 3);
-		deflate_flush_bits(os);
 	}
 
 	/* Output the encoded lengths of the codewords in the larger code. */
@@ -1696,9 +1707,8 @@ deflate_write_literal_run(struct deflate_output_bitstream *os,
 	do {
 		unsigned lit = *in_next++;
 
-		deflate_add_bits(os, codes->codewords.litlen[lit],
-				 codes->lens.litlen[lit]);
-		deflate_flush_bits(os);
+		deflate_write_bits(os, codes->codewords.litlen[lit],
+				   codes->lens.litlen[lit]);
 	} while (--litrunlen);
 #endif
 }
@@ -1792,9 +1802,8 @@ deflate_write_item_list(struct deflate_output_bitstream *os,
 
 		if (length == 1) {
 			/* Literal */
-			deflate_add_bits(os, codes->codewords.litlen[offset],
-					 codes->lens.litlen[offset]);
-			deflate_flush_bits(os);
+			deflate_write_bits(os, codes->codewords.litlen[offset],
+					   codes->lens.litlen[offset]);
 		} else {
 			/* Match */
 			deflate_write_match(os, length,
@@ -1813,9 +1822,8 @@ static void
 deflate_write_end_of_block(struct deflate_output_bitstream *os,
 			   const struct deflate_codes *codes)
 {
-	deflate_add_bits(os, codes->codewords.litlen[DEFLATE_END_OF_BLOCK],
-			 codes->lens.litlen[DEFLATE_END_OF_BLOCK]);
-	deflate_flush_bits(os);
+	deflate_write_bits(os, codes->codewords.litlen[DEFLATE_END_OF_BLOCK],
+			   codes->lens.litlen[DEFLATE_END_OF_BLOCK]);
 }
 
 static void
