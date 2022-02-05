@@ -128,9 +128,9 @@
       * they work as expected.  (Well, not quite.  There's still a bug, but we
       * have to work around it later when including arm_acle.h.)
       */
-#    if GCC_PREREQ(10, 1) || \
+#    if ((GCC_PREREQ(10, 1) || \
         (GCC_PREREQ(9, 3) && !GCC_PREREQ(10, 0)) || \
-        (GCC_PREREQ(8, 4) && !GCC_PREREQ(9, 0)) || \
+        (GCC_PREREQ(8, 4) && !GCC_PREREQ(9, 0))) && defined(__aarch64__)) || \
         (defined(__clang__) && __has_builtin(__builtin_arm_crc32b))
 #      define COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS 1
 #    endif
