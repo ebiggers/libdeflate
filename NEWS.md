@@ -1,5 +1,19 @@
 # libdeflate release notes
 
+## Version 1.10
+
+* Added an additional check to the decompressor to make it quickly detect
+  certain bad inputs and not try to generate an unbounded amount of output.
+
+  Note: this was only a problem when decompressing with an unknown output size,
+  which isn't the recommended use case of libdeflate.  However,
+  `libdeflate-gunzip` has to do this, and it would run out of memory as it would
+  keep trying to allocate a larger output buffer.
+
+* Fixed a build error on Solaris.
+
+* Cleaned up a few things in the compression code.
+
 ## Version 1.9
 
 * Made many improvements to the compression algorithms, and rebalanced the
@@ -9,8 +23,8 @@
     ratio on data where short matches aren't useful, such as DNA sequencing
     data.  This applies to all compression levels, but primarily to levels 1-9.
 
-  * Levels 1 was made much faster, though it often compresses slightly worse
-    than before (but still better than zlib).
+  * Level 1 was made much faster, though it often compresses slightly worse than
+    before (but still better than zlib).
 
   * Levels 8-9 were also made faster, though they often compress slightly worse
     than before (but still better than zlib).  On some data, levels 8-9 are much
