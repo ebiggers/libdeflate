@@ -313,7 +313,7 @@ do {									\
 
 /*
  * Read a 16-bit value from the input.  This must have been preceded by a call
- * to ALIGN_INPUT(), and the caller must have already checked for overrun.
+ * to ALIGN_INPUT(), and the caller must have already checked for overread.
  */
 #define READ_U16() (tmp16 = get_unaligned_le16(in_next), in_next += 2, tmp16)
 
