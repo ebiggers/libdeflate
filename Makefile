@@ -91,27 +91,32 @@ HARD_LINKS         := 1
 
 TARGET_MACHINE     := $(shell $(CC) -dumpmachine 2>/dev/null)
 
-# Compiling for Windows with MinGW?
-ifneq ($(findstring -mingw,$(TARGET_MACHINE)),)
+# Compiling for Windows with MinGW or LLVM?
+ifneq ($(findstring -mingw,$(TARGET_MACHINE))$(findstring -windows-gnu,$(TARGET_MACHINE)),)
     STATIC_LIB_SUFFIX  := static.lib
     SHARED_LIB         := libdeflate.dll
     SHARED_LIB_SYMLINK :=
     SHARED_LIB_CFLAGS  :=
     SHARED_LIB_LDFLAGS := -Wl,--out-implib,libdeflate.lib \
-                          -Wl,--output-def,libdeflate.def \
-                          -Wl,--add-stdcall-alias
+                          -Wl,--output-def,libdeflate.def
+    # Only if not LLVM
+    ifeq ($(findstring -windows-gnu,$(TARGET_MACHINE)),)
+        SHARED_LIB_LDFLAGS += -Wl,--add-stdcall-alias
+    endif
+
     PROG_SUFFIX        := .exe
     PROG_CFLAGS        := -static -municode
     HARD_LINKS         :=
     override CFLAGS    := $(CFLAGS) $(call cc-option,-Wno-pedantic-ms-format)
 
     # If AR was not already overridden, then derive it from $(CC).
-    # Note that CC may take different forms, e.g. "cc", "gcc",
-    # "x86_64-w64-mingw32-gcc", or "x86_64-w64-mingw32-gcc-6.3.1".
+    # Note that CC may take different forms, e.g. "cc", "gcc", "clang",
+    # "x86_64-w64-mingw32-gcc", or "x86_64-w64-mingw32-gcc-6.3.1", or
+    # "x86_64-w64-mingw32-clang".
     # On Windows it may also have a .exe extension.
     ifeq ($(AR),ar)
         AR := $(shell echo $(CC) | \
-                sed -E 's/g?cc(-?[0-9]+(\.[0-9]+)*)?(\.exe)?$$/ar\3/')
+                sed -E 's/(g?cc|clang)(-?[0-9]+(\.[0-9]+)*)?(\.exe)?$$/ar\4/')
     endif
 
 # Compiling for macOS?
