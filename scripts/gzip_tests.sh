@@ -34,6 +34,7 @@ begin_test() {
 	CURRENT_TEST="$1"
 	rm -rf -- "${TMPDIR:?}"/*
 	cp "$TESTDATA" file
+	chmod +w file
 }
 
 gzip() {
