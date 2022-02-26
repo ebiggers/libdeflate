@@ -494,6 +494,12 @@ for contents in "${bad_files[@]}"; do
 done
 
 
+begin_test '-q (quiet) option works'
+mkdir dir
+gunzip -q dir &> output || true
+[ ! -s output ]
+
+
 begin_test 'Version information'
 gzip -V | grep -q Copyright
 gunzip -V | grep -q Copyright

@@ -137,9 +137,11 @@ int wmain(int argc, wchar_t **argv);
 #endif /* !_WIN32 */
 
 extern const tchar *prog_invocation_name;
+extern bool suppress_warnings;
 
 void _printf(1, 2) msg(const char *fmt, ...);
 void _printf(1, 2) msg_errno(const char *fmt, ...);
+void _printf(1, 2) warn(const char *fmt, ...);
 
 void *xmalloc(size_t size);
 

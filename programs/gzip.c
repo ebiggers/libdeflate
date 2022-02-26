@@ -54,13 +54,13 @@ struct options {
 	const tchar *suffix;
 };
 
-static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhknS:tV");
+static const tchar *const optstring = T("1::2::3::4::5::6::7::8::9::cdfhknqS:tV");
 
 static void
 show_usage(FILE *fp)
 {
 	fprintf(fp,
-"Usage: %"TS" [-LEVEL] [-cdfhkV] [-S SUF] FILE...\n"
+"Usage: %"TS" [-LEVEL] [-cdfhkqtV] [-S SUF] FILE...\n"
 "Compress or decompress the specified FILEs.\n"
 "\n"
 "Options:\n"
@@ -74,6 +74,7 @@ show_usage(FILE *fp)
 "            with gunzip -c, pass through non-gzipped data\n"
 "  -h        print this help\n"
 "  -k        don't delete input files\n"
+"  -q        suppress warnings\n"
 "  -S SUF    use suffix SUF instead of .gz\n"
 "  -t        test file integrity\n"
 "  -V        show version and legal information\n",
@@ -317,15 +318,15 @@ stat_file(struct file_stream *in, stat_t *stbuf, bool allow_hard_links)
 	}
 
 	if (!S_ISREG(stbuf->st_mode) && !in->is_standard_stream) {
-		msg("%"TS" is %s -- skipping",
-		    in->name, S_ISDIR(stbuf->st_mode) ? "a directory" :
-							"not a regular file");
+		warn("%"TS" is %s -- skipping",
+		     in->name, S_ISDIR(stbuf->st_mode) ? "a directory" :
+							 "not a regular file");
 		return -2;
 	}
 
 	if (stbuf->st_nlink > 1 && !allow_hard_links) {
-		msg("%"TS" has multiple hard links -- skipping "
-		    "(use -f to process anyway)", in->name);
+		warn("%"TS" has multiple hard links -- skipping (use -f to process anyway)",
+		     in->name);
 		return -2;
 	}
 
@@ -416,9 +417,8 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 				if (!options->to_stdout)
 					newpath = (tchar *)path;
 			} else if (!options->to_stdout) {
-				msg("\"%"TS"\" does not end with the %"TS" "
-				    "suffix -- skipping",
-				    path, options->suffix);
+				warn("\"%"TS"\" does not end with the %"TS" suffix -- skipping",
+				     path, options->suffix);
 				return -2;
 			}
 		} else if (!options->to_stdout) {
@@ -614,6 +614,9 @@ tmain(int argc, tchar *argv[])
 			 *  option as a no-op.
 			 */
 			break;
+		case 'q':
+			suppress_warnings = true;
+			break;
 		case 'S':
 			options.suffix = toptarg;
 			if (options.suffix[0] == T('\0')) {
@@ -678,13 +681,17 @@ tmain(int argc, tchar *argv[])
 		libdeflate_free_compressor(c);
 	}
 
-	/*
-	 * If ret=0, there were no warnings or errors.  Exit with status 0.
-	 * If ret=2, there was at least one warning.  Exit with status 2.
-	 * Else, there was at least one error.  Exit with status 1.
-	 */
-	if (ret != 0 && ret != 2)
-		ret = 1;
-
-	return ret;
+	switch (ret) {
+	case 0:
+		/* No warnings or errors */
+		return 0;
+	case 2:
+		/* At least one warning, but no errors */
+		if (suppress_warnings)
+			return 0;
+		return 2;
+	default:
+		/* At least one error */
+		return 1;
+	}
 }
