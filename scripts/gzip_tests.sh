@@ -225,6 +225,16 @@ gzip -f file.gz
 cmp file.gz.gz c.gz
 
 
+begin_test 'gunzip -f -c passes through non-gzip data'
+echo hello > file
+cp file orig
+gunzip -f -c file > foo
+cmp file foo
+gzip file
+gunzip -f -c file.gz > foo
+cmp foo orig
+
+
 begin_test 'Decompressing unsuffixed file only works with -c'
 gzip file && mv file.gz file
 assert_skipped gunzip file
