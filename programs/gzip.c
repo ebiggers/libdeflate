@@ -38,6 +38,12 @@
 #  include <utime.h>
 #endif
 
+#define GZIP_MIN_HEADER_SIZE	10
+#define GZIP_FOOTER_SIZE	8
+#define GZIP_MIN_OVERHEAD	(GZIP_MIN_HEADER_SIZE + GZIP_FOOTER_SIZE)
+#define GZIP_ID1		0x1F
+#define GZIP_ID2		0x8B
+
 struct options {
 	bool to_stdout;
 	bool decompress;
@@ -63,7 +69,9 @@ show_usage(FILE *fp)
 "  -12       slowest (best) compression\n"
 "  -c        write to standard output\n"
 "  -d        decompress\n"
-"  -f        overwrite existing output files\n"
+"  -f        overwrite existing output files; (de)compress hard-linked files;\n"
+"            allow reading/writing compressed data from/to terminal;\n"
+"            with gunzip -c, pass through non-gzipped data\n"
 "  -h        print this help\n"
 "  -k        don't delete input files\n"
 "  -S SUF    use suffix SUF instead of .gz\n"
@@ -198,10 +206,13 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 	enum libdeflate_result result;
 	int ret = 0;
 
-	if (compressed_size < sizeof(u32)) {
-	       msg("%"TS": not in gzip format", in->name);
-	       ret = -1;
-	       goto out;
+	if (compressed_size < GZIP_MIN_OVERHEAD ||
+	    compressed_data[0] != GZIP_ID1 ||
+	    compressed_data[1] != GZIP_ID2) {
+		if (options->force)
+			return full_write(out, compressed_data, compressed_size);
+		msg("%"TS": not in gzip format", in->name);
+		return -1;
 	}
 
 	/*
