@@ -124,7 +124,7 @@ else ifneq ($(findstring -darwin,$(TARGET_MACHINE)),)
    SHARED_LIB         := libdeflate.$(SOVERSION).dylib
    SHARED_LIB_SYMLINK := libdeflate.dylib
    SHARED_LIB_CFLAGS  := -fPIC
-   SHARED_LIB_LDFLAGS := -install_name $(SHARED_LIB)
+   SHARED_LIB_LDFLAGS := -install_name $(LIBDIR)/$(SHARED_LIB)
 
 # Compiling for Android?
 else ifneq ($(findstring -android,$(TARGET_MACHINE)),)
