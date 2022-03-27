@@ -133,6 +133,14 @@ else ifneq ($(findstring -android,$(TARGET_MACHINE)),)
    SHARED_LIB_CFLAGS  := -fPIC
    SHARED_LIB_LDFLAGS := -Wl,-soname=$(SHARED_LIB)
 
+# Compiling for Haiku
+else ifneq ($(findstring -haiku,$(TARGET_MACHINE)),)
+   SHARED_LIB         := libdeflate.so.$(SOVERSION)
+   SHARED_LIB_SYMLINK := libdeflate.so
+   SHARED_LIB_CFLAGS  := -fPIC
+   SHARED_LIB_LDFLAGS := -Wl,-soname=$(SHARED_LIB)
+   HARD_LINKS         :=
+
 # Compiling for Linux, FreeBSD, etc.
 else
    SHARED_LIB         := libdeflate.so.$(SOVERSION)
@@ -347,8 +355,13 @@ install:all $(PKGCONFBASE)
 	install -m644 libdeflate.h $(DESTDIR)$(INCDIR)
 	install -m755 gzip$(PROG_SUFFIX) \
 		$(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)
-	ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)		\
-	      $(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX)
+	if [ -n "$(HARD_LINKS)" ]; then				\
+		ln -f $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)		\
+			$(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX);		\
+	else		\
+		ln -s libdeflate-gzip$(PROG_SUFFIX)		\
+			$(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX);		\
+	fi
 	if [ -n "$(SHARED_LIB_SYMLINK)" ]; then				\
 		ln -sf $(SHARED_LIB)					\
 		       $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK);	\
