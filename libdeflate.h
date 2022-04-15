@@ -31,7 +31,7 @@ extern "C" {
 #  define LIBDEFLATEEXPORT
 #endif
 
-#if defined(_WIN32) && !defined(_WIN64)
+#if defined(_WIN32) && !defined(_WIN64) && defined(LIBDEFLATE_DLL)
 #  define LIBDEFLATEAPI_ABI	__stdcall
 #else
 #  define LIBDEFLATEAPI_ABI
