@@ -8,7 +8,8 @@
 #include "../lib_common.h"
 
 #if (defined(__arm__) || defined(__aarch64__)) && \
-	defined(__linux__) && \
+	(defined(__linux__) || \
+	 (defined(__aarch64__) && defined(__APPLE__))) && \
 	COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE && \
 	!defined(FREESTANDING)
 #  define ARM_CPU_FEATURES_ENABLED 1
