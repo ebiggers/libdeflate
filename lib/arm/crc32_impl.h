@@ -80,13 +80,17 @@ crc32_arm(u32 remainder, const u8 *p, size_t size)
 		size--;
 	}
 
-	while (size >= 32) {
+	while (size >= 64) {
 		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 0)));
 		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 1)));
 		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 2)));
 		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 3)));
-		p += 32;
-		size -= 32;
+		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 4)));
+		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 5)));
+		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 6)));
+		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 7)));
+		p += 64;
+		size -= 64;
 	}
 
 	while (size >= 8) {
