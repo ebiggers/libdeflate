@@ -26,19 +26,24 @@
  */
 
 /*
- * ARM processors don't have a standard way for unprivileged programs to detect
- * processor features.  But, on Linux we can read the AT_HWCAP and AT_HWCAP2
- * values from /proc/self/auxv.
- *
- * Ideally we'd use the C library function getauxval(), but it's not guaranteed
- * to be available: it was only added to glibc in 2.16, and in Android it was
- * added to API level 18 for ARM and level 21 for AArch64.
+ * ARM CPUs don't have a standard way for unprivileged programs to detect CPU
+ * features.  But an OS-specific way can be used when available.
  */
 
 #include "../cpu_features_common.h" /* must be included first */
 #include "cpu_features.h"
 
 #if ARM_CPU_FEATURES_ENABLED
+
+#ifdef __linux__
+/*
+ * On Linux, arm32 and arm64 CPU features can be detected by reading the
+ * AT_HWCAP and AT_HWCAP2 values from /proc/self/auxv.
+ *
+ * Ideally we'd use the C library function getauxval(), but it's not guaranteed
+ * to be available: it was only added to glibc in 2.16, and in Android it was
+ * added to API level 18 for arm32 and level 21 for arm64.
+ */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -47,8 +52,6 @@
 
 #define AT_HWCAP	16
 #define AT_HWCAP2	26
-
-volatile u32 _cpu_features = 0;
 
 static void scan_auxv(unsigned long *hwcap, unsigned long *hwcap2)
 {
@@ -92,13 +95,7 @@ out:
 	close(fd);
 }
 
-static const struct cpu_feature arm_cpu_feature_table[] = {
-	{ARM_CPU_FEATURE_NEON,		"neon"},
-	{ARM_CPU_FEATURE_PMULL,		"pmull"},
-	{ARM_CPU_FEATURE_CRC32,		"crc32"},
-};
-
-void setup_cpu_features(void)
+static u32 get_arm_cpu_features(void)
 {
 	u32 features = 0;
 	unsigned long hwcap = 0;
@@ -123,6 +120,56 @@ void setup_cpu_features(void)
 	if (hwcap & (1 << 7))	/* HWCAP_CRC32 */
 		features |= ARM_CPU_FEATURE_CRC32;
 #endif
+	return features;
+}
+
+#elif defined(__APPLE__)
+/* On Apple platforms, arm64 CPU features can be detected via sysctlbyname(). */
+
+#include <sys/types.h>
+#include <sys/sysctl.h>
+
+static const struct {
+	const char *name;
+	u32 feature;
+} feature_sysctls[] = {
+	{ "hw.optional.neon",		ARM_CPU_FEATURE_NEON },
+	{ "hw.optional.AdvSIMD",	ARM_CPU_FEATURE_NEON },
+	{ "hw.optional.arm.FEAT_PMULL",	ARM_CPU_FEATURE_PMULL },
+	{ "hw.optional.armv8_crc32",	ARM_CPU_FEATURE_CRC32 },
+};
+
+static u32 get_arm_cpu_features(void)
+{
+	u32 features = 0;
+	size_t i;
+
+	for (i = 0; i < ARRAY_LEN(feature_sysctls); i++) {
+		const char *name = feature_sysctls[i].name;
+		u32 val = 0;
+		size_t valsize = sizeof(val);
+
+		if (sysctlbyname(name, &val, &valsize, NULL, 0) == 0 &&
+		    valsize == sizeof(val) && val == 1)
+			features |= feature_sysctls[i].feature;
+	}
+	return features;
+}
+#else
+#error "unhandled case"
+#endif
+
+static const struct cpu_feature arm_cpu_feature_table[] = {
+	{ARM_CPU_FEATURE_NEON,		"neon"},
+	{ARM_CPU_FEATURE_PMULL,		"pmull"},
+	{ARM_CPU_FEATURE_CRC32,		"crc32"},
+};
+
+volatile u32 _cpu_features = 0;
+
+void setup_cpu_features(void)
+{
+	u32 features = get_arm_cpu_features();
 
 	disable_cpu_features_for_testing(&features, arm_cpu_feature_table,
 					 ARRAY_LEN(arm_cpu_feature_table));
