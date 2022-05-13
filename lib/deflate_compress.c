@@ -25,11 +25,15 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define _GNU_SOURCE 1
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 #include "unaligned.h"
 
 #include "libdeflate.h"
+#include <stdio.h>
+#include <inttypes.h>
+#include <time.h>
 
 /******************************************************************************/
 
@@ -1297,6 +1301,15 @@ gen_codewords(u32 A[restrict], u8 lens[restrict],
  * Many of these optimizations are based on the implementation in 7-Zip (source
  * file: C/HuffEnc.c), which was placed in the public domain by Igor Pavlov.
  */
+static forceinline u64 now(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return 1000000000 * (u64)ts.tv_sec + ts.tv_nsec;
+}
+static u64 g_total_time;
+static size_t g_num_codes;
+
 static void
 deflate_make_huffman_code(unsigned num_syms, unsigned max_codeword_len,
 			  const u32 freqs[restrict],
@@ -1394,6 +1407,8 @@ static void
 deflate_make_huffman_codes(const struct deflate_freqs *freqs,
 			   struct deflate_codes *codes)
 {
+	u64 start = now();
+
 	deflate_make_huffman_code(DEFLATE_NUM_LITLEN_SYMS,
 				  MAX_LITLEN_CODEWORD_LEN,
 				  freqs->litlen,
@@ -1405,6 +1420,9 @@ deflate_make_huffman_codes(const struct deflate_freqs *freqs,
 				  freqs->offset,
 				  codes->lens.offset,
 				  codes->codewords.offset);
+
+	g_total_time += now() - start;
+	g_num_codes++;
 }
 
 /* Initialize c->static_codes. */
@@ -3767,6 +3785,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
+	printf("avg %"PRIu64"\n", g_total_time / (g_num_codes?g_num_codes:1));
 	libdeflate_aligned_free(c);
 }
 
