@@ -820,7 +820,8 @@ heap_sort(u32 A[], unsigned length)
 }
 
 #define NUM_SYMBOL_BITS 10
-#define SYMBOL_MASK ((1 << NUM_SYMBOL_BITS) - 1)
+#define SYMBOL_MASK	((1 << NUM_SYMBOL_BITS) - 1)
+#define FREQ_MASK	(~SYMBOL_MASK)
 
 #define GET_NUM_COUNTERS(num_syms)	(num_syms)
 
@@ -946,68 +947,56 @@ sort_symbols(unsigned num_syms, const u32 freqs[restrict],
 static void
 build_tree(u32 A[], unsigned sym_count)
 {
-	/*
-	 * Index, in 'A', of next lowest frequency symbol that has not yet been
-	 * processed.
-	 */
+	const unsigned last_idx = sym_count - 1;
+
+	/* Index of the next lowest frequency leaf that still needs a parent */
 	unsigned i = 0;
 
 	/*
-	 * Index, in 'A', of next lowest frequency parentless non-leaf node; or,
-	 * if equal to 'e', then no such node exists yet.
+	 * Index of the next lowest frequency non-leaf that still needs a
+	 * parent, or 'e' if there is currently no such node
 	 */
 	unsigned b = 0;
 
-	/* Index, in 'A', of next node to allocate as a non-leaf. */
+	/* Index of the next spot for a non-leaf (will overwrite a leaf) */
 	unsigned e = 0;
 
 	do {
-		unsigned m, n;
-		u32 freq_shifted;
-
-		/* Choose the two next lowest frequency entries. */
-
-		if (i != sym_count &&
-		    (b == e ||
-		     (A[i] >> NUM_SYMBOL_BITS) <= (A[b] >> NUM_SYMBOL_BITS)))
-			m = i++;
-		else
-			m = b++;
-
-		if (i != sym_count &&
-		    (b == e ||
-		     (A[i] >> NUM_SYMBOL_BITS) <= (A[b] >> NUM_SYMBOL_BITS)))
-			n = i++;
-		else
-			n = b++;
+		u32 new_freq;
 
 		/*
-		 * Allocate a non-leaf node and link the entries to it.
-		 *
-		 * If we link an entry that we're visiting for the first time
-		 * (via index 'i'), then we're actually linking a leaf node and
-		 * it will have no effect, since the leaf will be overwritten
-		 * with a non-leaf when index 'e' catches up to it.  But it's
-		 * not any slower to unconditionally set the parent index.
-		 *
-		 * We also compute the frequency of the non-leaf node as the sum
-		 * of its two children's frequencies.
+		 * Select the next two lowest frequency nodes among the leaves
+		 * A[i] and non-leaves A[b] and create a new node A[e] to be
+		 * their parent.  Set the new node's frequency to the sum of the
+		 * frequencies of its two children.
 		 */
-
-		freq_shifted = (A[m] & ~SYMBOL_MASK) + (A[n] & ~SYMBOL_MASK);
-
-		A[m] = (A[m] & SYMBOL_MASK) | (e << NUM_SYMBOL_BITS);
-		A[n] = (A[n] & SYMBOL_MASK) | (e << NUM_SYMBOL_BITS);
-		A[e] = (A[e] & SYMBOL_MASK) | freq_shifted;
-		e++;
-	} while (sym_count - e > 1);
+		if (i + 1 <= last_idx &&
+		    (b == e || (A[i + 1] & FREQ_MASK) <= (A[b] & FREQ_MASK))) {
+			/* Two leaves */
+			new_freq = (A[i] & FREQ_MASK) + (A[i + 1] & FREQ_MASK);
+			i += 2;
+		} else if (b + 2 <= e &&
+			   (i > last_idx ||
+			    (A[b + 1] & FREQ_MASK) < (A[i] & FREQ_MASK))) {
+			/* Two non-leaves */
+			new_freq = (A[b] & FREQ_MASK) + (A[b + 1] & FREQ_MASK);
+			A[b] = (e << NUM_SYMBOL_BITS) | (A[b] & SYMBOL_MASK);
+			A[b + 1] = (e << NUM_SYMBOL_BITS) |
+				   (A[b + 1] & SYMBOL_MASK);
+			b += 2;
+		} else {
+			/* One leaf and one non-leaf */
+			new_freq = (A[i] & FREQ_MASK) + (A[b] & FREQ_MASK);
+			A[b] = (e << NUM_SYMBOL_BITS) | (A[b] & SYMBOL_MASK);
+			i++;
+			b++;
+		}
+		A[e] = new_freq | (A[e] & SYMBOL_MASK);
 		/*
-		 * When just one entry remains, it is a "leaf" that was linked
-		 * to some other node.  We ignore it, since the rest of the
-		 * array contains the non-leaves which we need.  (Note that
-		 * we're assuming the cases with 0 or 1 symbols were handled
-		 * separately.)
+		 * A binary tree with 'n' leaves has 'n - 1' non-leaves, so the
+		 * tree is complete once we've created that many non-leaves.
 		 */
+	} while (++e < last_idx);
 }
 
 /*
