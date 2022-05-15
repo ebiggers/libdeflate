@@ -1096,33 +1096,6 @@ compute_length_counts(u32 A[restrict], unsigned root_idx,
 	}
 }
 
-/* Reverse the Huffman codeword 'codeword', which is 'len' bits in length. */
-static u32
-reverse_codeword(u32 codeword, u8 len)
-{
-	/*
-	 * The following branchless algorithm is faster than going bit by bit.
-	 * Note: since no codewords are longer than 16 bits, we only need to
-	 * reverse the low 16 bits of the 'u32'.
-	 */
-	STATIC_ASSERT(DEFLATE_MAX_CODEWORD_LEN <= 16);
-
-	/* Flip adjacent 1-bit fields. */
-	codeword = ((codeword & 0x5555) << 1) | ((codeword & 0xAAAA) >> 1);
-
-	/* Flip adjacent 2-bit fields. */
-	codeword = ((codeword & 0x3333) << 2) | ((codeword & 0xCCCC) >> 2);
-
-	/* Flip adjacent 4-bit fields. */
-	codeword = ((codeword & 0x0F0F) << 4) | ((codeword & 0xF0F0) >> 4);
-
-	/* Flip adjacent 8-bit fields. */
-	codeword = ((codeword & 0x00FF) << 8) | ((codeword & 0xFF00) >> 8);
-
-	/* Return the high 'len' bits of the bit-reversed 16 bit value. */
-	return codeword >> (16 - len);
-}
-
 /*
  * Generate the codewords for a canonical Huffman code.
  *
@@ -1174,20 +1147,82 @@ gen_codewords(u32 A[restrict], u8 lens[restrict],
 	 * 'next_codewords' array to provide the lexicographically first
 	 * codeword of each length, then assign codewords in symbol order.  This
 	 * produces a canonical code.
+	 *
+	 * DEFLATE uses bit-reversed codewords, so we must reverse the bits in
+	 * each codeword.  DEFLATE codewords can be at most 16 bits, so when a
+	 * native bit-reversal instruction is unavailable we reverse several at
+	 * a time for better performance.
 	 */
 	next_codewords[0] = 0;
 	next_codewords[1] = 0;
 	for (len = 2; len <= max_codeword_len; len++)
 		next_codewords[len] =
 			(next_codewords[len - 1] + len_counts[len - 1]) << 1;
-
+#ifdef rbit32
 	for (sym = 0; sym < num_syms; sym++) {
 		u8 len = lens[sym];
 		u32 codeword = next_codewords[len]++;
 
-		/* DEFLATE requires bit-reversed codewords. */
-		A[sym] = reverse_codeword(codeword, len);
+		A[sym] = rbit32(codeword) >> (32 - len);
 	}
+#else
+	STATIC_ASSERT(WORDBYTES == 4 || WORDBYTES == 8);
+	if (WORDBYTES == 4) {
+		for (sym = 0; sym < (num_syms & ~1); sym += 2) {
+			u8 len1 = lens[sym + 0];
+			u8 len2 = lens[sym + 1];
+			u32 codeword1 = next_codewords[len1]++;
+			u32 codeword2 = next_codewords[len2]++;
+			u32 v = (codeword1 << 0) | (codeword2 << 16);
+
+			/* Bit-reverse 2 codewords packed together. */
+			v = ((v & 0x55555555) << 1) | ((v & 0xAAAAAAAA) >> 1);
+			v = ((v & 0x33333333) << 2) | ((v & 0xCCCCCCCC) >> 2);
+			v = ((v & 0x0F0F0F0F) << 4) | ((v & 0xF0F0F0F0) >> 4);
+			v = ((v & 0x00FF00FF) << 8) | ((v & 0xFF00FF00) >> 8);
+			A[sym + 0] = (v & 0xFFFF) >> (16 - len1);
+			A[sym + 1] = v >> (32 - len2);
+		}
+	} else {
+		for (sym = 0; sym < (num_syms & ~3); sym += 4) {
+			u8 len1 = lens[sym + 0];
+			u8 len2 = lens[sym + 1];
+			u8 len3 = lens[sym + 2];
+			u8 len4 = lens[sym + 3];
+			u64 codeword1 = next_codewords[len1]++;
+			u64 codeword2 = next_codewords[len2]++;
+			u64 codeword3 = next_codewords[len3]++;
+			u64 codeword4 = next_codewords[len4]++;
+			u64 v = (codeword1 << 0) | (codeword2 << 16) |
+				(codeword3 << 32) | (codeword4 << 48);
+
+			/* Bit-reverse 4 codewords packed together. */
+			v = ((v & 0x5555555555555555) << 1) |
+			    ((v & 0xAAAAAAAAAAAAAAAA) >> 1);
+			v = ((v & 0x3333333333333333) << 2) |
+			    ((v & 0xCCCCCCCCCCCCCCCC) >> 2);
+			v = ((v & 0x0F0F0F0F0F0F0F0F) << 4) |
+			    ((v & 0xF0F0F0F0F0F0F0F0) >> 4);
+			v = ((v & 0x00FF00FF00FF00FF) << 8) |
+			    ((v & 0xFF00FF00FF00FF00) >> 8);
+			A[sym + 0] = (v & 0x00000000FFFF) >> (16 - len1);
+			A[sym + 1] = (v & 0x0000FFFF0000) >> (32 - len2);
+			A[sym + 2] = (v & 0xFFFF00000000) >> (48 - len3);
+			A[sym + 3] = v >> (64 - len4);
+		}
+	}
+	for (; sym < num_syms; sym++) {
+		u8 len = lens[sym];
+		u32 v = next_codewords[len]++;
+
+		/* Bit-reverse one codeword. */
+		v = ((v & 0x5555) << 1) | ((v & 0xAAAA) >> 1);
+		v = ((v & 0x3333) << 2) | ((v & 0xCCCC) >> 2);
+		v = ((v & 0x0F0F) << 4) | ((v & 0xF0F0) >> 4);
+		v = ((v & 0x00FF) << 8) | ((v & 0xFF00) >> 8);
+		A[sym] = v >> (16 - len);
+	}
+#endif /* !rbit32 */
 }
 
 /*
