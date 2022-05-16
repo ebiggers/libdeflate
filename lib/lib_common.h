@@ -14,6 +14,33 @@
 
 #include "../common_defs.h"
 
+#include <stdio.h>
+#include <inttypes.h>
+#include <time.h>
+
+static forceinline u64 now(void)
+{
+#ifdef __x86_64__
+	u32 lo, hi;
+	__asm__ volatile("rdtsc" : "=a" (lo), "=d" (hi));
+	return ((u64)hi << 32) | lo;
+#elif defined(__i386__)
+	u32 lo, hi;
+	__asm__ volatile("rdtsc" : "=a" (lo), "=d" (hi));
+	return ((u64)hi << 32) | lo;
+#else
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return 1000000000 * (u64)ts.tv_sec + ts.tv_nsec;
+#endif
+}
+static u64 g_start_time __attribute__((unused));
+static u64 g_total_time __attribute__((unused));
+static u64 g_num_measurements __attribute__((unused));
+
+#define BEGIN g_start_time = now();
+#define END  g_total_time += now() - g_start_time; g_num_measurements++;
+
 void *libdeflate_malloc(size_t size);
 void libdeflate_free(void *ptr);
 
