@@ -1671,6 +1671,8 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	ASSERT((bitbuf & ~(((bitbuf_t)1 << bitcount) - 1)) == 0);
 	ASSERT(out_next <= out_end);
 
+	BEGIN
+
 	if (sequences != NULL /* !near_optimal */ ||
 	    !SUPPORT_NEAR_OPTIMAL_PARSING) {
 		/* Tally the end-of-block symbol. */
@@ -1955,6 +1957,8 @@ out:
 	 */
 	ASSERT(8 * (out_next - os->next) + bitcount - os->bitcount ==
 	       3 + best_cost || out_next == out_end);
+
+	END
 
 	os->bitbuf = bitbuf;
 	os->bitcount = bitcount;
@@ -3782,6 +3786,8 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
+	if (g_num_measurements)
+		printf("avg %"PRIu64"\n", g_total_time / g_num_measurements);
 	libdeflate_aligned_free(c);
 }
 

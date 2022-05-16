@@ -990,5 +990,7 @@ libdeflate_alloc_decompressor(void)
 LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_decompressor(struct libdeflate_decompressor *d)
 {
+	if (g_num_measurements)
+		printf("avg %"PRIu64"\n", g_total_time / g_num_measurements);
 	libdeflate_free(d);
 }
