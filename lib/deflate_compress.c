@@ -698,6 +698,7 @@ struct deflate_output_bitstream {
 do {						\
 	bitbuf |= (bitbuf_t)(bits) << bitcount;	\
 	bitcount += (n);			\
+	ASSERT(bitcount <= BITBUF_NBITS);	\
 } while (0)
 
 /* Flush bits from the bitbuffer variable to the output buffer. */
@@ -1660,8 +1661,15 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	u32 dynamic_cost = 0;
 	u32 static_cost = 0;
 	u32 uncompressed_cost = 0;
+	u32 best_cost;
 	struct deflate_codes *codes;
 	unsigned sym;
+
+	ASSERT(block_length >= MIN_BLOCK_LENGTH || is_final_block);
+	ASSERT(block_length <= MAX_BLOCK_LENGTH);
+	ASSERT(bitcount <= 7);
+	ASSERT((bitbuf & ~(((bitbuf_t)1 << bitcount) - 1)) == 0);
+	ASSERT(out_next <= out_end);
 
 	if (sequences != NULL /* !near_optimal */ ||
 	    !SUPPORT_NEAR_OPTIMAL_PARSING) {
@@ -1729,7 +1737,8 @@ deflate_flush_block(struct libdeflate_compressor *c,
 			     (8 * block_length);
 
 	/* Choose and output the cheapest type of block. */
-	if (dynamic_cost < MIN(static_cost, uncompressed_cost)) {
+	best_cost = MIN(static_cost, uncompressed_cost);
+	if (dynamic_cost < best_cost) {
 		const unsigned num_explicit_lens = c->num_explicit_lens;
 		const unsigned num_precode_items = c->num_precode_items;
 		unsigned precode_sym, precode_item;
@@ -1737,6 +1746,7 @@ deflate_flush_block(struct libdeflate_compressor *c,
 
 		/* Dynamic Huffman block */
 
+		best_cost = dynamic_cost;
 		codes = &c->codes;
 		STATIC_ASSERT(CAN_BUFFER(1 + 2 + 5 + 5 + 4 + 3));
 		ADD_BITS(is_final_block, 1);
@@ -1839,6 +1849,7 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	}
 
 	/* Output the literals and matches for a dynamic or static block. */
+	ASSERT(bitcount <= 7);
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	if (sequences == NULL) {
 		/* Output the literals and matches from the minimum-cost path */
@@ -1918,8 +1929,10 @@ deflate_flush_block(struct libdeflate_compressor *c,
 				}
 			}
 
-			if (length == 0) /* Last sequence? */
+			if (length == 0) { /* Last sequence? */
+				ASSERT(in_next == in_end);
 				break;
+			}
 
 			/* Output a match. */
 			WRITE_MATCH(codes, length, seq->length_slot,
@@ -1929,10 +1942,20 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	}
 
 	/* Output the end-of-block symbol. */
+	ASSERT(bitcount <= 7);
 	ADD_BITS(codes->codewords.litlen[DEFLATE_END_OF_BLOCK],
 		 codes->lens.litlen[DEFLATE_END_OF_BLOCK]);
 	FLUSH_BITS();
 out:
+	ASSERT(bitcount <= 7);
+	/*
+	 * Assert that the block cost was computed correctly, as
+	 * libdeflate_deflate_compress_bound() relies on this via the assumption
+	 * that uncompressed blocks will always be used when cheaper.
+	 */
+	ASSERT(8 * (out_next - os->next) + bitcount - os->bitcount ==
+	       3 + best_cost || out_next == out_end);
+
 	os->bitbuf = bitbuf;
 	os->bitcount = bitcount;
 	os->next = out_next;
@@ -3750,6 +3773,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	 */
 	if (os.next >= os.end)
 		return 0;
+	ASSERT(os.bitcount <= 7);
 	if (os.bitcount)
 		*os.next++ = os.bitbuf;
 	return os.next - (u8 *)out;
