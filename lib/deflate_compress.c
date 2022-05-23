@@ -1935,14 +1935,16 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	}
 
 	/* Account for the cost of encoding literals. */
-	for (sym = 0; sym < 256; sym++) {
+	for (sym = 0; sym < 144; sym++) {
 		dynamic_cost += c->freqs.litlen[sym] *
 				c->codes.lens.litlen[sym];
-	}
-	for (sym = 0; sym < 144; sym++)
 		static_cost += c->freqs.litlen[sym] * 8;
-	for (; sym < 256; sym++)
+	}
+	for (; sym < 256; sym++) {
+		dynamic_cost += c->freqs.litlen[sym] *
+				c->codes.lens.litlen[sym];
 		static_cost += c->freqs.litlen[sym] * 9;
+	}
 
 	/* Account for the cost of encoding the end-of-block symbol. */
 	dynamic_cost += c->codes.lens.litlen[DEFLATE_END_OF_BLOCK];
