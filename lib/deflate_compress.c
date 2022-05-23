@@ -52,10 +52,15 @@
 
 /*
  * This is the minimum block length that the compressor will use, in
- * uncompressed bytes.  It is also approximately the amount by which the final
- * block is allowed to grow past the soft maximum length in order to avoid using
- * a very short block at the end.  This should be a value below which using
- * shorter blocks is unlikely to be worthwhile, due to the per-block overhead.
+ * uncompressed bytes.  This should be a value below which using shorter blocks
+ * is unlikely to be worthwhile, due to the per-block overhead.  This value does
+ * not apply to the final block, which may be shorter than this (if the input is
+ * shorter, it will have to be), or to the final uncompressed block in a series
+ * of uncompressed blocks that cover more than UINT16_MAX bytes.
+ *
+ * This value is also approximately the amount by which what would otherwise be
+ * the second-to-last block is allowed to grow past the soft maximum length in
+ * order to avoid having to use a very short final block.
  *
  * Defining a fixed minimum block length is needed in order to guarantee a
  * reasonable upper bound on the compressed size.  It's also needed because our
@@ -3766,20 +3771,59 @@ LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 				  size_t in_nbytes)
 {
+	size_t bound = 0;
+	size_t max_blocks;
+
 	/*
-	 * The worst case is all uncompressed blocks where one block has length
-	 * <= MIN_BLOCK_LENGTH and the others have length MIN_BLOCK_LENGTH.
-	 * Each uncompressed block has 5 bytes of overhead: 1 for BFINAL, BTYPE,
-	 * and alignment to a byte boundary; 2 for LEN; and 2 for NLEN.
+	 * Since the compressor never uses a compressed block when an
+	 * uncompressed block is cheaper, the worst case can be no worse than
+	 * the case where only uncompressed blocks are used.
 	 *
-	 * Add OUTPUT_END_PADDING because for performance reasons, the
+	 * This is true even though up to 7 bits are "wasted" to byte-align the
+	 * bitstream when a compressed block is followed by an uncompressed
+	 * block.  This is because a compressed block wouldn't have been used if
+	 * it wasn't cheaper than an uncompressed block, and uncompressed blocks
+	 * always end on a byte boundary.  So the alignment bits will, at worst,
+	 * go up to the place where the uncompressed block would have ended.
+	 */
+
+	/*
+	 * The minimum length that is passed to deflate_flush_block() is
+	 * MIN_BLOCK_LENGTH bytes, except for the final block if needed.
+	 *
+	 * If deflate_flush_block() decides to use an uncompressed block, it
+	 * actually will (in general) output a series of uncompressed blocks in
+	 * order to stay within the UINT16_MAX limit of DEFLATE.  But this can
+	 * be disregarded here as long as '2 * MIN_BLOCK_LENGTH <= UINT16_MAX',
+	 * as in that case this behavior can't result in more blocks than the
+	 * case where deflate_flush_block() is called with min-length inputs.
+	 *
+	 * So the number of uncompressed blocks needed would be bounded by
+	 * DIV_ROUND_UP(in_nbytes, MIN_BLOCK_LENGTH).  However, empty inputs
+	 * need 1 (empty) block, which gives the final expression below.
+	 */
+	STATIC_ASSERT(2 * MIN_BLOCK_LENGTH <= UINT16_MAX);
+	max_blocks = MAX(DIV_ROUND_UP(in_nbytes, MIN_BLOCK_LENGTH), 1);
+
+	/*
+	 * Each uncompressed block has 5 bytes of overhead, for the BFINAL,
+	 * BTYPE, LEN, and NLEN fields.  (For the reason explained earlier, the
+	 * alignment bits at the very start of the block can be disregarded;
+	 * they would otherwise increase the overhead to 6 bytes per block.)
+	 */
+	bound += 5 * max_blocks;
+
+	/* Account for the data itself, stored uncompressed. */
+	bound += in_nbytes;
+
+	/*
+	 * Add 1 + OUTPUT_END_PADDING because for performance reasons, the
 	 * compressor doesn't distinguish between cases where there wasn't
 	 * enough space and cases where the compressed size would have been
 	 * 'out_nbytes_avail - OUTPUT_END_PADDING' or greater.  Adding
-	 * OUTPUT_END_PADDING to the bound ensures the needed wiggle room.
+	 * 1 + OUTPUT_END_PADDING to the bound ensures the needed wiggle room.
 	 */
-	size_t max_num_blocks =
-		MAX(DIV_ROUND_UP(in_nbytes, MIN_BLOCK_LENGTH), 1);
+	bound += 1 + OUTPUT_END_PADDING;
 
-	return (5 * max_num_blocks) + in_nbytes + 1 + OUTPUT_END_PADDING;
+	return bound;
 }
