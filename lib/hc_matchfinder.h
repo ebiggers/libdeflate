@@ -181,15 +181,15 @@ hc_matchfinder_slide_window(struct hc_matchfinder *mf)
  * 'best_len' was found.
  */
 static forceinline u32
-hc_matchfinder_longest_match(struct hc_matchfinder * const restrict mf,
-			     const u8 ** const restrict in_base_p,
-			     const u8 * const restrict in_next,
+hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
+			     const u8 ** const in_base_p,
+			     const u8 * const in_next,
 			     u32 best_len,
 			     const u32 max_len,
 			     const u32 nice_len,
 			     const u32 max_search_depth,
-			     u32 * const restrict next_hashes,
-			     u32 * const restrict offset_ret)
+			     u32 * const next_hashes,
+			     u32 * const offset_ret)
 {
 	u32 depth_remaining = max_search_depth;
 	const u8 *best_matchptr = in_next;
@@ -359,12 +359,12 @@ out:
  *	the sequence beginning at @in_next + @count.
  */
 static forceinline void
-hc_matchfinder_skip_bytes(struct hc_matchfinder * const restrict mf,
-			  const u8 ** const restrict in_base_p,
+hc_matchfinder_skip_bytes(struct hc_matchfinder * const mf,
+			  const u8 ** const in_base_p,
 			  const u8 *in_next,
 			  const u8 * const in_end,
 			  const u32 count,
-			  u32 * const restrict next_hashes)
+			  u32 * const next_hashes)
 {
 	u32 cur_pos;
 	u32 hash3, hash4;

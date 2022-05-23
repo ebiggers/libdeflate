@@ -886,9 +886,8 @@ copy_word_unaligned(const void *src, void *dst)
  *****************************************************************************/
 
 typedef enum libdeflate_result (*decompress_func_t)
-	(struct libdeflate_decompressor * restrict d,
-	 const void * restrict in, size_t in_nbytes,
-	 void * restrict out, size_t out_nbytes_avail,
+	(struct libdeflate_decompressor *d,
+	 const void *in, size_t in_nbytes, void *out, size_t out_nbytes_avail,
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
 #undef DEFAULT_IMPL
@@ -906,18 +905,16 @@ typedef enum libdeflate_result (*decompress_func_t)
 
 #ifdef DISPATCH
 static enum libdeflate_result
-dispatch(struct libdeflate_decompressor * restrict d,
-	 const void * restrict in, size_t in_nbytes,
-	 void * restrict out, size_t out_nbytes_avail,
+dispatch(struct libdeflate_decompressor *d,
+	 const void *in, size_t in_nbytes, void *out, size_t out_nbytes_avail,
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
 static volatile decompress_func_t decompress_impl = dispatch;
 
 /* Choose the fastest implementation at runtime */
 static enum libdeflate_result
-dispatch(struct libdeflate_decompressor * restrict d,
-	 const void * restrict in, size_t in_nbytes,
-	 void * restrict out, size_t out_nbytes_avail,
+dispatch(struct libdeflate_decompressor *d,
+	 const void *in, size_t in_nbytes, void *out, size_t out_nbytes_avail,
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret)
 {
 	decompress_func_t f = arch_select_decompress_func();
@@ -943,9 +940,9 @@ dispatch(struct libdeflate_decompressor * restrict d,
  * at runtime.
  */
 LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
-libdeflate_deflate_decompress_ex(struct libdeflate_decompressor * restrict d,
-				 const void * restrict in, size_t in_nbytes,
-				 void * restrict out, size_t out_nbytes_avail,
+libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
+				 const void *in, size_t in_nbytes,
+				 void *out, size_t out_nbytes_avail,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret)
 {
@@ -954,9 +951,9 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor * restrict d,
 }
 
 LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
-libdeflate_deflate_decompress(struct libdeflate_decompressor * restrict d,
-			      const void * restrict in, size_t in_nbytes,
-			      void * restrict out, size_t out_nbytes_avail,
+libdeflate_deflate_decompress(struct libdeflate_decompressor *d,
+			      const void *in, size_t in_nbytes,
+			      void *out, size_t out_nbytes_avail,
 			      size_t *actual_out_nbytes_ret)
 {
 	return libdeflate_deflate_decompress_ex(d, in, in_nbytes,

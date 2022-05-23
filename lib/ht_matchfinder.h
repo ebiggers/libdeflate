@@ -75,13 +75,13 @@ ht_matchfinder_slide_window(struct ht_matchfinder *mf)
 
 /* Note: max_len must be >= HT_MATCHFINDER_REQUIRED_NBYTES */
 static forceinline u32
-ht_matchfinder_longest_match(struct ht_matchfinder * const restrict mf,
-			     const u8 ** const restrict in_base_p,
-			     const u8 * const restrict in_next,
+ht_matchfinder_longest_match(struct ht_matchfinder * const mf,
+			     const u8 ** const in_base_p,
+			     const u8 * const in_next,
 			     const u32 max_len,
 			     const u32 nice_len,
-			     u32 * const restrict next_hash,
-			     u32 * const restrict offset_ret)
+			     u32 * const next_hash,
+			     u32 * const offset_ret)
 {
 	u32 best_len = 0;
 	const u8 *best_matchptr = in_next;
@@ -195,12 +195,12 @@ out:
 }
 
 static forceinline void
-ht_matchfinder_skip_bytes(struct ht_matchfinder * const restrict mf,
-			  const u8 ** const restrict in_base_p,
+ht_matchfinder_skip_bytes(struct ht_matchfinder * const mf,
+			  const u8 ** const in_base_p,
 			  const u8 *in_next,
 			  const u8 * const in_end,
 			  const u32 count,
-			  u32 * const restrict next_hash)
+			  u32 * const next_hash)
 {
 	s32 cur_pos = in_next - *in_base_p;
 	u32 hash;

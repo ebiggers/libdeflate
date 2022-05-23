@@ -846,8 +846,7 @@ heap_sort(u32 A[], unsigned length)
  * number of symbols that have nonzero frequency.
  */
 static unsigned
-sort_symbols(unsigned num_syms, const u32 freqs[restrict],
-	     u8 lens[restrict], u32 symout[restrict])
+sort_symbols(unsigned num_syms, const u32 freqs[], u8 lens[], u32 symout[])
 {
 	unsigned sym;
 	unsigned i;
@@ -1032,8 +1031,8 @@ build_tree(u32 A[], unsigned sym_count)
  *	The maximum permissible codeword length.
  */
 static void
-compute_length_counts(u32 A[restrict], unsigned root_idx,
-		      unsigned len_counts[restrict], unsigned max_codeword_len)
+compute_length_counts(u32 A[], unsigned root_idx, unsigned len_counts[],
+		      unsigned max_codeword_len)
 {
 	unsigned len;
 	int node;
@@ -1154,8 +1153,7 @@ reverse_codeword(u32 codeword, u8 len)
  *	frequency.  This is the length of the 'A' and 'len' arrays.
  */
 static void
-gen_codewords(u32 A[restrict], u8 lens[restrict],
-	      const unsigned len_counts[restrict],
+gen_codewords(u32 A[], u8 lens[], const unsigned len_counts[],
 	      unsigned max_codeword_len, unsigned num_syms)
 {
 	u32 next_codewords[DEFLATE_MAX_CODEWORD_LEN + 1];
@@ -1299,8 +1297,7 @@ gen_codewords(u32 A[restrict], u8 lens[restrict],
  */
 static void
 deflate_make_huffman_code(unsigned num_syms, unsigned max_codeword_len,
-			  const u32 freqs[restrict],
-			  u8 lens[restrict], u32 codewords[restrict])
+			  const u32 freqs[], u8 lens[], u32 codewords[])
 {
 	u32 *A = codewords;
 	unsigned num_used_syms;
@@ -1457,10 +1454,8 @@ deflate_write_block_header(struct deflate_output_bitstream *os,
 }
 
 static unsigned
-deflate_compute_precode_items(const u8 lens[restrict],
-			      const unsigned num_lens,
-			      u32 precode_freqs[restrict],
-			      unsigned precode_items[restrict])
+deflate_compute_precode_items(const u8 lens[], const unsigned num_lens,
+			      u32 precode_freqs[], unsigned precode_items[])
 {
 	unsigned *itemptr;
 	unsigned run_start;
@@ -1715,10 +1710,10 @@ deflate_write_literal_run(struct deflate_output_bitstream *os,
 }
 
 static forceinline void
-deflate_write_match(struct deflate_output_bitstream * restrict os,
+deflate_write_match(struct deflate_output_bitstream *os,
 		    unsigned length, unsigned length_slot,
 		    unsigned offset, unsigned offset_symbol,
-		    const struct deflate_codes * restrict codes)
+		    const struct deflate_codes *codes)
 {
 	unsigned litlen_symbol = DEFLATE_FIRST_LEN_SYM + length_slot;
 
@@ -1754,10 +1749,10 @@ deflate_write_match(struct deflate_output_bitstream * restrict os,
 }
 
 static void
-deflate_write_sequences(struct deflate_output_bitstream * restrict os,
-			const struct deflate_codes * restrict codes,
-			const struct deflate_sequence sequences[restrict],
-			const u8 * restrict in_next)
+deflate_write_sequences(struct deflate_output_bitstream *os,
+			const struct deflate_codes *codes,
+			const struct deflate_sequence sequences[],
+			const u8 *in_next)
 {
 	const struct deflate_sequence *seq = sequences;
 
@@ -1869,9 +1864,9 @@ deflate_write_uncompressed_blocks(struct deflate_output_bitstream *os,
  * uncompressed), then output it.
  */
 static void
-deflate_flush_block(struct libdeflate_compressor * restrict c,
-		    struct deflate_output_bitstream * restrict os,
-		    const u8 * restrict block_begin, u32 block_length,
+deflate_flush_block(struct libdeflate_compressor *c,
+		    struct deflate_output_bitstream *os,
+		    const u8 *block_begin, u32 block_length,
 		    const struct deflate_sequence *sequences,
 		    bool is_final_block)
 {
@@ -2325,8 +2320,8 @@ choose_max_block_end(const u8 *in_block_begin, const u8 *in_end,
  */
 static size_t
 deflate_compress_none(struct libdeflate_compressor * restrict c,
-		      const u8 * restrict in, size_t in_nbytes,
-		      u8 * restrict out, size_t out_nbytes_avail)
+		      const u8 *in, size_t in_nbytes,
+		      u8 *out, size_t out_nbytes_avail)
 {
 	struct deflate_output_bitstream os;
 
@@ -2345,8 +2340,8 @@ deflate_compress_none(struct libdeflate_compressor * restrict c,
  */
 static size_t
 deflate_compress_fastest(struct libdeflate_compressor * restrict c,
-			 const u8 * restrict in, size_t in_nbytes,
-			 u8 * restrict out, size_t out_nbytes_avail)
+			 const u8 *in, size_t in_nbytes,
+			 u8 *out, size_t out_nbytes_avail)
 {
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
@@ -2426,8 +2421,8 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
  */
 static size_t
 deflate_compress_greedy(struct libdeflate_compressor * restrict c,
-			const u8 * restrict in, size_t in_nbytes,
-			u8 * restrict out, size_t out_nbytes_avail)
+			const u8 *in, size_t in_nbytes,
+			u8 *out, size_t out_nbytes_avail)
 {
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
@@ -2506,9 +2501,8 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 
 static forceinline size_t
 deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
-			      const u8 * restrict in, size_t in_nbytes,
-			      u8 * restrict out, size_t out_nbytes_avail,
-			      bool lazy2)
+			      const u8 *in, size_t in_nbytes,
+			      u8 *out, size_t out_nbytes_avail, bool lazy2)
 {
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
@@ -2722,8 +2716,8 @@ have_cur_match:
  */
 static size_t
 deflate_compress_lazy(struct libdeflate_compressor * restrict c,
-		      const u8 * restrict in, size_t in_nbytes,
-		      u8 * restrict out, size_t out_nbytes_avail)
+		      const u8 *in, size_t in_nbytes,
+		      u8 *out, size_t out_nbytes_avail)
 {
 	return deflate_compress_lazy_generic(c, in, in_nbytes, out,
 					     out_nbytes_avail, false);
@@ -2736,8 +2730,8 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
  */
 static size_t
 deflate_compress_lazy2(struct libdeflate_compressor * restrict c,
-		       const u8 * restrict in, size_t in_nbytes,
-		       u8 * restrict out, size_t out_nbytes_avail)
+		       const u8 *in, size_t in_nbytes,
+		       u8 *out, size_t out_nbytes_avail)
 {
 	return deflate_compress_lazy_generic(c, in, in_nbytes, out,
 					     out_nbytes_avail, true);
@@ -3354,8 +3348,8 @@ deflate_near_optimal_clear_old_stats(struct libdeflate_compressor *c)
  */
 static size_t
 deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
-			      const u8 * restrict in, size_t in_nbytes,
-			      u8 * restrict out, size_t out_nbytes_avail)
+			      const u8 *in, size_t in_nbytes,
+			      u8 *out, size_t out_nbytes_avail)
 {
 	const u8 *in_next = in;
 	const u8 *in_block_begin = in_next;

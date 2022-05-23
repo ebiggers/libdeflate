@@ -139,14 +139,14 @@ bt_right_child(struct bt_matchfinder *mf, s32 node)
 /* Advance the binary tree matchfinder by one byte, optionally recording
  * matches.  @record_matches should be a compile-time constant.  */
 static forceinline struct lz_match *
-bt_matchfinder_advance_one_byte(struct bt_matchfinder * const restrict mf,
-				const u8 * const restrict in_base,
+bt_matchfinder_advance_one_byte(struct bt_matchfinder * const mf,
+				const u8 * const in_base,
 				const ptrdiff_t cur_pos,
 				const u32 max_len,
 				const u32 nice_len,
 				const u32 max_search_depth,
-				u32 * const restrict next_hashes,
-				struct lz_match * restrict lz_matchptr,
+				u32 * const next_hashes,
+				struct lz_match *lz_matchptr,
 				const bool record_matches)
 {
 	const u8 *in_next = in_base + cur_pos;
