@@ -619,13 +619,19 @@ struct libdeflate_compressor {
  * performance, this should have size equal to a machine word.
  */
 typedef machine_word_t bitbuf_t;
-#define BITBUF_NBITS	(8 * sizeof(bitbuf_t))
+
+/*
+ * The capacity of the bitbuffer, in bits.  This is 1 less than the real size,
+ * in order to avoid undefined behavior when doing bitbuf >>= bitcount & ~7.
+ */
+#define BITBUF_NBITS	(8 * sizeof(bitbuf_t) - 1)
 
 /*
  * Can the specified number of bits always be added to 'bitbuf' after any
- * pending bytes have been flushed?
+ * pending bytes have been flushed?  There can be up to 7 bits remaining after a
+ * flush, so the count must not exceed BITBUF_NBITS after adding 'n' more bits.
  */
-#define CAN_BUFFER(n)	((n) <= BITBUF_NBITS - 7)
+#define CAN_BUFFER(n)	(7 + (n) <= BITBUF_NBITS)
 
 /*
  * Structure to keep track of the current state of sending bits to the
