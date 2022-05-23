@@ -60,8 +60,22 @@ void *memmove(void *dest, const void *src, size_t n);
 
 int memcmp(const void *s1, const void *s2, size_t n);
 #define memcmp(s1, s2, n)	__builtin_memcmp((s1), (s2), (n))
+
+#undef LIBDEFLATE_ENABLE_ASSERTIONS
 #else
 #include <string.h>
+#endif
+
+/*
+ * Runtime assertion support.  Don't enable this in production builds; it may
+ * hurt performance significantly.
+ */
+#ifdef LIBDEFLATE_ENABLE_ASSERTIONS
+void libdeflate_assertion_failed(const char *expr, const char *file, int line);
+#define ASSERT(expr) { if (unlikely(!(expr))) \
+	libdeflate_assertion_failed(#expr, __FILE__, __LINE__); }
+#else
+#define ASSERT(expr) (void)(expr)
 #endif
 
 #endif /* LIB_LIB_COMMON_H */

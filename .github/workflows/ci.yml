@@ -1,7 +1,7 @@
 name: CI
 on: [pull_request]
 env:
-  CFLAGS: -Werror
+  CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
 
 jobs:
   x86_64-build-and-test:

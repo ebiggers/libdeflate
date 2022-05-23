@@ -116,6 +116,7 @@ else
 	export CFLAGS="-O2"
 	export CC=afl-clang-fast
 fi
+CFLAGS+=" -DLIBDEFLATE_ENABLE_ASSERTIONS"
 
 sudo sh -c "echo core > /proc/sys/kernel/core_pattern"
 sudo sh -c "echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
