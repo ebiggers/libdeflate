@@ -214,3 +214,22 @@ typedef char  __v64qi __attribute__((__vector_size__(64)));
 #define bsr64(n)	(63 - __builtin_clzll(n))
 #define bsf32(n)	__builtin_ctz(n)
 #define bsf64(n)	__builtin_ctzll(n)
+
+#if defined(__arm__) && \
+	(__ARM_ARCH >= 7 || (__ARM_ARCH == 6 && defined(__ARM_ARCH_6T2__)))
+static forceinline unsigned int
+rbit32(unsigned int v)
+{
+	__asm__("rbit %0, %1\n" : "=r" (v) : "r" (v));
+	return v;
+}
+#define rbit32 rbit32
+#elif defined(__aarch64__)
+static forceinline unsigned int
+rbit32(unsigned int v)
+{
+	__asm__("rbit %w0, %w1\n" : "=r" (v) : "r" (v));
+	return v;
+}
+#define rbit32 rbit32
+#endif /* __aarch64__ */
