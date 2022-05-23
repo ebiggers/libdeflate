@@ -822,6 +822,7 @@ heap_sort(u32 A[], unsigned length)
 }
 
 #define NUM_SYMBOL_BITS 10
+#define NUM_FREQ_BITS	(32 - NUM_SYMBOL_BITS)
 #define SYMBOL_MASK	((1 << NUM_SYMBOL_BITS) - 1)
 #define FREQ_MASK	(~SYMBOL_MASK)
 
@@ -835,11 +836,10 @@ heap_sort(u32 A[], unsigned length)
  * contain the frequency.
  *
  * @num_syms
- *	Number of symbols in the alphabet.
- *	Can't be greater than (1 << NUM_SYMBOL_BITS).
+ *	Number of symbols in the alphabet, at most 1 << NUM_SYMBOL_BITS.
  *
  * @freqs[num_syms]
- *	The frequency of each symbol.
+ *	Frequency of each symbol, summing to at most (1 << NUM_FREQ_BITS) - 1.
  *
  * @lens[num_syms]
  *	An array that eventually will hold the length of each codeword.  This
@@ -1204,15 +1204,15 @@ gen_codewords(u32 A[], u8 lens[], const unsigned len_counts[],
  * @num_syms
  *	The number of symbols in the alphabet.  The symbols are the integers in
  *	the range [0, num_syms - 1].  This parameter must be at least 2 and
- *	can't be greater than (1 << NUM_SYMBOL_BITS).
+ *	must not exceed (1 << NUM_SYMBOL_BITS).
  *
  * @max_codeword_len
  *	The maximum permissible codeword length.
  *
  * @freqs
- *	An array of @num_syms entries, each of which specifies the frequency of
- *	the corresponding symbol.  It is valid for some, none, or all of the
- *	frequencies to be 0.
+ *	An array of length @num_syms that gives the frequency of each symbol.
+ *	It is valid for some, none, or all of the frequencies to be 0.  The sum
+ *	of frequencies must not exceed (1 << NUM_FREQ_BITS) - 1.
  *
  * @lens
  *	An array of @num_syms entries in which this function will return the
@@ -1301,6 +1301,7 @@ deflate_make_huffman_code(unsigned num_syms, unsigned max_codeword_len,
 	unsigned num_used_syms;
 
 	STATIC_ASSERT(DEFLATE_MAX_NUM_SYMS <= 1 << NUM_SYMBOL_BITS);
+	STATIC_ASSERT(MAX_BLOCK_LENGTH <= ((u32)1 << NUM_FREQ_BITS) - 1);
 
 	/*
 	 * We begin by sorting the symbols primarily by frequency and
