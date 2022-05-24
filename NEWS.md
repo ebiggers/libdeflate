@@ -1,5 +1,34 @@
 # libdeflate release notes
 
+## Version 1.11
+
+* Library updates:
+
+  * Improved compression performance slightly.
+
+  * Detect arm64 CPU features on Apple platforms, which should improve
+    performance in some areas such as CRC-32 computation.
+
+* Program updates:
+
+  * The included `gzip` and `gunzip` programs now support the `-q` option.
+
+  * The included `gunzip` program now passes through non-gzip data when both
+    the `-f` and `-c` options are used.
+
+* Build updates:
+
+  * Avoided a build error on arm32 with certain gcc versions, by disabling
+    building `crc32_arm()` as dynamically-dispatched code when needed.
+
+  * Support building with the LLVM toolchain on Windows.
+
+  * Disabled the use of the "stdcall" ABI in static library builds on Windows.
+
+  * Use the correct `install_name` in macOS builds.
+
+  * Support Haiku builds.
+
 ## Version 1.10
 
 * Added an additional check to the decompressor to make it quickly detect
