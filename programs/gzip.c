@@ -210,7 +210,7 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 	if (compressed_size < GZIP_MIN_OVERHEAD ||
 	    compressed_data[0] != GZIP_ID1 ||
 	    compressed_data[1] != GZIP_ID2) {
-		if (options->force)
+		if (options->force && options->to_stdout)
 			return full_write(out, compressed_data, compressed_size);
 		msg("%"TS": not in gzip format", in->name);
 		return -1;
