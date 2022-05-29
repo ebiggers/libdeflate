@@ -119,9 +119,35 @@ lz_hash(u32 seq, unsigned num_bits)
  * to a maximum of @max_len.  Initially, @start_len bytes are matched.
  */
 static forceinline unsigned
-lz_extend(const u8 * const strptr, const u8 * const matchptr,
+lz_extend(const u8 *strptr, const u8 *matchptr,
 	  const unsigned start_len, const unsigned max_len)
 {
+#ifdef __x86_64__
+	unsigned long retval = 0;
+	unsigned eax = max_len;
+	unsigned edx = max_len;
+
+	__asm__(
+	"movdqu 0x0(%[strptr],%[retval],1), %%xmm0\n"
+	"pcmpestri $0x38, 0x0(%[matchptr],%[retval],1), %%xmm0\n"
+	"jc 1f\n"
+	"0:\n"
+	"add $16, %[retval]\n"
+	"sub $16, %%eax\n"
+	"sub $16, %%edx\n"
+	"movdqu 0x0(%[strptr],%[retval],1), %%xmm0\n"
+	"pcmpestri $0x38, 0x0(%[matchptr],%[retval],1), %%xmm0\n"
+	"jnc 0b\n"
+	"1:\n"
+	"add %%rcx, %[retval]\n"
+	: [retval] "+r" (retval),
+	  "+a" (eax),
+	  "+d" (edx)
+	: [strptr] "r" (strptr),
+	  [matchptr] "r" (matchptr)
+	: "xmm0", "rcx", "cc");
+	return retval;
+#else
 	unsigned len = start_len;
 	machine_word_t v_word;
 
@@ -162,6 +188,7 @@ word_differs:
 	else
 		len += (WORDBITS - 1 - bsrw(v_word)) >> 3;
 	return len;
+#endif
 }
 
 #endif /* LIB_MATCHFINDER_COMMON_H */

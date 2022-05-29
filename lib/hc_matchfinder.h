@@ -290,45 +290,32 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 	/* Check for matches of length >= 5.  */
 
 	for (;;) {
-		for (;;) {
-			matchptr = &in_base[cur_node4];
+		matchptr = &in_base[cur_node4];
 
-			/* Already found a length 4 match.  Try for a longer
-			 * match; start by checking either the last 4 bytes and
-			 * the first 4 bytes, or the last byte.  (The last byte,
-			 * the one which would extend the match length by 1, is
-			 * the most important.)  */
-		#if UNALIGNED_ACCESS_IS_FAST
-			if ((load_u32_unaligned(matchptr + best_len - 3) ==
-			     load_u32_unaligned(in_next + best_len - 3)) &&
-			    (load_u32_unaligned(matchptr) ==
-			     load_u32_unaligned(in_next)))
-		#else
-			if (matchptr[best_len] == in_next[best_len])
-		#endif
-				break;
-
-			/* Continue to the next node in the list.  */
-			cur_node4 = mf->next_tab[cur_node4 & (MATCHFINDER_WINDOW_SIZE - 1)];
-			if (cur_node4 <= cutoff || !--depth_remaining)
-				goto out;
-		}
-
+		/*
+		 * Already found a length 4 match.  Try for a longer match;
+		 * start by checking either the last 4 bytes or the last byte.
+		 * (The last byte, the one which would extend the match length
+		 * by 1, is the most important.)
+		 */
 	#if UNALIGNED_ACCESS_IS_FAST
-		len = 4;
+		if ((load_u32_unaligned(matchptr + best_len - 3) ==
+		     load_u32_unaligned(in_next + best_len - 3)))
 	#else
-		len = 0;
+		if (matchptr[best_len] == in_next[best_len])
 	#endif
-		len = lz_extend(in_next, matchptr, len, max_len);
-		if (len > best_len) {
-			/* This is the new longest match.  */
-			best_len = len;
-			best_matchptr = matchptr;
-			if (best_len >= nice_len)
-				goto out;
+		{
+			len = lz_extend(in_next, matchptr, 0, max_len);
+			if (len > best_len) {
+				/* This is the new longest match. */
+				best_len = len;
+				best_matchptr = matchptr;
+				if (best_len >= nice_len)
+					goto out;
+			}
 		}
 
-		/* Continue to the next node in the list.  */
+		/* Continue to the next node in the list. */
 		cur_node4 = mf->next_tab[cur_node4 & (MATCHFINDER_WINDOW_SIZE - 1)];
 		if (cur_node4 <= cutoff || !--depth_remaining)
 			goto out;
