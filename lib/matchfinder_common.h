@@ -59,28 +59,21 @@ matchfinder_init(mf_pos_t *data, size_t size)
 #endif
 
 /*
- * Slide the matchfinder by WINDOW_SIZE bytes.
+ * Slide the matchfinder by MATCHFINDER_WINDOW_SIZE bytes.
  *
- * This must be called just after each WINDOW_SIZE bytes have been run through
- * the matchfinder.
+ * This must be called just after each MATCHFINDER_WINDOW_SIZE bytes have been
+ * run through the matchfinder.
  *
- * This will subtract WINDOW_SIZE bytes from each entry in the array specified.
- * The effect is that all entries are updated to be relative to the current
- * position, rather than the position WINDOW_SIZE bytes prior.
+ * This subtracts MATCHFINDER_WINDOW_SIZE bytes from each entry in the given
+ * array, making the entries be relative to the current position rather than the
+ * position MATCHFINDER_WINDOW_SIZE bytes prior.  To avoid integer underflows,
+ * entries that would become less than -MATCHFINDER_WINDOW_SIZE stay at
+ * -MATCHFINDER_WINDOW_SIZE, keeping them permanently out of bounds.
  *
- * Underflow is detected and replaced with signed saturation.  This ensures that
- * once the sliding window has passed over a position, that position forever
- * remains out of bounds.
- *
- * The array passed in must contain all matchfinder data that is
- * position-relative.  Concretely, this will include the hash table as well as
- * the table of positions that is used to link together the sequences in each
- * hash bucket.  Note that in the latter table, the links are 1-ary in the case
- * of "hash chains", and 2-ary in the case of "binary trees".  In either case,
- * the links need to be rebased in the same way.
- *
- * 'data' must be aligned to a MATCHFINDER_MEM_ALIGNMENT boundary, and
- * 'size' must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
+ * The given array must contain all matchfinder data that is position-relative:
+ * the hash table(s) as well as any hash chain or binary tree links.  Its
+ * address must be aligned to a MATCHFINDER_MEM_ALIGNMENT boundary, and its size
+ * must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
  */
 #ifndef matchfinder_rebase
 static forceinline void
@@ -90,25 +83,20 @@ matchfinder_rebase(mf_pos_t *data, size_t size)
 	size_t i;
 
 	if (MATCHFINDER_WINDOW_SIZE == 32768) {
-		/* Branchless version for 32768 byte windows.  If the value was
-		 * already negative, clear all bits except the sign bit; this
-		 * changes the value to -32768.  Otherwise, set the sign bit;
-		 * this is equivalent to subtracting 32768.  */
+		/*
+		 * Branchless version for 32768-byte windows.  Clear all bits if
+		 * the value was already negative, then set the sign bit.  This
+		 * is equivalent to subtracting 32768 with signed saturation.
+		 */
+		for (i = 0; i < num_entries; i++)
+			data[i] = 0x8000 | (data[i] & ~(data[i] >> 15));
+	} else {
 		for (i = 0; i < num_entries; i++) {
-			u16 v = data[i];
-			u16 sign_bit = v & 0x8000;
-			v &= sign_bit - ((sign_bit >> 15) ^ 1);
-			v |= 0x8000;
-			data[i] = v;
+			if (data[i] >= 0)
+				data[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
+			else
+				data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
 		}
-		return;
-	}
-
-	for (i = 0; i < num_entries; i++) {
-		if (data[i] >= 0)
-			data[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
-		else
-			data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
 	}
 }
 #endif
