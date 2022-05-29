@@ -119,27 +119,22 @@ lz_hash(u32 seq, unsigned num_bits)
  * to a maximum of @max_len.  Initially, @start_len bytes are matched.
  */
 static forceinline unsigned
-lz_extend(const u8 *strptr, const u8 *matchptr,
+lz_extend(const u8 * const strptr, const u8 * const matchptr,
 	  const unsigned start_len, const unsigned max_len)
 {
-	const u8 * const orig = strptr;
-	const u8 *end = orig + max_len;
+	unsigned len = start_len;
 	machine_word_t v_word;
-
-	strptr += start_len;
-	matchptr += start_len;
 
 	if (UNALIGNED_ACCESS_IS_FAST) {
 
-		if (likely(end - strptr >= 4 * WORDBYTES)) {
+		if (likely(max_len - len >= 4 * WORDBYTES)) {
 
 		#define COMPARE_WORD_STEP				\
-			v_word = load_word_unaligned(matchptr) ^	\
-				 load_word_unaligned(strptr);		\
+			v_word = load_word_unaligned(&matchptr[len]) ^	\
+				 load_word_unaligned(&strptr[len]);	\
 			if (v_word != 0)				\
 				goto word_differs;			\
-			strptr += WORDBYTES;				\
-			matchptr += WORDBYTES;
+			len += WORDBYTES;				\
 
 			COMPARE_WORD_STEP
 			COMPARE_WORD_STEP
@@ -148,28 +143,25 @@ lz_extend(const u8 *strptr, const u8 *matchptr,
 		#undef COMPARE_WORD_STEP
 		}
 
-		while (end - strptr >= WORDBYTES) {
-			v_word = load_word_unaligned(matchptr) ^
-				 load_word_unaligned(strptr);
+		while (len + WORDBYTES <= max_len) {
+			v_word = load_word_unaligned(&matchptr[len]) ^
+				 load_word_unaligned(&strptr[len]);
 			if (v_word != 0)
 				goto word_differs;
-			strptr += WORDBYTES;
-			matchptr += WORDBYTES;
+			len += WORDBYTES;
 		}
 	}
 
-	while (strptr < end && *strptr == *matchptr) {
-		strptr++;
-		matchptr++;
-	}
-	return strptr - orig;
+	while (len < max_len && matchptr[len] == strptr[len])
+		len++;
+	return len;
 
 word_differs:
 	if (CPU_IS_LITTLE_ENDIAN())
-		strptr += (bsfw(v_word) >> 3);
+		len += (bsfw(v_word) >> 3);
 	else
-		strptr += (WORDBITS - 1 - bsrw(v_word)) >> 3;
-	return strptr - orig;
+		len += (WORDBITS - 1 - bsrw(v_word)) >> 3;
+	return len;
 }
 
 #endif /* LIB_MATCHFINDER_COMMON_H */
