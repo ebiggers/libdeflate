@@ -30,6 +30,11 @@
  * features.  But an OS-specific way can be used when available.
  */
 
+#ifdef __APPLE__
+#undef _ANSI_SOURCE
+#define _DARWIN_C_SOURCE /* for sysctlbyname() */
+#endif
+
 #include "../cpu_features_common.h" /* must be included first */
 #include "cpu_features.h"
 
