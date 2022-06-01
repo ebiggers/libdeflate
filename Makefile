@@ -194,7 +194,14 @@ DEFAULT_TARGETS :=
 
 STATIC_LIB := libdeflate$(STATIC_LIB_SUFFIX)
 
-LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
+LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden
+
+# Compiling for macOS on Apple Silicon ?
+ifneq ($(findstring arm64,$(TARGET_MACHINE)),) && ifneq ($(findstring -darwin,$(TARGET_MACHINE)),)
+	LIB_CFLAGS += -D_DARWIN_C_SOURCE
+else
+	LIB_CFLAGS += -D_ANSI_SOURCE
+endif
 
 LIB_HEADERS := $(wildcard lib/*.h) $(wildcard lib/*/*.h)
 
