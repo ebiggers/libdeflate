@@ -19,3 +19,16 @@
 /test_*
 tags
 cscope*
+
+# Backup files
+*~
+
+# Visual Studio
+.vscode
+*.code-workspace
+
+# macOS
+.DS_Store
+*.swp
+*.lock
+
