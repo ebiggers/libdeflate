@@ -197,8 +197,12 @@ STATIC_LIB := libdeflate$(STATIC_LIB_SUFFIX)
 LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden
 
 # Compiling for macOS on Apple Silicon ?
-ifneq ($(findstring arm64,$(TARGET_MACHINE)),) && ifneq ($(findstring -darwin,$(TARGET_MACHINE)),)
-	LIB_CFLAGS += -D_DARWIN_C_SOURCE
+ifneq ($(findstring arm64,$(TARGET_MACHINE)),)
+	ifneq ($(findstring -darwin,$(TARGET_MACHINE)),)
+		LIB_CFLAGS += -D_DARWIN_C_SOURCE
+	else
+		LIB_CFLAGS += -D_ANSI_SOURCE
+	endif
 else
 	LIB_CFLAGS += -D_ANSI_SOURCE
 endif
