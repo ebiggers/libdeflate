@@ -59,7 +59,7 @@
  * eventually summed together.
  */
 
-static u32 ATTRIBUTES
+static u32 ATTRIBUTES MAYBE_UNUSED
 FUNCNAME(u32 adler, const u8 *p, size_t len)
 {
 	const size_t max_chunk_len =

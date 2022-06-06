@@ -54,21 +54,8 @@
  */
 #define MAX_CHUNK_LEN	5552
 
-typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
-
-/* Include architecture-specific implementations if available */
-#undef DEFAULT_IMPL
-#undef DISPATCH
-#if defined(__arm__) || defined(__aarch64__)
-#  include "arm/adler32_impl.h"
-#elif defined(__i386__) || defined(__x86_64__)
-#  include "x86/adler32_impl.h"
-#endif
-
-/* Define a generic implementation if needed */
-#ifndef DEFAULT_IMPL
-#define DEFAULT_IMPL adler32_generic
-static u32 adler32_generic(u32 adler, const u8 *p, size_t len)
+static u32 MAYBE_UNUSED
+adler32_generic(u32 adler, const u8 *p, size_t len)
 {
 	u32 s1 = adler & 0xFFFF;
 	u32 s2 = adler >> 16;
@@ -99,15 +86,28 @@ static u32 adler32_generic(u32 adler, const u8 *p, size_t len)
 
 	return (s2 << 16) | s1;
 }
-#endif /* !DEFAULT_IMPL */
 
-#ifdef DISPATCH
-static u32 dispatch(u32 adler32, const u8 *p, size_t len);
+/* Include architecture-specific implementation(s) if available. */
+#undef DEFAULT_IMPL
+#undef arch_select_adler32_func
+typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
+#if defined(__arm__) || defined(__aarch64__)
+#  include "arm/adler32_impl.h"
+#elif defined(__i386__) || defined(__x86_64__)
+#  include "x86/adler32_impl.h"
+#endif
 
-static volatile adler32_func_t adler32_impl = dispatch;
+#ifndef DEFAULT_IMPL
+#  define DEFAULT_IMPL adler32_generic
+#endif
+
+#ifdef arch_select_adler32_func
+static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len);
+
+static volatile adler32_func_t adler32_impl = dispatch_adler32;
 
 /* Choose the best implementation at runtime. */
-static u32 dispatch(u32 adler, const u8 *p, size_t len)
+static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len)
 {
 	adler32_func_t f = arch_select_adler32_func();
 
@@ -115,7 +115,7 @@ static u32 dispatch(u32 adler, const u8 *p, size_t len)
 		f = DEFAULT_IMPL;
 
 	adler32_impl = f;
-	return adler32_impl(adler, buffer, len);
+	return f(adler, p, len);
 }
 #else
 /* The best implementation is statically known, so call it directly. */
