@@ -1,5 +1,5 @@
 /*
- * x86/crc32_impl.h - x86 implementations of CRC-32 checksum algorithm
+ * x86/crc32_impl.h - x86 implementations of the gzip CRC-32 algorithm
  *
  * Copyright 2016 Eric Biggers
  *
@@ -30,63 +30,61 @@
 
 #include "cpu_features.h"
 
-/*
- * Include the PCLMUL/AVX implementation?  Although our PCLMUL-optimized CRC-32
- * function doesn't use any AVX intrinsics specifically, it can benefit a lot
- * from being compiled for an AVX target: on Skylake, ~16700 MB/s vs. ~10100
- * MB/s.  I expect this is related to the PCLMULQDQ instructions being assembled
- * in the newer three-operand form rather than the older two-operand form.
- *
- * Note: this is only needed if __AVX__ is *not* defined, since otherwise the
- * "regular" PCLMUL implementation would already be AVX enabled.
- */
-#undef DISPATCH_PCLMUL_AVX
-#if !defined(DEFAULT_IMPL) && !defined(__AVX__) &&	\
-	X86_CPU_FEATURES_ENABLED && COMPILER_SUPPORTS_AVX_TARGET &&	\
-	(defined(__PCLMUL__) || COMPILER_SUPPORTS_PCLMUL_TARGET_INTRINSICS)
-#  define FUNCNAME		crc32_pclmul_avx
-#  define FUNCNAME_ALIGNED	crc32_pclmul_avx_aligned
-#  define ATTRIBUTES		__attribute__((target("pclmul,avx")))
-#  define DISPATCH		1
-#  define DISPATCH_PCLMUL_AVX	1
-#  include "crc32_pclmul_template.h"
-#endif
-
 /* PCLMUL implementation */
-#undef DISPATCH_PCLMUL
-#if !defined(DEFAULT_IMPL) &&	\
-	(defined(__PCLMUL__) || (X86_CPU_FEATURES_ENABLED &&	\
-				 COMPILER_SUPPORTS_PCLMUL_TARGET_INTRINSICS))
-#  define FUNCNAME		crc32_pclmul
-#  define FUNCNAME_ALIGNED	crc32_pclmul_aligned
-#  ifdef __PCLMUL__
+#if HAVE_PCLMUL_INTRIN
+#  define SUFFIX			 _pclmul
+#  define crc32_x86_pclmul	crc32_x86_pclmul
+#  if HAVE_PCLMUL_NATIVE
 #    define ATTRIBUTES
-#    define DEFAULT_IMPL	crc32_pclmul
 #  else
 #    define ATTRIBUTES		__attribute__((target("pclmul")))
-#    define DISPATCH		1
-#    define DISPATCH_PCLMUL	1
 #  endif
-#  include "crc32_pclmul_template.h"
+#  include "crc32_template.h"
 #endif
 
-#ifdef DISPATCH
+/*
+ * PCLMUL/AVX implementation.  Although the PCLMUL-optimized CRC-32 function
+ * doesn't use any AVX intrinsics specifically, it can benefit a lot from being
+ * compiled for an AVX target: on Skylake, ~16700 MB/s vs. ~10100 MB/s.  This is
+ * probably related to the PCLMULQDQ instructions being assembled in the newer
+ * three-operand form rather than the older two-operand form.
+ */
+#if HAVE_PCLMUL_INTRIN && \
+	(HAVE_PCLMUL_NATIVE && HAVE_AVX_NATIVE) || \
+	(HAVE_PCLMUL_TARGET && HAVE_AVX_TARGET)
+#  define SUFFIX			 _pclmul_avx
+#  define crc32_x86_pclmul_avx	crc32_x86_pclmul_avx
+#  if HAVE_PCLMUL_NATIVE && HAVE_AVX_NATIVE
+#    define ATTRIBUTES
+#  else
+#    define ATTRIBUTES		__attribute__((target("pclmul,avx")))
+#  endif
+#  include "crc32_template.h"
+#endif
+
+/*
+ * If the best implementation is statically available, use it unconditionally.
+ * Otherwise choose the best implementation at runtime.
+ */
+#if defined(crc32_x86_pclmul_avx) && HAVE_PCLMUL_NATIVE && HAVE_AVX_NATIVE
+#define DEFAULT_IMPL	crc32_x86_pclmul_avx
+#else
 static inline crc32_func_t
 arch_select_crc32_func(void)
 {
-	const u32 features = get_x86_cpu_features();
+	const u32 features MAYBE_UNUSED = get_x86_cpu_features();
 
-#ifdef DISPATCH_PCLMUL_AVX
-	if ((features & X86_CPU_FEATURE_PCLMUL) &&
-	    (features & X86_CPU_FEATURE_AVX))
-		return crc32_pclmul_avx;
+#ifdef crc32_x86_pclmul_avx
+	if (HAVE_PCLMUL(features) && HAVE_AVX(features))
+		return crc32_x86_pclmul_avx;
 #endif
-#ifdef DISPATCH_PCLMUL
-	if (features & X86_CPU_FEATURE_PCLMUL)
-		return crc32_pclmul;
+#ifdef crc32_x86_pclmul
+	if (HAVE_PCLMUL(features))
+		return crc32_x86_pclmul;
 #endif
 	return NULL;
 }
-#endif /* DISPATCH */
+#define arch_select_crc32_func	arch_select_crc32_func
+#endif
 
 #endif /* LIB_X86_CRC32_IMPL_H */
