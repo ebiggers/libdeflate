@@ -18,7 +18,7 @@
 static inline decompress_func_t
 arch_select_decompress_func(void)
 {
-	u32 features = get_cpu_features();
+	const u32 features = get_x86_cpu_features();
 
 #ifdef DISPATCH_BMI2
 	if (features & X86_CPU_FEATURE_BMI2)

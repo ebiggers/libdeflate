@@ -316,7 +316,7 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 static inline adler32_func_t
 arch_select_adler32_func(void)
 {
-	u32 features = get_cpu_features();
+	const u32 features = get_x86_cpu_features();
 
 #ifdef DISPATCH_AVX512BW
 	if (features & X86_CPU_FEATURE_AVX512BW)

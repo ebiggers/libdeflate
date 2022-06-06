@@ -112,7 +112,7 @@ adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 static inline adler32_func_t
 arch_select_adler32_func(void)
 {
-	u32 features = get_cpu_features();
+	const u32 features = get_arm_cpu_features();
 
 #ifdef DISPATCH_NEON
 	if (features & ARM_CPU_FEATURE_NEON)

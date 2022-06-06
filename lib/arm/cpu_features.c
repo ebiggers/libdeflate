@@ -100,7 +100,7 @@ out:
 	close(fd);
 }
 
-static u32 get_arm_cpu_features(void)
+static u32 query_arm_cpu_features(void)
 {
 	u32 features = 0;
 	unsigned long hwcap = 0;
@@ -144,7 +144,7 @@ static const struct {
 	{ "hw.optional.armv8_crc32",	ARM_CPU_FEATURE_CRC32 },
 };
 
-static u32 get_arm_cpu_features(void)
+static u32 query_arm_cpu_features(void)
 {
 	u32 features = 0;
 	size_t i;
@@ -170,16 +170,16 @@ static const struct cpu_feature arm_cpu_feature_table[] = {
 	{ARM_CPU_FEATURE_CRC32,		"crc32"},
 };
 
-volatile u32 _cpu_features = 0;
+volatile u32 libdeflate_arm_cpu_features = 0;
 
-void setup_cpu_features(void)
+void libdeflate_init_arm_cpu_features(void)
 {
-	u32 features = get_arm_cpu_features();
+	u32 features = query_arm_cpu_features();
 
 	disable_cpu_features_for_testing(&features, arm_cpu_feature_table,
 					 ARRAY_LEN(arm_cpu_feature_table));
 
-	_cpu_features = features | ARM_CPU_FEATURES_KNOWN;
+	libdeflate_arm_cpu_features = features | ARM_CPU_FEATURES_KNOWN;
 }
 
 #endif /* ARM_CPU_FEATURES_ENABLED */

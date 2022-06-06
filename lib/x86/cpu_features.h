@@ -14,8 +14,6 @@
 #  define X86_CPU_FEATURES_ENABLED 0
 #endif
 
-#if X86_CPU_FEATURES_ENABLED
-
 #define X86_CPU_FEATURE_SSE2		0x00000001
 #define X86_CPU_FEATURE_PCLMUL		0x00000002
 #define X86_CPU_FEATURE_AVX		0x00000004
@@ -23,19 +21,20 @@
 #define X86_CPU_FEATURE_BMI2		0x00000010
 #define X86_CPU_FEATURE_AVX512BW	0x00000020
 
+#if X86_CPU_FEATURES_ENABLED
 #define X86_CPU_FEATURES_KNOWN		0x80000000
+extern volatile u32 libdeflate_x86_cpu_features;
 
-extern volatile u32 _cpu_features;
+void libdeflate_init_x86_cpu_features(void);
 
-void setup_cpu_features(void);
-
-static inline u32 get_cpu_features(void)
+static inline u32 get_x86_cpu_features(void)
 {
-	if (_cpu_features == 0)
-		setup_cpu_features();
-	return _cpu_features;
+	if (libdeflate_x86_cpu_features == 0)
+		libdeflate_init_x86_cpu_features();
+	return libdeflate_x86_cpu_features;
 }
-
-#endif /* X86_CPU_FEATURES_ENABLED */
+#else /* X86_CPU_FEATURES_ENABLED */
+static inline u32 get_x86_cpu_features(void) { return 0; }
+#endif /* !X86_CPU_FEATURES_ENABLED */
 
 #endif /* LIB_X86_CPU_FEATURES_H */
