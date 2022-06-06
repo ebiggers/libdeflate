@@ -28,12 +28,12 @@
 #ifndef COMMON_COMMON_DEFS_H
 #define COMMON_COMMON_DEFS_H
 
-#ifndef _MSC_VER
-#  include <stdbool.h>
-#  include <stdlib.h>	/* for _byteswap_*() */
-#endif
+#include <stdbool.h>
 #include <stddef.h>	/* for size_t */
 #include <stdint.h>
+#ifndef _MSC_VER
+#  include <stdlib.h>	/* for _byteswap_*() */
+#endif
 #ifndef FREESTANDING
 #  include <string.h>	/* for memcpy() */
 #endif
@@ -51,19 +51,6 @@ typedef int8_t s8;
 typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
-
-/* bool */
-#ifdef _MSC_VER
- /*
-  * Old versions of MSVC (e.g. VS2010) don't have the C99 header stdbool.h.
-  * Beware: the below replacement isn't fully standard, since normally any value
-  * != 0 should be implicitly cast to a bool with value 1... but that doesn't
-  * happen if bool is really just an 'int'.
-  */
-   typedef int bool;
-#  define true	1
-#  define false	0
-#endif
 
 /* ssize_t, if not available in <sys/types.h> */
 #ifdef _MSC_VER
