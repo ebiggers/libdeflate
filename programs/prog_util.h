@@ -42,7 +42,7 @@
 #  include <sys/types.h>
 #endif
 
-#include "../common/common_defs.h"
+#include "../common_defs.h"
 
 #ifdef __GNUC__
 # define _printf(str_idx, args_idx)	\

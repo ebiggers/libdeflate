@@ -28,7 +28,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-#include "../common/common_defs.h"
+#include "../common_defs.h"
 
 /* The generator polynomial G(x) for the gzip CRC-32 */
 #define CRCPOLY		0xEDB88320 /* G(x) without x^32 term */

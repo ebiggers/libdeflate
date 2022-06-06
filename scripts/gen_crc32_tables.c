@@ -27,7 +27,7 @@
 
 #include <stdio.h>
 
-#include "../common/common_defs.h"
+#include "../common_defs.h"
 
 #define CRCPOLY	0xEDB88320 /* G(x) without x^32 term */
 

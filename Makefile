@@ -187,7 +187,7 @@ endif
 
 ##############################################################################
 
-COMMON_HEADERS := $(wildcard common/*.h) libdeflate.h
+COMMON_HEADERS := libdeflate.h common_defs.h
 DEFAULT_TARGETS :=
 
 #### Library

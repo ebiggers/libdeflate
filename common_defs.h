@@ -25,8 +25,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef COMMON_COMMON_DEFS_H
-#define COMMON_COMMON_DEFS_H
+#ifndef COMMON_DEFS_H
+#define COMMON_DEFS_H
 
 #include <stdbool.h>
 #include <stddef.h>	/* for size_t */
@@ -625,4 +625,4 @@ rbit32(u32 v)
 #define rbit32 rbit32
 #endif
 
-#endif /* COMMON_COMMON_DEFS_H */
+#endif /* COMMON_DEFS_H */

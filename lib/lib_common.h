@@ -12,7 +12,7 @@
 
 #define BUILDING_LIBDEFLATE
 
-#include "../common/common_defs.h"
+#include "../common_defs.h"
 
 void *libdeflate_malloc(size_t size);
 void libdeflate_free(void *ptr);
