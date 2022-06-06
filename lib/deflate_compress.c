@@ -3785,7 +3785,7 @@ libdeflate_free_compressor(struct libdeflate_compressor *c)
 }
 
 unsigned int
-deflate_get_compression_level(struct libdeflate_compressor *c)
+libdeflate_get_compression_level(struct libdeflate_compressor *c)
 {
 	return c->compression_level;
 }
