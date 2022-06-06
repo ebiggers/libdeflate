@@ -26,7 +26,6 @@
  * shared library, since these symbols are not exported.
  */
 #define SYM_FIXUP(sym)			_libdeflate_##sym
-#define deflate_get_compression_level	SYM_FIXUP(deflate_get_compression_level)
 #define _cpu_features			SYM_FIXUP(_cpu_features)
 #define setup_cpu_features		SYM_FIXUP(setup_cpu_features)
 
