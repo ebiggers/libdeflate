@@ -148,12 +148,12 @@ static void test_random_buffers(u8 *buffer, u8 *guarded_buf_end,
 int
 tmain(int argc, tchar *argv[])
 {
-	u8 *buffer = xmalloc(32768);
+	u8 *buffer = xmalloc(262144);
 	u8 *guarded_buf_start, *guarded_buf_end;
 
 	begin_program(argv);
 
-	alloc_guarded_buffer(32768, &guarded_buf_start, &guarded_buf_end);
+	alloc_guarded_buffer(262144, &guarded_buf_start, &guarded_buf_end);
 
 	rng_seed = time(NULL);
 	srand(rng_seed);
@@ -164,9 +164,10 @@ tmain(int argc, tchar *argv[])
 	test_initial_values(crc32_zlib, 0);
 
 	/* Test different buffer sizes and alignments */
-	test_random_buffers(buffer, guarded_buf_end, 256, 5000);
-	test_random_buffers(buffer, guarded_buf_end, 1024, 500);
-	test_random_buffers(buffer, guarded_buf_end, 32768, 50);
+	test_random_buffers(buffer, guarded_buf_end, 256,  5000);
+	test_random_buffers(buffer, guarded_buf_end, 1024,  500);
+	test_random_buffers(buffer, guarded_buf_end, 32768,  50);
+	test_random_buffers(buffer, guarded_buf_end, 262144, 25);
 
 	/*
 	 * Test Adler-32 overflow cases.  For example, given all 0xFF bytes and
