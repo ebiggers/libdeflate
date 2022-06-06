@@ -93,7 +93,7 @@
 #    ifdef __clang__
 #      define ATTRIBUTES  __attribute__((target("crypto,crc")))
 #    else
-#      define ATTRIBUTES  __attribute__((target("arch=armv8-a+crypto+crc")))
+#      define ATTRIBUTES  __attribute__((target("+crypto,+crc")))
 #    endif
 #  endif
 #  define ENABLE_CRC		1
@@ -116,7 +116,7 @@
 #    ifdef __clang__
 #      define ATTRIBUTES  __attribute__((target("crypto,crc,sha3")))
 #    else
-#      define ATTRIBUTES  __attribute__((target("arch=armv8.2-a+crypto+crc+sha3")))
+#      define ATTRIBUTES  __attribute__((target("+crypto,+crc,+sha3")))
 #    endif
 #  endif
 #  define ENABLE_CRC		1
