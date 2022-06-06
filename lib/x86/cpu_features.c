@@ -30,8 +30,6 @@
 
 #if X86_CPU_FEATURES_ENABLED
 
-volatile u32 _cpu_features = 0;
-
 /* With old GCC versions we have to manually save and restore the x86_32 PIC
  * register (ebx).  See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47602  */
 #if defined(__i386__) && defined(__PIC__)
@@ -85,8 +83,10 @@ static const struct cpu_feature x86_cpu_feature_table[] = {
 	{X86_CPU_FEATURE_AVX512BW,	"avx512bw"},
 };
 
-/* Initialize _cpu_features with bits for interesting processor features. */
-void setup_cpu_features(void)
+volatile u32 libdeflate_x86_cpu_features = 0;
+
+/* Initialize libdeflate_x86_cpu_features. */
+void libdeflate_init_x86_cpu_features(void)
 {
 	u32 features = 0;
 	u32 dummy1, dummy2, dummy3, dummy4;
@@ -146,7 +146,7 @@ out:
 	disable_cpu_features_for_testing(&features, x86_cpu_feature_table,
 					 ARRAY_LEN(x86_cpu_feature_table));
 
-	_cpu_features = features | X86_CPU_FEATURES_KNOWN;
+	libdeflate_x86_cpu_features = features | X86_CPU_FEATURES_KNOWN;
 }
 
 #endif /* X86_CPU_FEATURES_ENABLED */

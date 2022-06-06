@@ -234,7 +234,7 @@ crc32_pmull_aligned(u32 remainder, const uint8x16_t *p, size_t nr_segs)
 static inline crc32_func_t
 arch_select_crc32_func(void)
 {
-	u32 features = get_cpu_features();
+	const u32 features = get_arm_cpu_features();
 
 #ifdef DISPATCH_ARM
 	if (features & ARM_CPU_FEATURE_CRC32)

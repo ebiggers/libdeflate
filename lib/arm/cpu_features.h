@@ -17,25 +17,24 @@
 #  define ARM_CPU_FEATURES_ENABLED 0
 #endif
 
-#if ARM_CPU_FEATURES_ENABLED
-
 #define ARM_CPU_FEATURE_NEON		0x00000001
 #define ARM_CPU_FEATURE_PMULL		0x00000002
 #define ARM_CPU_FEATURE_CRC32		0x00000004
 
+#if ARM_CPU_FEATURES_ENABLED
 #define ARM_CPU_FEATURES_KNOWN		0x80000000
+extern volatile u32 libdeflate_arm_cpu_features;
 
-extern volatile u32 _cpu_features;
+void libdeflate_init_arm_cpu_features(void);
 
-void setup_cpu_features(void);
-
-static inline u32 get_cpu_features(void)
+static inline u32 get_arm_cpu_features(void)
 {
-	if (_cpu_features == 0)
-		setup_cpu_features();
-	return _cpu_features;
+	if (libdeflate_arm_cpu_features == 0)
+		libdeflate_init_arm_cpu_features();
+	return libdeflate_arm_cpu_features;
 }
-
-#endif /* ARM_CPU_FEATURES_ENABLED */
+#else /* ARM_CPU_FEATURES_ENABLED */
+static inline u32 get_arm_cpu_features(void) { return 0; }
+#endif /* !ARM_CPU_FEATURES_ENABLED */
 
 #endif /* LIB_ARM_CPU_FEATURES_H */

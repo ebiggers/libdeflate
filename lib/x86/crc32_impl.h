@@ -74,7 +74,7 @@
 static inline crc32_func_t
 arch_select_crc32_func(void)
 {
-	u32 features = get_cpu_features();
+	const u32 features = get_x86_cpu_features();
 
 #ifdef DISPATCH_PCLMUL_AVX
 	if ((features & X86_CPU_FEATURE_PCLMUL) &&
