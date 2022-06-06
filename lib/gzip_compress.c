@@ -27,7 +27,6 @@
 
 #include "deflate_compress.h"
 #include "gzip_constants.h"
-#include "unaligned.h"
 
 #include "libdeflate.h"
 

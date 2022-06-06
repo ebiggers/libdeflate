@@ -25,8 +25,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "lib_common.h"
 #include "gzip_constants.h"
-#include "unaligned.h"
 
 #include "libdeflate.h"
 

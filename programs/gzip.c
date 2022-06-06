@@ -185,13 +185,6 @@ out:
 	return ret;
 }
 
-static u32
-load_u32_gzip(const u8 *p)
-{
-	return ((u32)p[0] << 0) | ((u32)p[1] << 8) |
-		((u32)p[2] << 16) | ((u32)p[3] << 24);
-}
-
 static int
 do_decompress(struct libdeflate_decompressor *decompressor,
 	      struct file_stream *in, struct file_stream *out,
@@ -223,7 +216,8 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 	 * not be the largest; or the real size may be >= 4 GiB, causing ISIZE
 	 * to overflow.  In any case, make sure to allocate at least one byte.
 	 */
-	uncompressed_size = load_u32_gzip(&compressed_data[compressed_size - 4]);
+	uncompressed_size =
+		get_unaligned_le32(&compressed_data[compressed_size - 4]);
 	if (uncompressed_size == 0)
 		uncompressed_size = 1;
 
