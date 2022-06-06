@@ -1,5 +1,5 @@
 /*
- * x86/cpu_features.c - feature detection for x86 processors
+ * x86/cpu_features.c - feature detection for x86 CPUs
  *
  * Copyright 2016 Eric Biggers
  *
@@ -28,7 +28,7 @@
 #include "../cpu_features_common.h" /* must be included first */
 #include "cpu_features.h"
 
-#if X86_CPU_FEATURES_ENABLED
+#if HAVE_DYNAMIC_X86_CPU_FEATURES
 
 /* With old GCC versions we have to manually save and restore the x86_32 PIC
  * register (ebx).  See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47602  */
@@ -149,4 +149,4 @@ out:
 	libdeflate_x86_cpu_features = features | X86_CPU_FEATURES_KNOWN;
 }
 
-#endif /* X86_CPU_FEATURES_ENABLED */
+#endif /* HAVE_DYNAMIC_X86_CPU_FEATURES */
