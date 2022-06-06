@@ -95,8 +95,8 @@
 #  define FUNCNAME		adler32_avx512bw
 #  define FUNCNAME_CHUNK	adler32_avx512bw_chunk
 #  define IMPL_ALIGNMENT	64
-#  define IMPL_SEGMENT_SIZE	64
-#  define IMPL_MAX_CHUNK_SIZE	MAX_CHUNK_SIZE
+#  define IMPL_SEGMENT_LEN	64
+#  define IMPL_MAX_CHUNK_LEN	MAX_CHUNK_LEN
 #  ifdef __AVX512BW__
 #    define ATTRIBUTES
 #    define DEFAULT_IMPL	adler32_avx512bw
@@ -123,33 +123,39 @@ adler32_avx512bw_chunk(const __m512i *p, const __m512i *const end,
 	__v16si v_s2 = (__v16si)zeroes;
 
 	do {
-		/* Load the next 64-byte segment */
+		/* Load the next 64-byte segment. */
 		__m512i bytes = *p++;
-
-		/* Multiply the bytes by 64...1 (the number of times they need
-		 * to be added to s2) and add adjacent products */
+		/*
+		 * Multiply the bytes by 64...1 (the number of times they need
+		 * to be added to s2) and add adjacent products.
+		 */
 		__v32hi sums = (__v32hi)_mm512_maddubs_epi16(
 						bytes, (__m512i)multipliers);
-
-		/* Keep sum of all previous s1 counters, for adding to s2 later.
-		 * This allows delaying the multiplication by 64 to the end. */
+		/*
+		 * Keep sum of all previous s1 counters, for adding to s2 later.
+		 * This allows delaying the multiplication by 64 to the end.
+		 */
 		v_s1_sums += v_s1;
-
-		/* Add the sum of each group of 8 bytes to the corresponding s1
-		 * counter */
+		/*
+		 * Add the sum of each group of 8 bytes to the corresponding s1
+		 * counter.
+		 */
 		v_s1 += (__v16si)_mm512_sad_epu8(bytes, zeroes);
-
-		/* Add the sum of each group of 4 products of the bytes by
-		 * 64...1 to the corresponding s2 counter */
+		/*
+		 * Add the sum of each group of 4 products of the bytes by
+		 * 64...1 to the corresponding s2 counter.
+		 */
 		v_s2 += (__v16si)_mm512_madd_epi16((__m512i)sums,
 						   (__m512i)ones);
 	} while (p != end);
 
-	/* Finish the s2 counters by adding the sum of the s1 values at the
-	 * beginning of each segment, multiplied by the segment size (64) */
+	/*
+	 * Finish the s2 counters by adding the sum of the s1 values at the
+	 * beginning of each segment, multiplied by the segment length (64).
+	 */
 	v_s2 += (__v16si)_mm512_slli_epi32((__m512i)v_s1_sums, 6);
 
-	/* Add the counters to the real s1 and s2 */
+	/* Add the counters to the real s1 and s2. */
 	ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1, v_s2);
 }
 #  include "../adler32_vec_template.h"
@@ -163,8 +169,8 @@ adler32_avx512bw_chunk(const __m512i *p, const __m512i *const end,
 #  define FUNCNAME		adler32_avx2
 #  define FUNCNAME_CHUNK	adler32_avx2_chunk
 #  define IMPL_ALIGNMENT	32
-#  define IMPL_SEGMENT_SIZE	32
-#  define IMPL_MAX_CHUNK_SIZE	MAX_CHUNK_SIZE
+#  define IMPL_SEGMENT_LEN	32
+#  define IMPL_MAX_CHUNK_LEN	MAX_CHUNK_LEN
 #  ifdef __AVX2__
 #    define ATTRIBUTES
 #    define DEFAULT_IMPL	adler32_avx2
@@ -188,32 +194,38 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 	__v8su v_s2 = (__v8su)zeroes;
 
 	do {
-		/* Load the next 32-byte segment */
+		/* Load the next 32-byte segment. */
 		__m256i bytes = *p++;
-
-		/* Multiply the bytes by 32...1 (the number of times they need
-		 * to be added to s2) and add adjacent products */
+		/*
+		 * Multiply the bytes by 32...1 (the number of times they need
+		 * to be added to s2) and add adjacent products.
+		 */
 		__v16hu sums = (__v16hu)_mm256_maddubs_epi16(
 						bytes, (__m256i)multipliers);
-
-		/* Keep sum of all previous s1 counters, for adding to s2 later.
-		 * This allows delaying the multiplication by 32 to the end. */
+		/*
+		 * Keep sum of all previous s1 counters, for adding to s2 later.
+		 * This allows delaying the multiplication by 32 to the end.
+		 */
 		v_s1_sums += v_s1;
-
-		/* Add the sum of each group of 8 bytes to the corresponding s1
-		 * counter */
+		/*
+		 * Add the sum of each group of 8 bytes to the corresponding s1
+		 * counter.
+		 */
 		v_s1 += (__v8su)_mm256_sad_epu8(bytes, zeroes);
-
-		/* Add the sum of each group of 4 products of the bytes by
-		 * 32...1 to the corresponding s2 counter */
+		/*
+		 * Add the sum of each group of 4 products of the bytes by
+		 * 32...1 to the corresponding s2 counter.
+		 */
 		v_s2 += (__v8su)_mm256_madd_epi16((__m256i)sums, (__m256i)ones);
 	} while (p != end);
 
-	/* Finish the s2 counters by adding the sum of the s1 values at the
-	 * beginning of each segment, multiplied by the segment size (32) */
+	/*
+	 * Finish the s2 counters by adding the sum of the s1 values at the
+	 * beginning of each segment, multiplied by the segment length (32).
+	 */
 	v_s2 += (__v8su)_mm256_slli_epi32((__m256i)v_s1_sums, 5);
 
-	/* Add the counters to the real s1 and s2 */
+	/* Add the counters to the real s1 and s2. */
 	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2);
 }
 #  include "../adler32_vec_template.h"
@@ -227,13 +239,13 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 #  define FUNCNAME		adler32_sse2
 #  define FUNCNAME_CHUNK	adler32_sse2_chunk
 #  define IMPL_ALIGNMENT	16
-#  define IMPL_SEGMENT_SIZE	32
+#  define IMPL_SEGMENT_LEN	32
 /*
  * The 16-bit precision byte counters must not be allowed to undergo *signed*
  * overflow, otherwise the signed multiplications at the end (_mm_madd_epi16)
  * would behave incorrectly.
  */
-#  define IMPL_MAX_CHUNK_SIZE	(32 * (0x7FFF / 0xFF))
+#  define IMPL_MAX_CHUNK_LEN	(32 * (0x7FFF / 0xFF))
 #  ifdef __SSE2__
 #    define ATTRIBUTES
 #    define DEFAULT_IMPL	adler32_sse2
@@ -265,7 +277,7 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 	__v8hu v_byte_sums_d = (__v8hu)zeroes;
 
 	do {
-		/* Load the next 32 bytes */
+		/* Load the next 32 bytes. */
 		const __m128i bytes1 = *p++;
 		const __m128i bytes2 = *p++;
 
@@ -295,7 +307,7 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 
 	} while (p != end);
 
-	/* Finish calculating the s2 counters */
+	/* Finish calculating the s2 counters. */
 	v_s2 = (__v4su)_mm_slli_epi32((__m128i)v_s2, 5);
 	v_s2 += (__v4su)_mm_madd_epi16((__m128i)v_byte_sums_a,
 				       (__m128i)(__v8hu){ 32, 31, 30, 29, 28, 27, 26, 25 });
@@ -306,7 +318,7 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 	v_s2 += (__v4su)_mm_madd_epi16((__m128i)v_byte_sums_d,
 				       (__m128i)(__v8hu){ 8,  7,  6,  5,  4,  3,  2,  1 });
 
-	/* Add the counters to the real s1 and s2 */
+	/* Add the counters to the real s1 and s2. */
 	ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2);
 }
 #  include "../adler32_vec_template.h"

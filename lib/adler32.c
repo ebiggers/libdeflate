@@ -28,13 +28,13 @@
 #include "lib_common.h"
 #include "libdeflate.h"
 
-/* The Adler-32 divisor, or "base", value. */
+/* The Adler-32 divisor, or "base", value */
 #define DIVISOR 65521
 
 /*
- * MAX_CHUNK_SIZE is the most bytes that can be processed without the
- * possibility of s2 overflowing when it is represented as an unsigned 32-bit
- * integer.  This value was computed using the following Python script:
+ * MAX_CHUNK_LEN is the most bytes that can be processed without the possibility
+ * of s2 overflowing when it is represented as an unsigned 32-bit integer.  This
+ * value was computed using the following Python script:
  *
  *	divisor = 65521
  *	count = 0
@@ -52,9 +52,9 @@
  * has value 0xFF and that s1 and s2 started with the highest possible values
  * modulo the divisor.
  */
-#define MAX_CHUNK_SIZE	5552
+#define MAX_CHUNK_LEN	5552
 
-typedef u32 (*adler32_func_t)(u32, const u8 *, size_t);
+typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
 
 /* Include architecture-specific implementations if available */
 #undef DEFAULT_IMPL
@@ -68,16 +68,16 @@ typedef u32 (*adler32_func_t)(u32, const u8 *, size_t);
 /* Define a generic implementation if needed */
 #ifndef DEFAULT_IMPL
 #define DEFAULT_IMPL adler32_generic
-static u32 adler32_generic(u32 adler, const u8 *p, size_t size)
+static u32 adler32_generic(u32 adler, const u8 *p, size_t len)
 {
 	u32 s1 = adler & 0xFFFF;
 	u32 s2 = adler >> 16;
-	const u8 * const end = p + size;
+	const u8 * const end = p + len;
 
 	while (p != end) {
-		size_t chunk_size = MIN(end - p, MAX_CHUNK_SIZE);
-		const u8 *chunk_end = p + chunk_size;
-		size_t num_unrolled_iterations = chunk_size / 4;
+		size_t chunk_len = MIN(end - p, MAX_CHUNK_LEN);
+		const u8 *chunk_end = p + chunk_len;
+		size_t num_unrolled_iterations = chunk_len / 4;
 
 		while (num_unrolled_iterations--) {
 			s1 += *p++;
@@ -102,12 +102,12 @@ static u32 adler32_generic(u32 adler, const u8 *p, size_t size)
 #endif /* !DEFAULT_IMPL */
 
 #ifdef DISPATCH
-static u32 dispatch(u32, const u8 *, size_t);
+static u32 dispatch(u32 adler32, const u8 *p, size_t len);
 
 static volatile adler32_func_t adler32_impl = dispatch;
 
-/* Choose the fastest implementation at runtime */
-static u32 dispatch(u32 adler, const u8 *buffer, size_t size)
+/* Choose the best implementation at runtime. */
+static u32 dispatch(u32 adler, const u8 *p, size_t len)
 {
 	adler32_func_t f = arch_select_adler32_func();
 
@@ -115,16 +115,17 @@ static u32 dispatch(u32 adler, const u8 *buffer, size_t size)
 		f = DEFAULT_IMPL;
 
 	adler32_impl = f;
-	return adler32_impl(adler, buffer, size);
+	return adler32_impl(adler, buffer, len);
 }
 #else
-#  define adler32_impl DEFAULT_IMPL /* only one implementation, use it */
+/* The best implementation is statically known, so call it directly. */
+#define adler32_impl DEFAULT_IMPL
 #endif
 
 LIBDEFLATEEXPORT u32 LIBDEFLATEAPI
-libdeflate_adler32(u32 adler, const void *buffer, size_t size)
+libdeflate_adler32(u32 adler, const void *buffer, size_t len)
 {
-	if (buffer == NULL) /* return initial value */
+	if (buffer == NULL) /* Return initial value. */
 		return 1;
-	return adler32_impl(adler, buffer, size);
+	return adler32_impl(adler, buffer, len);
 }

@@ -60,18 +60,17 @@
  */
 
 static u32 ATTRIBUTES
-FUNCNAME(u32 adler, const u8 *p, size_t size)
+FUNCNAME(u32 adler, const u8 *p, size_t len)
 {
+	const size_t max_chunk_len =
+		MIN(MAX_CHUNK_LEN, IMPL_MAX_CHUNK_LEN) -
+		(MIN(MAX_CHUNK_LEN, IMPL_MAX_CHUNK_LEN) % IMPL_SEGMENT_LEN);
 	u32 s1 = adler & 0xFFFF;
 	u32 s2 = adler >> 16;
-	const u8 * const end = p + size;
+	const u8 * const end = p + len;
 	const u8 *vend;
-	const size_t max_chunk_size =
-		MIN(MAX_CHUNK_SIZE, IMPL_MAX_CHUNK_SIZE) -
-		(MIN(MAX_CHUNK_SIZE, IMPL_MAX_CHUNK_SIZE) %
-		 IMPL_SEGMENT_SIZE);
 
-	/* Process a byte at a time until the needed alignment is reached */
+	/* Process a byte at a time until the needed alignment is reached. */
 	if (p != end && (uintptr_t)p % IMPL_ALIGNMENT) {
 		do {
 			s1 += *p++;
@@ -82,28 +81,28 @@ FUNCNAME(u32 adler, const u8 *p, size_t size)
 	}
 
 	/*
-	 * Process "chunks" of bytes using vector instructions.  Chunk sizes are
-	 * limited to MAX_CHUNK_SIZE, which guarantees that s1 and s2 never
+	 * Process "chunks" of bytes using vector instructions.  Chunk lengths
+	 * are limited to MAX_CHUNK_LEN, which guarantees that s1 and s2 never
 	 * overflow before being reduced modulo DIVISOR.  For vector processing,
-	 * chunk sizes are also made evenly divisible by IMPL_SEGMENT_SIZE and
-	 * may be further limited to IMPL_MAX_CHUNK_SIZE.
+	 * chunk lengths are also made evenly divisible by IMPL_SEGMENT_LEN and
+	 * may be further limited to IMPL_MAX_CHUNK_LEN.
 	 */
-	STATIC_ASSERT(IMPL_SEGMENT_SIZE % IMPL_ALIGNMENT == 0);
-	vend = end - ((size_t)(end - p) % IMPL_SEGMENT_SIZE);
+	STATIC_ASSERT(IMPL_SEGMENT_LEN % IMPL_ALIGNMENT == 0);
+	vend = end - ((size_t)(end - p) % IMPL_SEGMENT_LEN);
 	while (p != vend) {
-		size_t chunk_size = MIN((size_t)(vend - p), max_chunk_size);
+		size_t chunk_len = MIN((size_t)(vend - p), max_chunk_len);
 
-		s2 += s1 * chunk_size;
+		s2 += s1 * chunk_len;
 
-		FUNCNAME_CHUNK((const void *)p, (const void *)(p + chunk_size),
+		FUNCNAME_CHUNK((const void *)p, (const void *)(p + chunk_len),
 			       &s1, &s2);
 
-		p += chunk_size;
+		p += chunk_len;
 		s1 %= DIVISOR;
 		s2 %= DIVISOR;
 	}
 
-	/* Process any remaining bytes */
+	/* Process any remaining bytes. */
 	if (p != end) {
 		do {
 			s1 += *p++;
@@ -120,5 +119,5 @@ FUNCNAME(u32 adler, const u8 *p, size_t size)
 #undef FUNCNAME_CHUNK
 #undef ATTRIBUTES
 #undef IMPL_ALIGNMENT
-#undef IMPL_SEGMENT_SIZE
-#undef IMPL_MAX_CHUNK_SIZE
+#undef IMPL_SEGMENT_LEN
+#undef IMPL_MAX_CHUNK_LEN

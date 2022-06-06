@@ -38,9 +38,9 @@
 #  define FUNCNAME		adler32_neon
 #  define FUNCNAME_CHUNK	adler32_neon_chunk
 #  define IMPL_ALIGNMENT	16
-#  define IMPL_SEGMENT_SIZE	32
+#  define IMPL_SEGMENT_LEN	32
 /* Prevent unsigned overflow of the 16-bit precision byte counters */
-#  define IMPL_MAX_CHUNK_SIZE	(32 * (0xFFFF / 0xFF))
+#  define IMPL_MAX_CHUNK_LEN	(32 * (0xFFFF / 0xFF))
 #  ifdef __ARM_NEON
 #    define ATTRIBUTES
 #    define DEFAULT_IMPL	adler32_neon
