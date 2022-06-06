@@ -147,6 +147,13 @@ typedef size_t machine_word_t;
 #  define forceinline		inline
 #endif
 
+/* MAYBE_UNUSED - mark a function or variable as maybe unused */
+#ifdef __GNUC__
+#  define MAYBE_UNUSED		__attribute__((unused))
+#else
+#  define MAYBE_UNUSED
+#endif
+
 /* restrict - hint that writes only occur through the given pointer */
 #ifdef __GNUC__
 #  define restrict		__restrict__
