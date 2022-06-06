@@ -157,7 +157,8 @@ verify_freestanding_build() {
 		return 0
 	fi
 	log "Verifying that freestanding build is really freestanding"
-	if nm libdeflate.so | grep -q ' U '; then
+	if nm libdeflate.so | grep -v '\<__stack_chk_fail\>' | grep -q ' U '
+	then
 		echo 1>&2 "Freestanding lib links to external functions!:"
 		nm libdeflate.so | grep ' U '
 		return 1
