@@ -62,4 +62,8 @@ void libdeflate_assertion_failed(const char *expr, const char *file, int line);
 #define ASSERT(expr) (void)(expr)
 #endif
 
+#define CONCAT_IMPL(a, b) a##b
+#define CONCAT(a, b) CONCAT_IMPL(a, b)
+#define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
+
 #endif /* LIB_LIB_COMMON_H */
