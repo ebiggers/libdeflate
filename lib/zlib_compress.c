@@ -26,7 +26,6 @@
  */
 
 #include "deflate_compress.h"
-#include "unaligned.h"
 #include "zlib_constants.h"
 
 #include "libdeflate.h"

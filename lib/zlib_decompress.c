@@ -25,7 +25,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "unaligned.h"
+#include "lib_common.h"
 #include "zlib_constants.h"
 
 #include "libdeflate.h"
