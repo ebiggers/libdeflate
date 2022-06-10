@@ -34,6 +34,7 @@
 
 #include "libdeflate.h"
 
+#include <inttypes.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,27 +50,6 @@
 		__attribute__((format(printf, str_idx, args_idx)))
 #else
 # define _printf(str_idx, args_idx)
-#endif
-
-#ifdef _MSC_VER
-/*
- * Old versions (e.g. VS2010) of MSC have stdint.h but not the C99 header
- * inttypes.h.  Work around this by defining the PRI* macros ourselves.
- */
-# define PRIu8  "hhu"
-# define PRIu16 "hu"
-# define PRIu32 "u"
-# define PRIu64 "llu"
-# define PRIi8  "hhi"
-# define PRIi16 "hi"
-# define PRIi32 "i"
-# define PRIi64 "lli"
-# define PRIx8  "hhx"
-# define PRIx16 "hx"
-# define PRIx32 "x"
-# define PRIx64 "llx"
-#else
-# include <inttypes.h>
 #endif
 
 #ifdef _WIN32
