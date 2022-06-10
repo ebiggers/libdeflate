@@ -134,6 +134,8 @@ typedef char  __v64qi __attribute__((__vector_size__(64)));
 #define HAVE_AVX_TARGET \
 	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
 	 (GCC_PREREQ(4, 6) || __has_builtin(__builtin_ia32_maxps256)))
+#define HAVE_AVX_INTRIN \
+	(HAVE_AVX_NATIVE || (HAVE_AVX_TARGET && HAVE_TARGET_INTRINSICS))
 
 /* AVX2 */
 #ifdef __AVX2__
