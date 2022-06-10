@@ -31,7 +31,7 @@
 #include <stdbool.h>
 #include <stddef.h>	/* for size_t */
 #include <stdint.h>
-#ifndef _MSC_VER
+#ifdef _MSC_VER
 #  include <stdlib.h>	/* for _byteswap_*() */
 #endif
 #ifndef FREESTANDING
