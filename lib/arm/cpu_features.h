@@ -102,7 +102,8 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  * <arm_neon.h> puts their definitions behind __aarch64__.
  */
 #if HAVE_NEON_INTRIN && (HAVE_PMULL_NATIVE || HAVE_PMULL_TARGET) && \
-	!(defined(__arm__) && defined(__clang__))
+	!(defined(__arm__) && defined(__clang__)) && \
+	CPU_IS_LITTLE_ENDIAN() /* pmull code on big endian is untested */
 #  define HAVE_PMULL_INTRIN	1
 #else
 #  define HAVE_PMULL_INTRIN	0
