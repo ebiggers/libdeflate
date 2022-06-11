@@ -47,10 +47,10 @@
 #define ARM_CPU_FEATURE_CRC32		0x00000004
 #define ARM_CPU_FEATURE_SHA3		0x00000008
 
-#define HAVE_NEON(features)	(HAVE_NEON_NATIVE  || (features & ARM_CPU_FEATURE_NEON))
-#define HAVE_PMULL(features)	(HAVE_PMULL_NATIVE || (features & ARM_CPU_FEATURE_PMULL))
-#define HAVE_CRC32(features)	(HAVE_CRC32_NATIVE || (features & ARM_CPU_FEATURE_CRC32))
-#define HAVE_SHA3(features)	(HAVE_SHA3_NATIVE  || (features & ARM_CPU_FEATURE_SHA3))
+#define HAVE_NEON(features)	(HAVE_NEON_NATIVE  || ((features) & ARM_CPU_FEATURE_NEON))
+#define HAVE_PMULL(features)	(HAVE_PMULL_NATIVE || ((features) & ARM_CPU_FEATURE_PMULL))
+#define HAVE_CRC32(features)	(HAVE_CRC32_NATIVE || ((features) & ARM_CPU_FEATURE_CRC32))
+#define HAVE_SHA3(features)	(HAVE_SHA3_NATIVE  || ((features) & ARM_CPU_FEATURE_SHA3))
 
 #if HAVE_DYNAMIC_ARM_CPU_FEATURES
 #define ARM_CPU_FEATURES_KNOWN		0x80000000
