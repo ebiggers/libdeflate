@@ -80,7 +80,6 @@ static const struct cpu_feature x86_cpu_feature_table[] = {
 	{X86_CPU_FEATURE_AVX,		"avx"},
 	{X86_CPU_FEATURE_AVX2,		"avx2"},
 	{X86_CPU_FEATURE_BMI2,		"bmi2"},
-	{X86_CPU_FEATURE_AVX512BW,	"avx512bw"},
 };
 
 volatile u32 libdeflate_x86_cpu_features = 0;
@@ -93,7 +92,6 @@ void libdeflate_init_x86_cpu_features(void)
 	u32 max_function;
 	u32 features_1, features_2, features_3, features_4;
 	bool os_avx_support = false;
-	bool os_avx512_support = false;
 
 	/* Get maximum supported function  */
 	cpuid(0, 0, &max_function, &dummy2, &dummy3, &dummy4);
@@ -115,13 +113,6 @@ void libdeflate_init_x86_cpu_features(void)
 		os_avx_support = IS_ALL_SET(xcr0,
 					    XCR0_BIT_SSE |
 					    XCR0_BIT_AVX);
-
-		os_avx512_support = IS_ALL_SET(xcr0,
-					       XCR0_BIT_SSE |
-					       XCR0_BIT_AVX |
-					       XCR0_BIT_OPMASK |
-					       XCR0_BIT_ZMM_HI256 |
-					       XCR0_BIT_HI16_ZMM);
 	}
 
 	if (os_avx_support && IS_SET(features_2, 28))
@@ -138,9 +129,6 @@ void libdeflate_init_x86_cpu_features(void)
 
 	if (IS_SET(features_3, 8))
 		features |= X86_CPU_FEATURE_BMI2;
-
-	if (os_avx512_support && IS_SET(features_3, 30))
-		features |= X86_CPU_FEATURE_AVX512BW;
 
 out:
 	disable_cpu_features_for_testing(&features, x86_cpu_feature_table,

@@ -44,14 +44,12 @@
 #define X86_CPU_FEATURE_AVX		0x00000004
 #define X86_CPU_FEATURE_AVX2		0x00000008
 #define X86_CPU_FEATURE_BMI2		0x00000010
-#define X86_CPU_FEATURE_AVX512BW	0x00000020
 
 #define HAVE_SSE2(features)	(HAVE_SSE2_NATIVE     || ((features) & X86_CPU_FEATURE_SSE2))
 #define HAVE_PCLMUL(features)	(HAVE_PCLMUL_NATIVE   || ((features) & X86_CPU_FEATURE_PCLMUL))
 #define HAVE_AVX(features)	(HAVE_AVX_NATIVE      || ((features) & X86_CPU_FEATURE_AVX))
 #define HAVE_AVX2(features)	(HAVE_AVX2_NATIVE     || ((features) & X86_CPU_FEATURE_AVX2))
 #define HAVE_BMI2(features)	(HAVE_BMI2_NATIVE     || ((features) & X86_CPU_FEATURE_BMI2))
-#define HAVE_AVX512BW(features)	(HAVE_AVX512BW_NATIVE || ((features) & X86_CPU_FEATURE_AVX512BW))
 
 #if HAVE_DYNAMIC_X86_CPU_FEATURES
 #define X86_CPU_FEATURES_KNOWN		0x80000000
@@ -158,25 +156,6 @@ typedef char  __v64qi __attribute__((__vector_size__(64)));
 #define HAVE_BMI2_TARGET \
 	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
 	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di)))
-
-/* AVX-512BW */
-#ifdef __AVX512BW__
-#  define HAVE_AVX512BW_NATIVE	1
-#else
-#  define HAVE_AVX512BW_NATIVE	0
-#endif
-#define HAVE_AVX512BW_TARGET \
-	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
-	 (GCC_PREREQ(5, 1) || __has_builtin(__builtin_ia32_psadbw512)))
-/*
- * clang originally added AVX-512BW support without defining
- * __builtin_ia32_psadbw512 and the corresponding _mm512_sad_epu8 intrinsic.  So
- * the condition below is a bit different from usual; it ensures we do the
- * __has_builtin check even if __AVX512BW__ is defined.
- */
-#define HAVE_AVX512BW_INTRIN \
-	(HAVE_AVX512BW_TARGET && \
-	 (HAVE_TARGET_INTRINSICS || HAVE_AVX512BW_NATIVE))
 
 #endif /* __i386__ || __x86_64__ */
 
