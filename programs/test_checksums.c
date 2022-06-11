@@ -122,8 +122,8 @@ test_adler32(const void *buffer, size_t size, u32 initial_value)
 		       adler32_libdeflate, adler32_zlib, initial_value);
 }
 
-static void test_random_buffers(u8 *buffer, u8 *guarded_buf_end,
-				size_t limit, u32 num_iter)
+static void test_random_buffers(u8 *buf_start, u8 *buf_end, size_t limit,
+				u32 num_iter)
 {
 	for (u32 i = 0; i < num_iter; i++) {
 		size_t start = rand() % limit;
@@ -132,28 +132,32 @@ static void test_random_buffers(u8 *buffer, u8 *guarded_buf_end,
 		u32 c0 = select_initial_crc();
 
 		for (size_t j = start; j < start + len; j++)
-			buffer[j] = rand();
+			buf_start[j] = rand();
 
 		/* Test with chosen size and alignment */
-		test_adler32(&buffer[start], len, a0);
-		test_crc32(&buffer[start], len, c0);
+		test_adler32(&buf_start[start], len, a0);
+		test_crc32(&buf_start[start], len, c0);
+
+		/* Test with chosen size, with guard page before input buffer */
+		memmove(buf_start, &buf_start[start], len);
+		test_adler32(buf_start, len, a0);
+		test_crc32(buf_start, len, c0);
 
 		/* Test with chosen size, with guard page after input buffer */
-		memcpy(guarded_buf_end - len, &buffer[start], len);
-		test_adler32(guarded_buf_end - len, len, a0);
-		test_crc32(guarded_buf_end - len, len, c0);
+		memmove(buf_end - len, buf_start, len);
+		test_adler32(buf_end - len, len, a0);
+		test_crc32(buf_end - len, len, c0);
 	}
 }
 
 int
 tmain(int argc, tchar *argv[])
 {
-	u8 *buffer = xmalloc(262144);
-	u8 *guarded_buf_start, *guarded_buf_end;
+	u8 *buf_start, *buf_end;
 
 	begin_program(argv);
 
-	alloc_guarded_buffer(262144, &guarded_buf_start, &guarded_buf_end);
+	alloc_guarded_buffer(262144, &buf_start, &buf_end);
 
 	rng_seed = time(NULL);
 	srand(rng_seed);
@@ -164,10 +168,10 @@ tmain(int argc, tchar *argv[])
 	test_initial_values(crc32_zlib, 0);
 
 	/* Test different buffer sizes and alignments */
-	test_random_buffers(buffer, guarded_buf_end, 256,  5000);
-	test_random_buffers(buffer, guarded_buf_end, 1024,  500);
-	test_random_buffers(buffer, guarded_buf_end, 32768,  50);
-	test_random_buffers(buffer, guarded_buf_end, 262144, 25);
+	test_random_buffers(buf_start, buf_end, 256,  5000);
+	test_random_buffers(buf_start, buf_end, 1024,  500);
+	test_random_buffers(buf_start, buf_end, 32768,  50);
+	test_random_buffers(buf_start, buf_end, 262144, 25);
 
 	/*
 	 * Test Adler-32 overflow cases.  For example, given all 0xFF bytes and
@@ -177,7 +181,7 @@ tmain(int argc, tchar *argv[])
 	 * before that point.  Also, some implementations make use of 16-bit
 	 * counters which can overflow earlier.
 	 */
-	memset(buffer, 0xFF, 32768);
+	memset(buf_start, 0xFF, 32768);
 	for (u32 i = 0; i < 20; i++) {
 		u32 initial_value;
 
@@ -186,12 +190,11 @@ tmain(int argc, tchar *argv[])
 		else
 			initial_value = select_initial_adler();
 
-		test_adler32(buffer, 5553, initial_value);
-		test_adler32(buffer, rand() % 32769, initial_value);
-		buffer[rand() % 32768] = 0xFE;
+		test_adler32(buf_start, 5553, initial_value);
+		test_adler32(buf_start, rand() % 32769, initial_value);
+		buf_start[rand() % 32768] = 0xFE;
 	}
 
-	free(buffer);
-	free_guarded_buffer(guarded_buf_start, guarded_buf_end);
+	free_guarded_buffer(buf_start, buf_end);
 	return 0;
 }
