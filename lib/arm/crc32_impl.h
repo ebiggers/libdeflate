@@ -572,8 +572,15 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #  else
 #    ifdef __clang__
 #      define ATTRIBUTES  __attribute__((target("crypto,crc,sha3")))
-#    else
+     /*
+      * With gcc, arch=armv8.2-a is needed for the sha3 intrinsics, unless the
+      * default target is armv8.3-a or later in which case it must be omitted.
+      * armv8.3-a or later can be detected by checking for __ARM_FEATURE_JCVT.
+      */
+#    elif defined(__ARM_FEATURE_JCVT)
 #      define ATTRIBUTES  __attribute__((target("+crypto,+crc,+sha3")))
+#    else
+#      define ATTRIBUTES  __attribute__((target("arch=armv8.2-a+crypto+crc+sha3")))
 #    endif
 #  endif
 #  define ENABLE_EOR3	1
