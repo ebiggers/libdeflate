@@ -127,6 +127,9 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 		/*
 		 * Interleave the processing of multiple adjacent data chunks to
 		 * take advantage of instruction-level parallelism.
+		 *
+		 * Some CPUs don't prefetch the data if it's being fetched in
+		 * multiple interleaved streams, so do explicit prefetching.
 		 */
 		while (len >= CRC32_NUM_CHUNKS * CRC32_FIXED_CHUNK_LEN) {
 			const u64 *wp0 = (const u64 *)p;
@@ -135,8 +138,22 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 			u32 crc1 = 0, crc2 = 0, crc3 = 0;
 
 			STATIC_ASSERT(CRC32_NUM_CHUNKS == 4);
-			STATIC_ASSERT(CRC32_FIXED_CHUNK_LEN % (2 * 8) == 0);
+			STATIC_ASSERT(CRC32_FIXED_CHUNK_LEN % (4 * 8) == 0);
 			do {
+				prefetchr(&wp0[64 + 0*CRC32_FIXED_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 1*CRC32_FIXED_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 2*CRC32_FIXED_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 3*CRC32_FIXED_CHUNK_LEN/8]);
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_FIXED_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_FIXED_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_FIXED_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_FIXED_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_FIXED_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_FIXED_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_FIXED_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_FIXED_CHUNK_LEN/8]));
+				wp0++;
 				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_FIXED_CHUNK_LEN/8]));
 				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_FIXED_CHUNK_LEN/8]));
 				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_FIXED_CHUNK_LEN/8]));
@@ -239,7 +256,8 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 /*
  * Like combine_crcs_slow(), but uses vmull_p64 to do the multiplications more
  * quickly, and supports a variable chunk length.  The chunk length is
- * 'i * CRC32_MIN_CHUNK_LEN' where 1 <= i < ARRAY_LEN(crc32_mults_for_chunklen).
+ * 'i * CRC32_MIN_VARIABLE_CHUNK_LEN'
+ * where 1 <= i < ARRAY_LEN(crc32_mults_for_chunklen).
  */
 static forceinline ATTRIBUTES u32
 combine_crcs_fast(u32 crc0, u32 crc1, u32 crc2, u32 crc3, size_t i)
@@ -257,7 +275,7 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 {
 	const size_t align = -(uintptr_t)p & 7;
 
-	if (len >= align + CRC32_NUM_CHUNKS * CRC32_MIN_CHUNK_LEN) {
+	if (len >= align + CRC32_NUM_CHUNKS * CRC32_MIN_VARIABLE_CHUNK_LEN) {
 		/* Align p to the next 8-byte boundary. */
 		if (align) {
 			if (align & 1)
@@ -272,12 +290,55 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 			}
 			len -= align;
 		}
-		do {
-			const size_t i =
-				MIN(len / (CRC32_NUM_CHUNKS *
-					   CRC32_MIN_CHUNK_LEN),
-				    ARRAY_LEN(crc32_mults_for_chunklen) - 1);
-			const size_t chunk_len = i * CRC32_MIN_CHUNK_LEN;
+		/*
+		 * Handle CRC32_MAX_VARIABLE_CHUNK_LEN specially, so that better
+		 * code is generated for it.
+		 */
+		while (len >= CRC32_NUM_CHUNKS * CRC32_MAX_VARIABLE_CHUNK_LEN) {
+			const u64 *wp0 = (const u64 *)p;
+			const u64 * const wp0_end =
+				(const u64 *)(p + CRC32_MAX_VARIABLE_CHUNK_LEN);
+			u32 crc1 = 0, crc2 = 0, crc3 = 0;
+
+			STATIC_ASSERT(CRC32_NUM_CHUNKS == 4);
+			STATIC_ASSERT(CRC32_MAX_VARIABLE_CHUNK_LEN % (4 * 8) == 0);
+			do {
+				prefetchr(&wp0[64 + 0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]);
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				wp0++;
+			} while (wp0 != wp0_end);
+			crc = combine_crcs_fast(crc, crc1, crc2, crc3,
+						ARRAY_LEN(crc32_mults_for_chunklen) - 1);
+			p += CRC32_NUM_CHUNKS * CRC32_MAX_VARIABLE_CHUNK_LEN;
+			len -= CRC32_NUM_CHUNKS * CRC32_MAX_VARIABLE_CHUNK_LEN;
+		}
+		/* Handle up to one variable-length chunk. */
+		if (len >= CRC32_NUM_CHUNKS * CRC32_MIN_VARIABLE_CHUNK_LEN) {
+			const size_t i = len / (CRC32_NUM_CHUNKS *
+						CRC32_MIN_VARIABLE_CHUNK_LEN);
+			const size_t chunk_len =
+				i * CRC32_MIN_VARIABLE_CHUNK_LEN;
 			const u64 *wp0 = (const u64 *)(p + 0*chunk_len);
 			const u64 *wp1 = (const u64 *)(p + 1*chunk_len);
 			const u64 *wp2 = (const u64 *)(p + 2*chunk_len);
@@ -286,8 +347,20 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 			u32 crc1 = 0, crc2 = 0, crc3 = 0;
 
 			STATIC_ASSERT(CRC32_NUM_CHUNKS == 4);
-			STATIC_ASSERT(CRC32_MIN_CHUNK_LEN % (2 * 8) == 0);
+			STATIC_ASSERT(CRC32_MIN_VARIABLE_CHUNK_LEN % (4 * 8) == 0);
 			do {
+				prefetchr(wp0 + 64);
+				prefetchr(wp1 + 64);
+				prefetchr(wp2 + 64);
+				prefetchr(wp3 + 64);
+				crc  = __crc32d(crc,  le64_bswap(*wp0++));
+				crc1 = __crc32d(crc1, le64_bswap(*wp1++));
+				crc2 = __crc32d(crc2, le64_bswap(*wp2++));
+				crc3 = __crc32d(crc3, le64_bswap(*wp3++));
+				crc  = __crc32d(crc,  le64_bswap(*wp0++));
+				crc1 = __crc32d(crc1, le64_bswap(*wp1++));
+				crc2 = __crc32d(crc2, le64_bswap(*wp2++));
+				crc3 = __crc32d(crc3, le64_bswap(*wp3++));
 				crc  = __crc32d(crc,  le64_bswap(*wp0++));
 				crc1 = __crc32d(crc1, le64_bswap(*wp1++));
 				crc2 = __crc32d(crc2, le64_bswap(*wp2++));
@@ -300,7 +373,7 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 			crc = combine_crcs_fast(crc, crc1, crc2, crc3, i);
 			p += CRC32_NUM_CHUNKS * chunk_len;
 			len -= CRC32_NUM_CHUNKS * chunk_len;
-		} while (len >= CRC32_NUM_CHUNKS * CRC32_MIN_CHUNK_LEN);
+		}
 
 		while (len >= 32) {
 			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 0)));

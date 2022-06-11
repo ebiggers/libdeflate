@@ -58,7 +58,8 @@
 #define CRC32_BARRETT_CONSTANTS { CRC32_BARRETT_CONSTANT_1, CRC32_BARRETT_CONSTANT_2 }
 
 #define CRC32_NUM_CHUNKS 4
-#define CRC32_MIN_CHUNK_LEN 128
+#define CRC32_MIN_VARIABLE_CHUNK_LEN 128UL
+#define CRC32_MAX_VARIABLE_CHUNK_LEN 16384UL
 
 /* Multipliers for implementations that use a variable chunk length */
 static const u32 crc32_mults_for_chunklen[][CRC32_NUM_CHUNKS - 1] MAYBE_UNUSED = {
@@ -317,6 +318,8 @@ static const u32 crc32_mults_for_chunklen[][CRC32_NUM_CHUNKS - 1] MAYBE_UNUSED =
 	{ 0x4e8d6b6c /* x^387039 mod G(x) */, 0xf997967f /* x^258015 mod G(x) */, 0x2d546c53 /* x^128991 mod G(x) */, },
 	/* chunk_len=16256 */
 	{ 0xfa653ba1 /* x^390111 mod G(x) */, 0xc99014d4 /* x^260063 mod G(x) */, 0xa0c9fd27 /* x^130015 mod G(x) */, },
+	/* chunk_len=16384 */
+	{ 0x49893408 /* x^393183 mod G(x) */, 0x29c2448b /* x^262111 mod G(x) */, 0xe0ee5efe /* x^131039 mod G(x) */, },
 };
 
 /* Multipliers for implementations that use a large fixed chunk length */

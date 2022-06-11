@@ -147,11 +147,13 @@ static void
 gen_chunk_constants(void)
 {
 	const size_t num_chunks = 4;
-	const size_t table_len = 128;
+	const size_t table_len = 129;
 	const size_t min_chunk_len = 128;
 
 	printf("#define CRC32_NUM_CHUNKS %zu\n", num_chunks);
-	printf("#define CRC32_MIN_CHUNK_LEN %zu\n", min_chunk_len);
+	printf("#define CRC32_MIN_VARIABLE_CHUNK_LEN %zuUL\n", min_chunk_len);
+	printf("#define CRC32_MAX_VARIABLE_CHUNK_LEN %zuUL\n",
+	       (table_len - 1) * min_chunk_len);
 	printf("\n");
 	printf("/* Multipliers for implementations that use a variable chunk length */\n");
 	printf("static const u32 crc32_mults_for_chunklen[][CRC32_NUM_CHUNKS - 1] MAYBE_UNUSED = {\n",
