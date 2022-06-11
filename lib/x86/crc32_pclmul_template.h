@@ -188,6 +188,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	#if FOLD_PARTIAL_VECS
 		v0 = _mm_loadu_si128((const void *)p) ^ (__m128i)(__v4si){crc};
 		p += 16;
+		/* Align p to the next 16-byte boundary. */
 		if (align) {
 			v0 = fold_partial_vec(v0, p, align, multipliers_1);
 			p += align;
@@ -195,6 +196,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 		}
 		vp = (const __m128i *)p;
 	#else
+		/* Align p to the next 16-byte boundary. */
 		if (align) {
 			crc = crc32_slice1(crc, p, align);
 			p += align;
@@ -250,7 +252,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 
 	/*
 	 * If fold_partial_vec() is available, handle any remaining partial
-	 * block now before doing the reduction to 32 bits.
+	 * block now before reducing to 32 bits.
 	 */
 #if FOLD_PARTIAL_VECS
 	if (len)
@@ -313,7 +315,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	 */
 	v1 = _mm_clmulepi64_si128(v0 & mask32, barrett_reduction_constants, 0x00);
 	v1 = _mm_clmulepi64_si128(v1 & mask32, barrett_reduction_constants, 0x10);
-	crc = _mm_cvtsi128_si32(_mm_srli_si128(v0 ^ v1, 4));
+	crc = ((__v4si)(v0 ^ v1))[1];
 #if !FOLD_PARTIAL_VECS
 	/* Process up to 15 bytes left over at the end. */
 	crc = crc32_slice1(crc, p, len);

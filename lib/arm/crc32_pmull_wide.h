@@ -66,7 +66,7 @@ ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len)
 			goto tail;
 		/*
 		 * Short length; don't bother aligning the pointer, and fold
-		 * across 64 bytes (4 vectors) at most.
+		 * 64 bytes (4 vectors) at a time, at most.
 		 */
 		v0 = vld1q_u8(p + 0) ^ (uint8x16_t)(uint32x4_t){ crc };
 		v1 = vld1q_u8(p + 16);
@@ -145,8 +145,8 @@ ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len)
 		} while (len >= 192);
 
 		/*
-		 * Fewer than 192 bytes left.  Fold v0-v11 down to just v0, in
-		 * the process processing up to 144 more bytes.
+		 * Fewer than 192 bytes left.  Fold v0-v11 down to just v0,
+		 * while processing up to 144 more bytes.
 		 */
 		v0 = fold_vec(v0, v6, multipliers_6);
 		v1 = fold_vec(v1, v7, multipliers_6);

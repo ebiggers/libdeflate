@@ -62,6 +62,7 @@
 #      endif
 #    endif
 #  endif
+
 #include <arm_acle.h>
 
 /*
@@ -78,10 +79,10 @@
  *    - The 3 multiplications are interleaved.
  *
  *    - The reduction mod G(x) is delayed to the end and done using __crc32d.
- *      Note that the use of __crc32d introduces an extra factor of x^32.  To
- *      cancel that out along with the extra factor of x^1 that gets introduced
- *      because of how the 63-bit products are aligned in their 64-bit integers,
- *      the multipliers are actually x^(j*8*L - 33) instead of x^(j*8*L).
+ *	Note that the use of __crc32d introduces an extra factor of x^32.  To
+ *	cancel that out along with the extra factor of x^1 that gets introduced
+ *	because of how the 63-bit products are aligned in their 64-bit integers,
+ *	the multipliers are actually x^(j*8*L - 33) instead of x^(j*8*L).
  */
 static forceinline ATTRIBUTES u32
 combine_crcs_slow(u32 crc0, u32 crc1, u32 crc2, u32 crc3)
@@ -222,11 +223,7 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 #    define ATTRIBUTES
 #  else
 #    ifdef __arm__
-#      ifdef __clang__
-#        define ATTRIBUTES	__attribute__((target("armv8-a,crc,fpu=crypto-neon-fp-armv8")))
-#      else
-#        define ATTRIBUTES	__attribute__((target("arch=armv8-a+crc,fpu=crypto-neon-fp-armv8")))
-#      endif
+#      define ATTRIBUTES	__attribute__((target("arch=armv8-a+crc,fpu=crypto-neon-fp-armv8")))
 #    else
 #      ifdef __clang__
 #        define ATTRIBUTES	__attribute__((target("crc,crypto")))
@@ -235,8 +232,10 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 #      endif
 #    endif
 #  endif
+
 #include <arm_acle.h>
 #include <arm_neon.h>
+
 /*
  * Like combine_crcs_slow(), but uses vmull_p64 to do the multiplications more
  * quickly, and supports a variable chunk length.  The chunk length is
@@ -352,9 +351,8 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
  * not crc32 instructions.
  */
 #if HAVE_PMULL_INTRIN
-#  define SUFFIX			 _pmullx4
 #  define crc32_arm_pmullx4	crc32_arm_pmullx4
-#  define ENABLE_EOR3		0
+#  define SUFFIX			 _pmullx4
 #  if HAVE_PMULL_NATIVE
 #    define ATTRIBUTES
 #  else
@@ -368,7 +366,9 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 #      endif
 #    endif
 #  endif
+#  define ENABLE_EOR3		0
 #  include "crc32_pmull_helpers.h"
+
 static u32 ATTRIBUTES MAYBE_UNUSED
 crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 {
@@ -425,8 +425,11 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 		p = (const u8 *)vp;
 		len &= 15;
 	}
+
+	/* Handle any remaining partial block now before reducing to 32 bits. */
 	if (len)
 		v0 = fold_partial_vec(v0, p, len, multipliers_1);
+
 	/*
 	 * Fold 128 => 96 bits.  This also implicitly appends 32 zero bits,
 	 * which is equivalent to multiplying by x^32.  This is needed because
@@ -462,9 +465,8 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #if defined(__aarch64__) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
 	((HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE) || \
 	 (HAVE_PMULL_TARGET && HAVE_CRC32_TARGET))
-#  define SUFFIX				 _pmullx12_crc
 #  define crc32_arm_pmullx12_crc	crc32_arm_pmullx12_crc
-#  define ENABLE_EOR3	0
+#  define SUFFIX				 _pmullx12_crc
 #  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE
 #    define ATTRIBUTES
 #  else
@@ -474,6 +476,7 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #      define ATTRIBUTES  __attribute__((target("+crypto,+crc")))
 #    endif
 #  endif
+#  define ENABLE_EOR3	0
 #  include "crc32_pmull_wide.h"
 #endif
 
@@ -483,14 +486,14 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
  * This like crc32_arm_pmullx12_crc(), but it adds the eor3 instruction (from
  * the sha3 extension) for even better performance.
  *
- * Note: HAVE_SHA3_INTRIN is not required, as there is an inline asm fallback.
+ * Note: we require HAVE_SHA3_TARGET (or HAVE_SHA3_NATIVE) rather than
+ * HAVE_SHA3_INTRIN, as we have an inline asm fallback for eor3.
  */
 #if defined(__aarch64__) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
 	((HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE) || \
 	 (HAVE_PMULL_TARGET && HAVE_CRC32_TARGET && HAVE_SHA3_TARGET))
-#  define SUFFIX				 _pmullx12_crc_eor3
 #  define crc32_arm_pmullx12_crc_eor3	crc32_arm_pmullx12_crc_eor3
-#  define ENABLE_EOR3		1
+#  define SUFFIX				 _pmullx12_crc_eor3
 #  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE
 #    define ATTRIBUTES
 #  else
@@ -500,6 +503,7 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #      define ATTRIBUTES  __attribute__((target("+crypto,+crc,+sha3")))
 #    endif
 #  endif
+#  define ENABLE_EOR3	1
 #  include "crc32_pmull_wide.h"
 #endif
 

@@ -32,14 +32,14 @@
 
 /* PCLMUL implementation */
 #if HAVE_PCLMUL_INTRIN
-#  define SUFFIX			 _pclmul
 #  define crc32_x86_pclmul	crc32_x86_pclmul
-#  define FOLD_PARTIAL_VECS	0
+#  define SUFFIX			 _pclmul
 #  if HAVE_PCLMUL_NATIVE
 #    define ATTRIBUTES
 #  else
 #    define ATTRIBUTES		__attribute__((target("pclmul")))
 #  endif
+#  define FOLD_PARTIAL_VECS	0
 #  include "crc32_pclmul_template.h"
 #endif
 
@@ -47,23 +47,23 @@
  * PCLMUL/AVX implementation.  This implementation has two benefits over the
  * regular PCLMUL one.  First, simply compiling against the AVX target can
  * improve performance significantly (e.g. 10100 MB/s to 16700 MB/s on Skylake)
- * without any code changes, probably due to the availability of non-destructive
- * VEX-encoded instructions.  Second, AVX support implies SSSE3 and SSE4.1
- * support, and we can use SSSE3 and SSE4.1 intrinsics for efficient handling of
- * partial blocks.  (For simplicity, we don't currently bother compiling a
- * variant with PCLMUL+SSSE3+SSE4.1 without AVX.)
+ * without actually using any AVX intrinsics, probably due to the availability
+ * of non-destructive VEX-encoded instructions.  Second, AVX support implies
+ * SSSE3 and SSE4.1 support, and we can use SSSE3 and SSE4.1 intrinsics for
+ * efficient handling of partial blocks.  (We *could* compile a variant with
+ * PCLMUL+SSSE3+SSE4.1 w/o AVX, but for simplicity we don't currently bother.)
  */
 #if HAVE_PCLMUL_INTRIN && HAVE_AVX_INTRIN && \
 	((HAVE_PCLMUL_NATIVE && HAVE_AVX_NATIVE) || \
 	 (HAVE_PCLMUL_TARGET && HAVE_AVX_TARGET))
-#  define SUFFIX			 _pclmul_avx
 #  define crc32_x86_pclmul_avx	crc32_x86_pclmul_avx
-#  define FOLD_PARTIAL_VECS	1
+#  define SUFFIX			 _pclmul_avx
 #  if HAVE_PCLMUL_NATIVE && HAVE_AVX_NATIVE
 #    define ATTRIBUTES
 #  else
 #    define ATTRIBUTES		__attribute__((target("pclmul,avx")))
 #  endif
+#  define FOLD_PARTIAL_VECS	1
 #  include "crc32_pclmul_template.h"
 #endif
 
