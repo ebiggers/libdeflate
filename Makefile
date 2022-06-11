@@ -383,7 +383,12 @@ test_programs:$(TEST_PROGRAMS)
 # A minimal 'make check' target.  This only runs some quick tests;
 # use scripts/run_tests.sh if you want to run the full tests.
 check:test_programs
-	LD_LIBRARY_PATH=. ./benchmark$(PROG_SUFFIX) < ./benchmark$(PROG_SUFFIX)
+	LD_LIBRARY_PATH=. ./benchmark$(PROG_SUFFIX) \
+			< ./benchmark$(PROG_SUFFIX) > /dev/null
+	LD_LIBRARY_PATH=. ./benchmark$(PROG_SUFFIX) -C libz \
+			< ./benchmark$(PROG_SUFFIX) > /dev/null
+	LD_LIBRARY_PATH=. ./benchmark$(PROG_SUFFIX) -D libz \
+			< ./benchmark$(PROG_SUFFIX) > /dev/null
 	for prog in test_*; do		\
 		LD_LIBRARY_PATH=. ./$$prog || exit 1;	\
 	done
