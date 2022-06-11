@@ -136,10 +136,6 @@ echo
 {
 case $ARCH in
 i386|x86_64)
-	if have_cpu_feature avx512bw; then
-		do_benchmark "AVX-512BW"
-		disable_cpu_feature "avx512bw" "-mno-avx512bw"
-	fi
 	if have_cpu_feature avx2; then
 		do_benchmark "AVX2"
 		disable_cpu_feature "avx2" "-mno-avx2"
