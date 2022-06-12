@@ -1,5 +1,42 @@
 # libdeflate release notes
 
+## Version 1.12
+
+This release focuses on improving the performance of the CRC-32 and Adler-32
+checksum algorithms on x86 and ARM (both 32-bit and 64-bit).
+
+* Build updates:
+
+  * Fixed building libdeflate on Apple platforms.
+
+  * For Visual Studio builds, Visual Studio 2015 or later is now required.
+
+* CRC-32 algorithm updates:
+
+  * Improved CRC-32 performance on short inputs on x86 and ARM.
+
+  * Improved CRC-32 performance on Apple Silicon Macs by using a 12-way pmull
+    implementation.   Performance on large inputs on M1 is now about 67 GB/s,
+    compared to 8 GB/s before, or 31 GB/s with the Apple-provided zlib.
+
+  * Improved CRC-32 performance on some other ARM CPUs by reworking the code so
+    that multiple crc32 instructions can be issued in parallel.
+
+  * Improved CRC-32 performance on some x86 CPUs by increasing the stride length
+    of the pclmul implementation.
+
+* Adler-32 algorithm updates:
+
+  * Improved Adler-32 performance on some x86 CPUs by optimizing the AVX-2
+    implementation.  E.g., performance on Zen 1 improved from 19 to 30 GB/s, and
+    on Ice Lake from 35 to 41 GB/s (if the AVX-512 implementation is excluded).
+
+  * Removed the AVX-512 implementation of Adler-32 to avoid CPU frequency
+    downclocking, and because the AVX-2 implementation was made faster.
+
+  * Improved Adler-32 performance on some ARM CPUs by optimizing the NEON
+    implementation.  E.g., Apple M1 improved from about 36 to 52 GB/s.
+
 ## Version 1.11
 
 * Library updates:
