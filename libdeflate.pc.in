@@ -7,4 +7,5 @@ Name: libdeflate
 Description: Fast implementation of DEFLATE, zlib, and gzip
 Version: @VERSION@
 Libs: -L${libdir} -ldeflate
-Cflags: -I${includedir}
+Cflags: -I${includedir} -DLIBDEFLATE_DLL
+Cflags.private: -ULIBDEFLATE_DLL
