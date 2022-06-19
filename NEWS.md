@@ -1,5 +1,10 @@
 # libdeflate release notes
 
+## [git master branch]
+
+* On Windows, libdeflate has changed back to always using the default calling
+  convention ("cdecl"), instead of "stdcall".
+
 ## Version 1.12
 
 This release focuses on improving the performance of the CRC-32 and Adler-32

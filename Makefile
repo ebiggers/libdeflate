@@ -99,11 +99,6 @@ ifneq ($(findstring -mingw,$(TARGET_MACHINE))$(findstring -windows-gnu,$(TARGET_
     SHARED_LIB_CFLAGS  :=
     SHARED_LIB_LDFLAGS := -Wl,--out-implib,libdeflate.lib \
                           -Wl,--output-def,libdeflate.def
-    # Only if not LLVM
-    ifeq ($(findstring -windows-gnu,$(TARGET_MACHINE)),)
-        SHARED_LIB_LDFLAGS += -Wl,--add-stdcall-alias
-    endif
-
     PROG_SUFFIX        := .exe
     PROG_CFLAGS        := -static -municode
     HARD_LINKS         :=
