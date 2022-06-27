@@ -57,8 +57,8 @@ done
 INDENT=0
 
 log() {
-	echo -n "[$(date)] "
-	head -c $(( INDENT * 4 )) /dev/zero | tr '\0' ' '
+	printf "[$(date)] "
+	test $INDENT -gt 0 && head -c $(( INDENT * 4 )) /dev/zero | tr '\0' ' '
 	echo "$@"
 }
 
