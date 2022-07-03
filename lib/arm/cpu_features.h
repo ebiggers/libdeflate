@@ -82,9 +82,9 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  */
 #if HAVE_NEON_NATIVE || \
 	(HAVE_NEON_TARGET && GCC_PREREQ(6, 1) && defined(__ARM_FP))
-#  define HAVE_NEON_INTRIN 1
+#  define HAVE_NEON_INTRIN	1
 #else
-#  define HAVE_NEON_INTRIN 0
+#  define HAVE_NEON_INTRIN	0
 #endif
 
 /* PMULL */

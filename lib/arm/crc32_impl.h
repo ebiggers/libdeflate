@@ -166,8 +166,8 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 				wp0++;
 			} while (wp0 != wp0_end);
 			crc = combine_crcs_slow(crc, crc1, crc2, crc3);
-			len -= CRC32_NUM_CHUNKS * CRC32_FIXED_CHUNK_LEN;
 			p += CRC32_NUM_CHUNKS * CRC32_FIXED_CHUNK_LEN;
+			len -= CRC32_NUM_CHUNKS * CRC32_FIXED_CHUNK_LEN;
 		}
 		/*
 		 * Due to the large fixed chunk length used above, there might
