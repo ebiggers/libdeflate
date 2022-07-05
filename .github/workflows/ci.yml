@@ -70,14 +70,24 @@ jobs:
     - run: make all check
 
   windows-msys2-build-and-test:
-    name: Build and test (Windows, MSYS2)
+    name: Build and test (Windows, MSYS2, ${{matrix.sys}})
     runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+        - { sys: mingw64, env: x86_64 }
+        - { sys: mingw32, env: i686 }
+    defaults:
+      run:
+        shell: msys2 {0}
     steps:
     - uses: actions/checkout@v2
-    - shell: bash
-      run: |
-        PATH="C:\\msys64\\mingw64\\bin:C:\\msys64\\usr\\bin:$PATH" \
-          make CC=gcc all check
+    - uses: msys2/setup-msys2@v2
+      with:
+        msystem: ${{matrix.sys}}
+        update: true
+        install: make mingw-w64-${{matrix.env}}-cc mingw-w64-${{matrix.env}}-zlib
+    - run: make all check
 
   windows-msvc-build:
     name: Build (Windows, Visual Studio)
