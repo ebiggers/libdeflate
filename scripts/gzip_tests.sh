@@ -94,9 +94,6 @@ assert_equals() {
 	fi
 }
 
-# Get the filesystem type.
-FSTYPE=$(df -T . | tail -1 | awk '{print $2}')
-
 # If gzip or gunzip is the GNU version, require that it supports the '-k'
 # option.  This option was added in v1.6, released in 2013.
 check_version_prereq() {
@@ -433,20 +430,12 @@ assert_error '\<invalid suffix\>' gunzip -S '""' file
 
 
 begin_test 'Timestamps and mode are preserved'
-if [ "$FSTYPE" = shiftfs ]; then
-	# In Travis CI, the filesystem (shiftfs) only supports seconds precision
-	# timestamps.  Nanosecond precision still sometimes seems to work,
-	# probably due to caching, but it is unreliable.
-	format='%a;%X;%Y'
-else
-	format='%a;%x;%y'
-fi
 chmod 777 file
-orig_stat="$(stat -c "$format" file)"
+orig_stat="$(stat -c '%a;%x;%y' file)"
 gzip file
 sleep 1
 gunzip file.gz
-assert_equals "$orig_stat" "$(stat -c "$format" file)"
+assert_equals "$orig_stat" "$(stat -c '%a;%x;%y' file)"
 
 
 begin_test 'Decompressing multi-member gzip file'
