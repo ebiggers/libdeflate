@@ -357,8 +357,11 @@ map_file_contents(struct file_stream *strm, u64 size)
 	strm->mmap_mem = mmap(NULL, size, PROT_READ, MAP_SHARED, strm->fd, 0);
 	if (strm->mmap_mem == MAP_FAILED) {
 		strm->mmap_mem = NULL;
-		if (errno == ENODEV) /* mmap isn't supported on this file */
+		if (errno == ENODEV /* standard */ ||
+		    errno == EINVAL /* macOS */) {
+			/* mmap isn't supported on this file */
 			return read_full_contents(strm);
+		}
 		if (errno == ENOMEM) {
 			msg("%"TS" is too large to be processed by this "
 			    "program", strm->name);
