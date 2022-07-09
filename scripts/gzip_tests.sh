@@ -15,8 +15,14 @@ set -eu -o pipefail
 
 export -n GZIP GUNZIP TESTDATA
 
+ORIG_PWD=$PWD
 TMPDIR="$(mktemp -d)"
 CURRENT_TEST=
+
+BSD_STAT=false
+if ! stat --version 2>&1 | grep -q coreutils; then
+	BSD_STAT=true
+fi
 
 cleanup() {
 	if [ -n "$CURRENT_TEST" ]; then
@@ -27,14 +33,13 @@ cleanup() {
 
 trap cleanup EXIT
 
-TESTDATA="$(readlink -f "$TESTDATA")"
-cd "$TMPDIR"
-
 begin_test() {
 	CURRENT_TEST="$1"
 	rm -rf -- "${TMPDIR:?}"/*
-	cp "$TESTDATA" file
-	chmod +w file
+	cd "$ORIG_PWD"
+	cp "$TESTDATA" "$TMPDIR/file"
+	chmod +w "$TMPDIR/file"
+	cd "$TMPDIR"
 }
 
 gzip() {
@@ -43,6 +48,36 @@ gzip() {
 
 gunzip() {
 	$GUNZIP "$@"
+}
+
+get_filesize() {
+	local file=$1
+
+	if $BSD_STAT; then
+		stat -f %z "$file"
+	else
+		stat -c %s "$file"
+	fi
+}
+
+get_linkcount() {
+	local file=$1
+
+	if $BSD_STAT; then
+		stat -f %l "$file"
+	else
+		stat -c %h "$file"
+	fi
+}
+
+get_modeandtimestamps() {
+	local file=$1
+
+	if $BSD_STAT; then
+		stat -f "%p;%a;%m" "$file"
+	else
+		stat -c "%a;%x;%y" "$file"
+	fi
 }
 
 assert_status() {
@@ -94,23 +129,6 @@ assert_equals() {
 	fi
 }
 
-# If gzip or gunzip is the GNU version, require that it supports the '-k'
-# option.  This option was added in v1.6, released in 2013.
-check_version_prereq() {
-	local prog=$1
-
-	if ! echo | { $prog -k || true; } |& grep -q 'invalid option'; then
-		return 0
-	fi
-	if ! $prog -V |& grep -q 'Free Software Foundation'; then
-		echo 1>&2 "Unexpected case: not GNU $prog, but -k option is invalid"
-		exit 1
-	fi
-	echo "GNU $prog is too old; skipping gzip/gunzip tests"
-	exit 0
-}
-check_version_prereq gzip
-check_version_prereq gunzip
 
 begin_test 'Basic compression and decompression works'
 cp file orig
@@ -176,7 +194,7 @@ gunzip -kfd file.gz
 
 
 begin_test 'Compression levels'
-if [ "$GZIP" = /bin/gzip ]; then
+if [ "$GZIP" = /bin/gzip ] || [ "$GZIP" = /usr/bin/gzip ]; then
 	assert_error '\<invalid option\>' gzip -10
 	max_level=9
 else
@@ -330,13 +348,13 @@ cmp <(echo b) b
 begin_test '(gzip) hard linked file skipped without -f or -c'
 cp file orig
 ln file link
-assert_equals 2 "$(stat -c %h file)"
+assert_equals 2 "$(get_linkcount file)"
 assert_skipped gzip file
 gzip -c file > /dev/null
-assert_equals 2 "$(stat -c %h file)"
+assert_equals 2 "$(get_linkcount file)"
 gzip -f file
-assert_equals 1 "$(stat -c %h link)"
-assert_equals 1 "$(stat -c %h file.gz)"
+assert_equals 1 "$(get_linkcount link)"
+assert_equals 1 "$(get_linkcount file.gz)"
 cmp link orig
 # XXX: GNU gzip skips hard linked files with -k, libdeflate's doesn't
 
@@ -345,13 +363,13 @@ begin_test '(gunzip) hard linked file skipped without -f or -c'
 gzip file
 ln file.gz link.gz
 cp file.gz orig.gz
-assert_equals 2 "$(stat -c %h file.gz)"
+assert_equals 2 "$(get_linkcount file.gz)"
 assert_skipped gunzip file.gz
 gunzip -c file.gz > /dev/null
-assert_equals 2 "$(stat -c %h file.gz)"
+assert_equals 2 "$(get_linkcount file.gz)"
 gunzip -f file
-assert_equals 1 "$(stat -c %h link.gz)"
-assert_equals 1 "$(stat -c %h file)"
+assert_equals 1 "$(get_linkcount link.gz)"
+assert_equals 1 "$(get_linkcount file)"
 cmp link.gz orig.gz
 
 
@@ -431,11 +449,11 @@ assert_error '\<invalid suffix\>' gunzip -S '""' file
 
 begin_test 'Timestamps and mode are preserved'
 chmod 777 file
-orig_stat="$(stat -c '%a;%x;%y' file)"
+orig_stat=$(get_modeandtimestamps file)
 gzip file
 sleep 1
 gunzip file.gz
-assert_equals "$orig_stat" "$(stat -c '%a;%x;%y' file)"
+assert_equals "$orig_stat" "$(get_modeandtimestamps file)"
 
 
 begin_test 'Decompressing multi-member gzip file'

@@ -41,7 +41,13 @@ MAKE="make -j$(getconf _NPROCESSORS_ONLN)"
 
 CC_VERSION=$($CC --version | head -1)
 
+UNAME=$(uname)
 ARCH=$(uname -m)
+
+SHLIB=libdeflate.so
+if [ "$UNAME" = Darwin ]; then
+	SHLIB=libdeflate.dylib
+fi
 
 for skip in SKIP_FREESTANDING SKIP_VALGRIND SKIP_UBSAN SKIP_ASAN SKIP_CFI \
 	    SKIP_SHARED_LIB; do
@@ -58,7 +64,9 @@ INDENT=0
 
 log() {
 	echo -n "[$(date)] "
-	head -c $(( INDENT * 4 )) /dev/zero | tr '\0' ' '
+	if (( INDENT != 0 )); then
+		head -c $(( INDENT * 4 )) /dev/zero | tr '\0' ' '
+	fi
 	echo "$@"
 }
 
@@ -97,6 +105,10 @@ cflags_supported() {
 valgrind_version_at_least() {
 	local want_vers=$1
 	local vers
+
+	if ! type -P valgrind &> /dev/null; then
+		return 1
+	fi
 
 	vers=$(valgrind --version | grep -E -o '[0-9\.]+' | head -1)
 
@@ -170,12 +182,38 @@ verify_freestanding_build() {
 	fi
 }
 
+is_compatible_system_gzip() {
+	local prog=$1
+
+	# Needs to exist.
+	if ! [ -e "$prog" ]; then
+		return 1
+	fi
+	# Needs to be GNU gzip.
+	if ! "$prog" -V 2>&1 | grep -q 'Free Software Foundation'; then
+		return 1
+	fi
+	# Needs to support the -k option, i.e. be v1.6 or later.
+	if echo | { "$prog" -k 2>&1 >/dev/null || true; } \
+				| grep -q 'invalid option'; then
+		return 1
+	fi
+	return 0
+}
+
 gzip_tests() {
 	local gzips=("$PWD/gzip")
 	local gunzips=("$PWD/gunzip")
 	if [ "${1:-}" != "--quick" ]; then
-		gzips+=(/bin/gzip)
-		gunzips+=(/bin/gunzip)
+		if is_compatible_system_gzip /bin/gzip; then
+			gzips+=(/bin/gzip)
+			gunzips+=(/bin/gunzip)
+		elif is_compatible_system_gzip /usr/bin/gzip; then
+			gzips+=(/usr/bin/gzip)
+			gunzips+=(/usr/bin/gunzip)
+		else
+			log "Unsupported system gzip; skipping comparison with system gzip"
+		fi
 	fi
 	local gzip gunzip
 
@@ -196,6 +234,8 @@ do_run_tests() {
 	if [ "${1:-}" != "--quick" ]; then
 		if $SKIP_FREESTANDING; then
 			log "Skipping freestanding build tests due to SKIP_FREESTANDING=1"
+		elif [ "$UNAME" = Darwin ]; then
+			log "Skipping freestanding build tests due to unsupported OS"
 		else
 			build_and_run_tests FREESTANDING=1
 			verify_freestanding_build
@@ -211,10 +251,20 @@ check_symbol_prefixes() {
 		fail "Some global symbols aren't prefixed with \"libdeflate_\""
 	fi
 	log "Checking that all exported symbols are prefixed with \"libdeflate\""
-	$MAKE libdeflate.so > /dev/null
-	if nm libdeflate.so | grep ' T ' \
-			| grep -E -v " (libdeflate_|_init\>|_fini\>)"; then
+	$MAKE $SHLIB > /dev/null
+	if nm $SHLIB | grep ' T ' \
+			| grep -E -v " _?(libdeflate_|_init\>|_fini\>)"; then
 		fail "Some exported symbols aren't prefixed with \"libdeflate_\""
+	fi
+}
+
+is_dynamically_linked() {
+	local prog=$1
+
+	if [ "$UNAME" = Darwin ]; then
+		otool -L "$prog" | grep -q libdeflate
+	else
+		ldd "$prog" | grep -q libdeflate
 	fi
 }
 
@@ -225,16 +275,13 @@ test_use_shared_lib() {
 	fi
 	log "Testing USE_SHARED_LIB=1"
 	$MAKE gzip > /dev/null
-	if ldd gzip | grep -q 'libdeflate.so'; then
+	if is_dynamically_linked gzip; then
 		fail "Binary should be statically linked by default"
 	fi
 	$MAKE USE_SHARED_LIB=1 all check > /dev/null
-	ldd gzip > "$TMPDIR/ldd.out"
-	if ! grep -q 'libdeflate.so' "$TMPDIR/ldd.out"; then
-		cat 1>&2 "$TMPDIR/ldd.out"
+	if ! is_dynamically_linked gzip; then
 		fail "Binary isn't dynamically linked"
 	fi
-	rm "$TMPDIR/ldd.out"
 }
 
 install_uninstall_tests() {
