@@ -27,19 +27,16 @@ loaded_u32_to_u24(u32 v)
 }
 
 /*
- * Load the next 3 bytes from the memory location @p into the 24 low-order bits
- * of a 32-bit value.  The order in which the 3 bytes will be arranged as octets
- * in the 24 bits is platform-dependent.  At least LOAD_U24_REQUIRED_NBYTES
- * bytes must be available at @p; note that this may be more than 3.
+ * Load the next 3 bytes from @p into the 24 low-order bits of a 32-bit value.
+ * The order in which the 3 bytes will be arranged as octets in the 24 bits is
+ * platform-dependent.  At least 4 bytes (not 3) must be available at @p.
  */
 static forceinline u32
 load_u24_unaligned(const u8 *p)
 {
 #if UNALIGNED_ACCESS_IS_FAST
-#  define LOAD_U24_REQUIRED_NBYTES 4
 	return loaded_u32_to_u24(load_u32_unaligned(p));
 #else
-#  define LOAD_U24_REQUIRED_NBYTES 3
 	if (CPU_IS_LITTLE_ENDIAN())
 		return ((u32)p[0] << 0) | ((u32)p[1] << 8) | ((u32)p[2] << 16);
 	else
