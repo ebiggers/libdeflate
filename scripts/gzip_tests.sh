@@ -75,6 +75,10 @@ get_modeandtimestamps() {
 
 	if $BSD_STAT; then
 		stat -f "%p;%a;%m" "$file"
+	elif [ "$(uname -m)" = s390x ]; then
+		# Use seconds precision instead of nanoseconds.
+		# TODO: why is this needed?  QEMU user mode emulation bug?
+		stat -c "%a;%X;%Y" "$file"
 	else
 		stat -c "%a;%x;%y" "$file"
 	fi
