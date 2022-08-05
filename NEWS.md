@@ -1,9 +1,11 @@
 # libdeflate release notes
 
-## [git master branch]
+## Version 1.13
 
-* On Windows, libdeflate has changed back to always using the default calling
-  convention ("cdecl"), instead of "stdcall".
+* Changed the 32-bit Windows build of the library to use the default calling
+  convention (cdecl) instead of stdcall, reverting a change from libdeflate 1.4.
+
+* Fixed a couple macOS compatibility issues with the gzip program.
 
 ## Version 1.12
 
