@@ -22,7 +22,7 @@ jobs:
     - run: scripts/run_tests.sh
 
   other-arch-build-and-test:
-    name: Build and test (${{ matrix.arch }}, Debian Buster, ${{ matrix.compiler }})
+    name: Build and test (${{ matrix.arch }}, Debian Bullseye, ${{ matrix.compiler }})
     strategy:
       matrix:
         arch: [armv6, armv7, aarch64, s390x, ppc64le]
@@ -30,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: uraimo/run-on-arch-action@v2.0.5
+      - uses: uraimo/run-on-arch-action@v2.2.0
         with:
           arch: ${{ matrix.arch }}
-          distro: buster
+          distro: bullseye
           githubToken: ${{ github.token }}
           install: |
             apt-get update
