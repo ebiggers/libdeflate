@@ -126,6 +126,8 @@ static u32 query_arm_cpu_features(void)
 		features |= ARM_CPU_FEATURE_CRC32;
 	if (hwcap & (1 << 17))	/* HWCAP_SHA3 */
 		features |= ARM_CPU_FEATURE_SHA3;
+	if (hwcap & (1 << 20))	/* HWCAP_ASIMDDP */
+		features |= ARM_CPU_FEATURE_DOTPROD;
 #endif
 	return features;
 }
@@ -140,12 +142,13 @@ static const struct {
 	const char *name;
 	u32 feature;
 } feature_sysctls[] = {
-	{ "hw.optional.neon",		ARM_CPU_FEATURE_NEON },
-	{ "hw.optional.AdvSIMD",	ARM_CPU_FEATURE_NEON },
-	{ "hw.optional.arm.FEAT_PMULL",	ARM_CPU_FEATURE_PMULL },
-	{ "hw.optional.armv8_crc32",	ARM_CPU_FEATURE_CRC32 },
-	{ "hw.optional.armv8_2_sha3",	ARM_CPU_FEATURE_SHA3 },
-	{ "hw.optional.arm.FEAT_SHA3",	ARM_CPU_FEATURE_SHA3 },
+	{ "hw.optional.neon",		  ARM_CPU_FEATURE_NEON },
+	{ "hw.optional.AdvSIMD",	  ARM_CPU_FEATURE_NEON },
+	{ "hw.optional.arm.FEAT_PMULL",	  ARM_CPU_FEATURE_PMULL },
+	{ "hw.optional.armv8_crc32",	  ARM_CPU_FEATURE_CRC32 },
+	{ "hw.optional.armv8_2_sha3",	  ARM_CPU_FEATURE_SHA3 },
+	{ "hw.optional.arm.FEAT_SHA3",	  ARM_CPU_FEATURE_SHA3 },
+	{ "hw.optional.arm.FEAT_DotProd", ARM_CPU_FEATURE_DOTPROD },
 };
 
 static u32 query_arm_cpu_features(void)
@@ -173,6 +176,7 @@ static const struct cpu_feature arm_cpu_feature_table[] = {
 	{ARM_CPU_FEATURE_PMULL,		"pmull"},
 	{ARM_CPU_FEATURE_CRC32,		"crc32"},
 	{ARM_CPU_FEATURE_SHA3,		"sha3"},
+	{ARM_CPU_FEATURE_DOTPROD,	"dotprod"},
 };
 
 volatile u32 libdeflate_arm_cpu_features = 0;

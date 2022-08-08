@@ -143,7 +143,7 @@ build_and_run_tests() {
 			features+=(avx2 avx bmi2 pclmul sse2)
 			;;
 		arm*|aarch*)
-			features+=(sha3 crc32 pmull neon)
+			features+=(dotprod sha3 crc32 pmull neon)
 			;;
 		esac
 	fi
