@@ -46,11 +46,13 @@
 #define ARM_CPU_FEATURE_PMULL		0x00000002
 #define ARM_CPU_FEATURE_CRC32		0x00000004
 #define ARM_CPU_FEATURE_SHA3		0x00000008
+#define ARM_CPU_FEATURE_DOTPROD		0x00000010
 
-#define HAVE_NEON(features)	(HAVE_NEON_NATIVE  || ((features) & ARM_CPU_FEATURE_NEON))
-#define HAVE_PMULL(features)	(HAVE_PMULL_NATIVE || ((features) & ARM_CPU_FEATURE_PMULL))
-#define HAVE_CRC32(features)	(HAVE_CRC32_NATIVE || ((features) & ARM_CPU_FEATURE_CRC32))
-#define HAVE_SHA3(features)	(HAVE_SHA3_NATIVE  || ((features) & ARM_CPU_FEATURE_SHA3))
+#define HAVE_NEON(features)	(HAVE_NEON_NATIVE    || ((features) & ARM_CPU_FEATURE_NEON))
+#define HAVE_PMULL(features)	(HAVE_PMULL_NATIVE   || ((features) & ARM_CPU_FEATURE_PMULL))
+#define HAVE_CRC32(features)	(HAVE_CRC32_NATIVE   || ((features) & ARM_CPU_FEATURE_CRC32))
+#define HAVE_SHA3(features)	(HAVE_SHA3_NATIVE    || ((features) & ARM_CPU_FEATURE_SHA3))
+#define HAVE_DOTPROD(features)	(HAVE_DOTPROD_NATIVE || ((features) & ARM_CPU_FEATURE_DOTPROD))
 
 #if HAVE_DYNAMIC_ARM_CPU_FEATURES
 #define ARM_CPU_FEATURES_KNOWN		0x80000000
@@ -156,6 +158,24 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #  define HAVE_SHA3_INTRIN	0
 #endif
 
+/* dotprod */
+#ifdef __aarch64__
+#  ifdef __ARM_FEATURE_DOTPROD
+#    define HAVE_DOTPROD_NATIVE	1
+#  else
+#    define HAVE_DOTPROD_NATIVE	0
+#  endif
+#  define HAVE_DOTPROD_TARGET \
+	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
+	 (GCC_PREREQ(8, 1) || __has_builtin(__builtin_neon_vdotq_v)))
+#  define HAVE_DOTPROD_INTRIN \
+	(HAVE_NEON_INTRIN && (HAVE_DOTPROD_NATIVE || HAVE_DOTPROD_TARGET))
+#else
+#  define HAVE_DOTPROD_NATIVE	0
+#  define HAVE_DOTPROD_TARGET	0
+#  define HAVE_DOTPROD_INTRIN	0
+#endif
+
 /*
  * Work around bugs in arm_acle.h and arm_neon.h where sometimes intrinsics are
  * only defined when the corresponding __ARM_FEATURE_* macro is defined.  The
@@ -170,6 +190,9 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #if HAVE_SHA3_INTRIN && !HAVE_SHA3_NATIVE && defined(__clang__)
 #  define __ARM_FEATURE_SHA3	1
 #endif
+#if HAVE_DOTPROD_INTRIN && !HAVE_DOTPROD_NATIVE && defined(__clang__)
+#  define __ARM_FEATURE_DOTPROD	1
+#endif
 #if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && \
 	(defined(__clang__) || defined(__arm__))
 #  include <arm_acle.h>
@@ -178,6 +201,10 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #if HAVE_SHA3_INTRIN && !HAVE_SHA3_NATIVE && defined(__clang__)
 #  include <arm_neon.h>
 #  undef __ARM_FEATURE_SHA3
+#endif
+#if HAVE_DOTPROD_INTRIN && !HAVE_DOTPROD_NATIVE && defined(__clang__)
+#  include <arm_neon.h>
+#  undef __ARM_FEATURE_DOTPROD
 #endif
 
 #endif /* __arm__ || __aarch64__ */
