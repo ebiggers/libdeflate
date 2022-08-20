@@ -27,11 +27,13 @@ For the release notes, see the [NEWS file](NEWS.md).
 ## Table of Contents
 
 - [Building](#building)
-  - [For UNIX](#for-unix)
-  - [For macOS](#for-macos)
-  - [For Windows](#for-windows)
-    - [Using Cygwin](#using-cygwin)
-    - [Using MSYS2](#using-msys2)
+  - [Using the Makefile](#using-the-makefile)
+    - [For UNIX](#for-unix)
+    - [For macOS](#for-macos)
+    - [For Windows](#for-windows)
+      - [Using Cygwin](#using-cygwin)
+      - [Using MSYS2](#using-msys2)
+  - [Using a custom build system](#using-a-custom-build-system)
 - [API](#api)
 - [Bindings for other programming languages](#bindings-for-other-programming-languages)
 - [DEFLATE vs. zlib vs. gzip](#deflate-vs-zlib-vs-gzip)
@@ -42,7 +44,14 @@ For the release notes, see the [NEWS file](NEWS.md).
 
 # Building
 
-## For UNIX
+libdeflate and the provided programs like `gzip` can be built using the provided
+Makefile.  If only the library is needed, it can alternatively be easily
+integrated into applications and built using any build system; see [Using a
+custom build system](#using-a-custom-build-system).
+
+## Using the Makefile
+
+### For UNIX
 
 Just run `make`, then (if desired) `make install`.  You need GNU Make and either
 GCC or Clang.  GCC is recommended because it builds slightly faster binaries.
@@ -57,7 +66,7 @@ There are also many options which can be set on the `make` command line, e.g. to
 omit library features or to customize the directories into which `make install`
 installs files.  See the Makefile for details.
 
-## For macOS
+### For macOS
 
 Prebuilt macOS binaries can be installed with [Homebrew](https://brew.sh):
 
@@ -65,7 +74,7 @@ Prebuilt macOS binaries can be installed with [Homebrew](https://brew.sh):
 
 But if you need to build the binaries yourself, see the section for UNIX above.
 
-## For Windows
+### For Windows
 
 Prebuilt Windows binaries can be downloaded from
 https://github.com/ebiggers/libdeflate/releases.  But if you need to build the
@@ -84,7 +93,7 @@ binaries built with MinGW will be significantly faster.
 Also note that 64-bit binaries are faster than 32-bit binaries and should be
 preferred whenever possible.
 
-### Using Cygwin
+#### Using Cygwin
 
 Run the Cygwin installer, available from https://cygwin.com/setup-x86_64.exe.
 When you get to the package selection screen, choose the following additional
@@ -119,7 +128,7 @@ or to build 32-bit binaries:
 
     make CC=i686-w64-mingw32-gcc
 
-### Using MSYS2
+#### Using MSYS2
 
 Run the MSYS2 installer, available from http://www.msys2.org/.  After
 installing, open an MSYS2 shell and run:
@@ -160,6 +169,23 @@ and run the following commands:
     make
 
 Or to build 32-bit binaries, do the same but use "MSYS2 MinGW 32-bit" instead.
+
+## Using a custom build system
+
+The source files of the library are designed to be compilable directly, without
+any prerequisite step like running a `./configure` script.  Therefore, as an
+alternative to building the library using the provided Makefile, the library
+source files can be easily integrated into your application directly and built
+using any build system.
+
+You should compile both `lib/*.c` and `lib/*/*.c`.  You don't need to worry
+about excluding irrelevant architecture-specific code, as this is already
+handled in the source files themselves using `#ifdef`s.
+
+It is **strongly** recommended to use either gcc or clang, and to use `-O2`.
+
+If you are doing a freestanding build with `-ffreestanding`, you must add
+`-DFREESTANDING` as well, otherwise performance will suffer greatly.
 
 # API
 
