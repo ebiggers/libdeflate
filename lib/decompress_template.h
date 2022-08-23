@@ -31,6 +31,12 @@
  * target instruction sets.
  */
 
+#ifdef __aarch64__
+#include <arm_neon.h>
+#else
+#include <immintrin.h>
+#endif
+
 static enum libdeflate_result ATTRIBUTES
 FUNCNAME(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
@@ -507,56 +513,106 @@ have_decode_tables:
 		 * the previous byte, which is the result of compressing long
 		 * runs of the same byte.
 		 */
-		if (UNALIGNED_ACCESS_IS_FAST && offset >= WORDBYTES) {
-			store_word_unaligned(load_word_unaligned(src), dst);
-			src += WORDBYTES;
-			dst += WORDBYTES;
-			store_word_unaligned(load_word_unaligned(src), dst);
-			src += WORDBYTES;
-			dst += WORDBYTES;
+		if (offset >= 16) {
+#ifdef __aarch64__
+			vst1q_u8(dst, vld1q_u8(src));
+			src += 16, dst += 16;
 			do {
-				store_word_unaligned(load_word_unaligned(src), dst);
-				src += WORDBYTES;
-				dst += WORDBYTES;
-				store_word_unaligned(load_word_unaligned(src), dst);
-				src += WORDBYTES;
-				dst += WORDBYTES;
+				vst1q_u8(dst, vld1q_u8(src));
+				src += 16, dst += 16;
 			} while (dst < out_next);
-		} else if (UNALIGNED_ACCESS_IS_FAST && offset == 1) {
-			machine_word_t v;
-
-			v = (machine_word_t)0x0101010101010101 * src[0];
-			store_word_unaligned(v, dst);
-			dst += WORDBYTES;
-			store_word_unaligned(v, dst);
-			dst += WORDBYTES;
+#else
+			_mm_storeu_si128((void *)dst, _mm_loadu_si128((const void *)src));
+			src += 16, dst += 16;
 			do {
-				store_word_unaligned(v, dst);
-				dst += WORDBYTES;
-				store_word_unaligned(v, dst);
-				dst += WORDBYTES;
+				_mm_storeu_si128((void *)dst, _mm_loadu_si128((const void *)src));
+				src += 16, dst += 16;
 			} while (dst < out_next);
-		} else if (UNALIGNED_ACCESS_IS_FAST) {
-			store_word_unaligned(load_word_unaligned(src), dst);
-			src += offset;
-			dst += offset;
-			store_word_unaligned(load_word_unaligned(src), dst);
-			src += offset;
-			dst += offset;
-			do {
-				store_word_unaligned(load_word_unaligned(src), dst);
-				src += offset;
-				dst += offset;
-				store_word_unaligned(load_word_unaligned(src), dst);
-				src += offset;
-				dst += offset;
-			} while (dst < out_next);
+#endif
 		} else {
-			*dst++ = *src++;
-			*dst++ = *src++;
+#ifdef __aarch64__
+			static const uint8x16_t shuf_vecs[16] =
+#else
+			static const __v16qi shuf_vecs[16] =
+#endif
+			{
+				/* offset = 0 (unused) */
+				{ 0, },
+				/* offset = 1 */
+				{ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+				/* offset = 2 */
+				{ 0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1 },
+				/* offset = 3 */
+				{ 0,  1,  2,  0,  1,  2,  0,  1,  2,  0,  1,  2,  0,  1,  2,  0 },
+				/* offset = 4 */
+				{ 0,  1,  2,  3,  0,  1,  2,  3,  0,  1,  2,  3,  0,  1,  2,  3 },
+				/* offset = 5 */
+				{ 0,  1,  2,  3,  4,  0,  1,  2,  3,  4,  0,  1,  2,  3,  4,  0 },
+				/* offset = 6 */
+				{ 0,  1,  2,  3,  4,  5,  0,  1,  2,  3,  4,  5,  0,  1,  2,  3 },
+				/* offset = 7 */
+				{ 0,  1,  2,  3,  4,  5,  6,  0,  1,  2,  3,  4,  5,  6,  0,  1 },
+				/* offset = 8 */
+				{ 0,  1,  2,  3,  4,  5,  6,  7,  0,  1,  2,  3,  4,  5,  6,  7 },
+				/* offset = 9 */
+				{ 0,  1,  2,  3,  4,  5,  6,  7,  8,  0,  1,  2,  3,  4,  5,  6 },
+				/* offset = 10 */
+				{ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  0,  1,  2,  3,  4,  5 },
+				/* offset = 11 */
+				{ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 0,  1,  2,  3,  4 },
+				/* offset = 12 */
+				{ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 0,  1,  2,  3 },
+				/* offset = 13 */
+				{ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 0,  1,  2 },
+				/* offset = 14 */
+				{ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 0,  1 },
+				/* offset = 15 */
+				{ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 0 },
+			};
+			/* [0] + [16-(16%i) for i in range(1,16)] */
+			static const u8 inc_amounts[] = {
+				0, 16, 16, 15, 16, 15, 12, 14, 16, 9, 10, 11,
+				12, 13, 14, 15,
+			};
+	#define OVERLAPPING_STORES 1
+		#ifdef __aarch64__
+			uint8x16_t v = vld1q_u8(src);
+			unsigned inc = inc_amounts[offset];
+
+			v = vqtbl1q_u8(v, shuf_vecs[offset]);
+			vst1q_u8(dst, v);
+			dst += inc;
+		#if OVERLAPPING_STORES
 			do {
-				*dst++ = *src++;
+				vst1q_u8(dst, v);
+				dst += inc;
 			} while (dst < out_next);
+		#else
+			do {
+				vst1q_u8(dst, vld1q_u8(src));
+				src += 16, dst += 16;
+			} while (dst < out_next);
+		#endif
+		#else
+			__m128i v = _mm_loadu_si128((const void *)src);
+			unsigned int inc = inc_amounts[offset];
+
+			v = _mm_shuffle_epi8(v, (__m128i)shuf_vecs[offset]);
+			_mm_storeu_si128((void *)dst, v);
+			dst += inc;
+		#if OVERLAPPING_STORES
+			do {
+				_mm_storeu_si128((void *)dst, v);
+				dst += inc;
+			} while (dst < out_next);
+		#else
+			do {
+				_mm_storeu_si128((void *)dst, _mm_loadu_si128((const void *)src));
+				src += 16, dst += 16;
+			} while (dst < out_next);
+		#endif
+
+		#endif
 		}
 	} while (in_next < in_fastloop_end && out_next < out_fastloop_end);
 
