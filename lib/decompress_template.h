@@ -56,7 +56,6 @@ FUNCNAME(struct libdeflate_decompressor * restrict d,
 	u16 nlen;
 	unsigned num_litlen_syms;
 	unsigned num_offset_syms;
-	u8 litlen_tablebits;
 	machine_word_t litlen_tablemask;
 	bitbuf_t tmpbits;
 
@@ -272,8 +271,7 @@ next_block:
 	SAFETY_CHECK(build_offset_decode_table(d, num_litlen_syms, num_offset_syms));
 	SAFETY_CHECK(build_litlen_decode_table(d, num_litlen_syms, num_offset_syms));
 have_decode_tables:
-	litlen_tablebits = d->litlen_tablebits;
-	litlen_tablemask = (1 << litlen_tablebits) - 1;
+	litlen_tablemask = (1 << d->litlen_tablebits) - 1;
 
 	/*
 	 * This is the "fastloop" for decoding literals and matches.  It does
@@ -290,6 +288,8 @@ have_decode_tables:
 		REFILL_BITS_IN_FASTLOOP();
 		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 preloaded:
+		SAVE_BITBUF();
+		REMOVE_ENTRY_BITS_FAST(entry);
 		if (CAN_ENSURE(3 * LITLEN_TABLEBITS +
 			       DEFLATE_MAX_LITLEN_CODEWORD_LEN +
 			       DEFLATE_MAX_EXTRA_LENGTH_BITS) &&
@@ -306,39 +306,38 @@ preloaded:
 			 * and FASTLOOP_MAX_BYTES_READ need to be updated if the
 			 * maximum number of literals decoded here is changed.
 			 */
-			REMOVE_ENTRY_BITS_FAST(entry);
 			lit = entry >> 16;
 			entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 			*out_next++ = lit;
+			SAVE_BITBUF();
+			REMOVE_ENTRY_BITS_FAST(entry);
 			if (entry & HUFFDEC_LITERAL) {
-				REMOVE_ENTRY_BITS_FAST(entry);
 				lit = entry >> 16;
 				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 				*out_next++ = lit;
+				SAVE_BITBUF();
+				REMOVE_ENTRY_BITS_FAST(entry);
 				if (entry & HUFFDEC_LITERAL) {
-					REMOVE_ENTRY_BITS_FAST(entry);
 					lit = entry >> 16;
 					entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 					*out_next++ = lit;
+					SAVE_BITBUF();
+					REMOVE_ENTRY_BITS_FAST(entry);
 				}
 			}
 		}
 		if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
 			/* Subtable pointer or end-of-block entry */
 			if (entry & HUFFDEC_SUBTABLE_POINTER) {
-				REMOVE_BITS(litlen_tablebits);
-				entry = d->u.litlen_decode_table[(entry >> 16) + BITS((u8)entry)];
+				entry = d->u.litlen_decode_table[(entry >> 16) +
+						BITS((entry >> 8) & 0xF)];
+				SAVE_BITBUF();
+				REMOVE_ENTRY_BITS_FAST(entry);
 			}
-			SAVE_BITBUF();
-			REMOVE_ENTRY_BITS_FAST(entry);
 			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
 				goto block_done;
-			/* Literal or length entry, from a subtable */
-		} else {
-			/* Literal or length entry, from the main table */
-			SAVE_BITBUF();
-			REMOVE_ENTRY_BITS_FAST(entry);
 		}
+		/* Literal or length entry */
 		length = entry >> 16;
 		if (entry & HUFFDEC_LITERAL) {
 			/*
@@ -374,7 +373,8 @@ preloaded:
 		if (entry & HUFFDEC_EXCEPTIONAL) {
 			/* Offset codeword requires a subtable */
 			REMOVE_BITS(OFFSET_TABLEBITS);
-			entry = d->offset_decode_table[(entry >> 16) + BITS((u8)entry)];
+			entry = d->offset_decode_table[(entry >> 16) +
+						BITS((entry >> 8) & 0xF)];
 			/*
 			 * On 32-bit, we might not be able to decode the offset
 			 * symbol and extra offset bits without refilling the
@@ -474,12 +474,14 @@ preloaded:
 
 		REFILL_BITS();
 		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
-		if (unlikely(entry & HUFFDEC_SUBTABLE_POINTER)) {
-			REMOVE_BITS(litlen_tablebits);
-			entry = d->u.litlen_decode_table[(entry >> 16) + BITS((u8)entry)];
-		}
 		SAVE_BITBUF();
 		REMOVE_BITS((u8)entry);
+		if (unlikely(entry & HUFFDEC_SUBTABLE_POINTER)) {
+			entry = d->u.litlen_decode_table[(entry >> 16) +
+						BITS((entry >> 8) & 0xF)];
+			SAVE_BITBUF();
+			REMOVE_BITS((u8)entry);
+		}
 		length = entry >> 16;
 		if (entry & HUFFDEC_LITERAL) {
 			if (unlikely(out_next == out_end))
@@ -504,7 +506,8 @@ preloaded:
 		entry = d->offset_decode_table[BITS(OFFSET_TABLEBITS)];
 		if (entry & HUFFDEC_EXCEPTIONAL) {
 			REMOVE_BITS(OFFSET_TABLEBITS);
-			entry = d->offset_decode_table[(entry >> 16) + BITS((u8)entry)];
+			entry = d->offset_decode_table[(entry >> 16) +
+						BITS((entry >> 8) & 0xF)];
 			if (!CAN_ENSURE(DEFLATE_MAX_OFFSET_CODEWORD_LEN +
 					DEFLATE_MAX_EXTRA_OFFSET_BITS))
 				ENSURE_BITS(DEFLATE_MAX_OFFSET_CODEWORD_LEN -

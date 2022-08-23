@@ -477,7 +477,8 @@ static const u32 precode_decode_results[] = {
  *		Bit 15:     1 (HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     1 (HUFFDEC_SUBTABLE_POINTER)
  *		Bit 13:     0 (!HUFFDEC_END_OF_BLOCK)
- *		Bit 3-0:    number of subtable bits
+ *		Bit 11-8:   number of subtable bits
+ *		Bit 7-0:    number of main table bits
  *
  * This format has several desirable properties:
  *
@@ -497,8 +498,8 @@ static const u32 precode_decode_results[] = {
  *	  optimization used in REMOVE_ENTRY_BITS_FAST().  It also includes the
  *	  number of extra bits, so they don't need to be removed separately.
  *
- *	- The flags in bits 13-15 are arranged to be 0 when the number of
- *	  non-extra bits (the value in bits 11-8) is needed, making this value
+ *	- The flags in bits 13-15 are arranged to be 0 when the
+ *	  "remaining codeword length" in bits 11-8 is needed, making this value
  *	  fairly easily accessible as well via a shift and downcast.
  *
  * litlen_decode_results[] contains the static part of the entry for each
@@ -605,7 +606,8 @@ static const u32 litlen_decode_results[] = {
  *		Bit 31-16:  index of start of subtable
  *		Bit 15:     1 (HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     1 (HUFFDEC_SUBTABLE_POINTER)
- *		Bit 3-0:    number of subtable bits
+ *		Bit 11-8:   number of subtable bits
+ *		Bit 7-0:    number of main table bits
  *
  * These work the same way as the length entries and subtable pointer entries in
  * the litlen decode table; see litlen_decode_results[] above.
@@ -953,16 +955,13 @@ build_decode_table(u32 decode_table[],
 
 			/*
 			 * Create the entry that points from the main table to
-			 * the subtable.  This entry contains the index of the
-			 * start of the subtable and the number of bits with
-			 * which the subtable is indexed (the log base 2 of the
-			 * number of entries it contains).
+			 * the subtable.
 			 */
 			decode_table[subtable_prefix] =
 				((u32)subtable_start << 16) |
 				HUFFDEC_EXCEPTIONAL |
 				HUFFDEC_SUBTABLE_POINTER |
-				subtable_bits;
+				(subtable_bits << 8) | table_bits;
 		}
 
 		/* Fill the subtable entries for the current codeword. */
