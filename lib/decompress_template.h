@@ -47,7 +47,7 @@ FUNCNAME(struct libdeflate_decompressor * restrict d,
 		in_end - MIN(in_nbytes, FASTLOOP_MAX_BYTES_READ);
 	bitbuf_t bitbuf = 0;
 	bitbuf_t saved_bitbuf;
-	machine_word_t bitsleft = 0;
+	u32 bitsleft = 0;
 	size_t overread_count = 0;
 	unsigned i;
 	bool is_final_block;
