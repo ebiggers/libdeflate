@@ -399,7 +399,7 @@ preloaded:
 
 		/*
 		 * Copy the match.  On most CPUs the fastest method is a
-		 * word-at-a-time copy, unconditionally copying at least 3 words
+		 * word-at-a-time copy, unconditionally copying about 4 words
 		 * since this is enough for most matches without being too much.
 		 *
 		 * The normal word-at-a-time copy works for offset >= WORDBYTES,
@@ -424,6 +424,9 @@ preloaded:
 				copy_word_unaligned(src, dst);
 				src += WORDBYTES;
 				dst += WORDBYTES;
+				copy_word_unaligned(src, dst);
+				src += WORDBYTES;
+				dst += WORDBYTES;
 			} while (dst < out_next);
 		} else if (UNALIGNED_ACCESS_IS_FAST && offset == 1) {
 			machine_word_t v = repeat_byte(*src);
@@ -433,6 +436,8 @@ preloaded:
 			store_word_unaligned(v, dst);
 			dst += WORDBYTES;
 			do {
+				store_word_unaligned(v, dst);
+				dst += WORDBYTES;
 				store_word_unaligned(v, dst);
 				dst += WORDBYTES;
 			} while (dst < out_next);

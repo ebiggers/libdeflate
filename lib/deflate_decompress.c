@@ -288,10 +288,10 @@ do {									\
  * This is the worst-case maximum number of output bytes that are written to
  * during each iteration of the fastloop.  The worst case is 3 literals, then a
  * match of length DEFLATE_MAX_MATCH_LEN.  The match length must be rounded up
- * to a word boundary due to the word-at-a-time match copy implementation.
+ * to a '2 * WORDBYTES' boundary due to the match copy implementation.
  */
 #define FASTLOOP_MAX_BYTES_WRITTEN	\
-	(3 + ALIGN(DEFLATE_MAX_MATCH_LEN, WORDBYTES))
+	(3 + ALIGN(DEFLATE_MAX_MATCH_LEN, 2 * WORDBYTES))
 
 /*
  * This is the worst-case maximum number of input bytes that are read during
