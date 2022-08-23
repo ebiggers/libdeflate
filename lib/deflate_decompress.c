@@ -1075,7 +1075,7 @@ typedef enum libdeflate_result (*decompress_func_t)
 /* Include architecture-specific implementation(s) if available. */
 #undef DEFAULT_IMPL
 #undef arch_select_decompress_func
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 #  include "x86/decompress_impl.h"
 #endif
 

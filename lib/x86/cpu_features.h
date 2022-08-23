@@ -32,7 +32,7 @@
 
 #define HAVE_DYNAMIC_X86_CPU_FEATURES	0
 
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 
 #if COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
 #  undef HAVE_DYNAMIC_X86_CPU_FEATURES
@@ -166,6 +166,6 @@ typedef unsigned char      __v32qu __attribute__((__vector_size__(32)));
 	(HAVE_INTRIN && \
 	 (HAVE_BMI2_NATIVE || (HAVE_BMI2_TARGET && HAVE_TARGET_INTRINSICS)))
 
-#endif /* __i386__ || __x86_64__ */
+#endif /* ARCH_X86_32 || ARCH_X86_64 */
 
 #endif /* LIB_X86_CPU_FEATURES_H */

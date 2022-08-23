@@ -108,7 +108,7 @@ static u32 query_arm_cpu_features(void)
 
 	scan_auxv(&hwcap, &hwcap2);
 
-#ifdef __arm__
+#ifdef ARCH_ARM32
 	STATIC_ASSERT(sizeof(long) == 4);
 	if (hwcap & (1 << 12))	/* HWCAP_NEON */
 		features |= ARM_CPU_FEATURE_NEON;

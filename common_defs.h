@@ -45,6 +45,37 @@
 #endif
 
 /* ========================================================================== */
+/*                              Target architecture                           */
+/* ========================================================================== */
+
+#undef ARCH_X86_64
+#undef ARCH_X86_32
+#undef ARCH_ARM64
+#undef ARCH_ARM32
+
+#ifdef _MSC_VER
+#  if defined(_M_X64)
+#    define ARCH_X86_64
+#  elif defined(_M_IX86)
+#    define ARCH_X86_32
+#  elif defined(_M_ARM64)
+#    define ARCH_ARM64
+#  elif defined(_M_ARM)
+#    define ARCH_ARM32
+#  endif
+#else
+#  if defined(__x86_64__)
+#    define ARCH_X86_64
+#  elif defined(__i386__)
+#    define ARCH_X86_32
+#  elif defined(__aarch64__)
+#    define ARCH_ARM64
+#  elif defined(__arm__)
+#    define ARCH_ARM32
+#  endif
+#endif
+
+/* ========================================================================== */
 /*                              Type definitions                              */
 /* ========================================================================== */
 
@@ -297,7 +328,7 @@ static forceinline u64 bswap64(u64 v)
  * efficiently on the target platform, otherwise 0.
  */
 #if (defined(__GNUC__) || defined(__clang__)) && \
-	(defined(__x86_64__) || defined(__i386__) || \
+	(defined(ARCH_X86_64) || defined(ARCH_X86_32) || \
 	 defined(__ARM_FEATURE_UNALIGNED) || defined(__powerpc64__) || \
 	 /*
 	  * For all compilation purposes, WebAssembly behaves like any other CPU
@@ -621,7 +652,7 @@ bsfw(machine_word_t v)
  * fallback implementation; use '#ifdef rbit32' to check if this is available.
  */
 #undef rbit32
-#if (defined(__GNUC__) || defined(__clang__)) && defined(__arm__) && \
+#if (defined(__GNUC__) || defined(__clang__)) && defined(ARCH_ARM32) && \
 	(__ARM_ARCH >= 7 || (__ARM_ARCH == 6 && defined(__ARM_ARCH_6T2__)))
 static forceinline u32
 rbit32(u32 v)
@@ -630,7 +661,7 @@ rbit32(u32 v)
 	return v;
 }
 #define rbit32 rbit32
-#elif (defined(__GNUC__) || defined(__clang__)) && defined(__aarch64__)
+#elif (defined(__GNUC__) || defined(__clang__)) && defined(ARCH_ARM64)
 static forceinline u32
 rbit32(u32 v)
 {

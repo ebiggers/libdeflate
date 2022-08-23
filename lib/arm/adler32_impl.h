@@ -42,7 +42,7 @@
 #  if HAVE_NEON_NATIVE
 #    define ATTRIBUTES
 #  else
-#    ifdef __arm__
+#    ifdef ARCH_ARM32
 #      define ATTRIBUTES	__attribute__((target("fpu=neon")))
 #    else
 #      define ATTRIBUTES	__attribute__((target("+simd")))
@@ -113,7 +113,7 @@ adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 	} while (p != end);
 
 	/* s2 = 64*s2 + (64*bytesum0 + 63*bytesum1 + ... + 1*bytesum63) */
-#ifdef __arm__
+#ifdef ARCH_ARM32
 #  define umlal2(a, b, c)  vmlal_u16((a), vget_high_u16(b), vget_high_u16(c))
 #else
 #  define umlal2	   vmlal_high_u16

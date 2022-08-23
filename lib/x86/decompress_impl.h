@@ -20,7 +20,7 @@
     */
 #  ifndef __clang__
 #    include <immintrin.h>
-#    ifdef __x86_64__
+#    ifdef ARCH_X86_64
 #      define EXTRACT_VARBITS(word, count)  _bzhi_u64((word), (count))
 #      define EXTRACT_VARBITS8(word, count) _bzhi_u64((word), (count))
 #    else

@@ -43,7 +43,7 @@
 static forceinline ATTRIBUTES poly128_t
 ADD_SUFFIX(clmul_high)(poly64x2_t a, poly64x2_t b)
 {
-#if defined(__clang__) && defined(__aarch64__)
+#if defined(__clang__) && defined(ARCH_ARM64)
 	/*
 	 * Use inline asm to ensure that pmull2 is really used.  This works
 	 * around clang bug https://github.com/llvm/llvm-project/issues/52868.
@@ -98,7 +98,7 @@ ADD_SUFFIX(fold_vec)(uint8x16_t src, uint8x16_t dst, poly64x2_t multipliers)
 static forceinline ATTRIBUTES uint8x16_t
 ADD_SUFFIX(vtbl)(uint8x16_t table, uint8x16_t indices)
 {
-#ifdef __aarch64__
+#ifdef ARCH_ARM64
 	return vqtbl1q_u8(table, indices);
 #else
 	uint8x8x2_t tab2;
