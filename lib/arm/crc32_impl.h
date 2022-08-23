@@ -48,7 +48,7 @@
 #  if HAVE_CRC32_NATIVE
 #    define ATTRIBUTES
 #  else
-#    ifdef __arm__
+#    ifdef ARCH_ARM32
 #      ifdef __clang__
 #        define ATTRIBUTES	__attribute__((target("armv8-a,crc")))
 #      else
@@ -239,7 +239,7 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 #  if HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE
 #    define ATTRIBUTES
 #  else
-#    ifdef __arm__
+#    ifdef ARCH_ARM32
 #      define ATTRIBUTES	__attribute__((target("arch=armv8-a+crc,fpu=crypto-neon-fp-armv8")))
 #    else
 #      ifdef __clang__
@@ -429,7 +429,7 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 #  if HAVE_PMULL_NATIVE
 #    define ATTRIBUTES
 #  else
-#    ifdef __arm__
+#    ifdef ARCH_ARM32
 #      define ATTRIBUTES    __attribute__((target("fpu=crypto-neon-fp-armv8")))
 #    else
 #      ifdef __clang__
@@ -535,7 +535,7 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
  *
  * See crc32_pmull_wide.h for explanation.
  */
-#if defined(__aarch64__) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
+#if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
 	((HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE) || \
 	 (HAVE_PMULL_TARGET && HAVE_CRC32_TARGET))
 #  define crc32_arm_pmullx12_crc	crc32_arm_pmullx12_crc
@@ -562,7 +562,7 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
  * Note: we require HAVE_SHA3_TARGET (or HAVE_SHA3_NATIVE) rather than
  * HAVE_SHA3_INTRIN, as we have an inline asm fallback for eor3.
  */
-#if defined(__aarch64__) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
+#if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
 	((HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE) || \
 	 (HAVE_PMULL_TARGET && HAVE_CRC32_TARGET && HAVE_SHA3_TARGET))
 #  define crc32_arm_pmullx12_crc_eor3	crc32_arm_pmullx12_crc_eor3

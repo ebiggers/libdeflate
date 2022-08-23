@@ -32,12 +32,12 @@
 
 #define HAVE_DYNAMIC_ARM_CPU_FEATURES	0
 
-#if defined(__arm__) || defined(__aarch64__)
+#if defined(ARCH_ARM32) || defined(ARCH_ARM64)
 
 #if COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE && \
 	!defined(FREESTANDING) && \
 	(defined(__linux__) || \
-	 (defined(__aarch64__) && defined(__APPLE__)))
+	 (defined(ARCH_ARM64) && defined(__APPLE__)))
 #  undef HAVE_DYNAMIC_ARM_CPU_FEATURES
 #  define HAVE_DYNAMIC_ARM_CPU_FEATURES	1
 #endif
@@ -112,7 +112,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  * <arm_neon.h> puts their definitions behind __aarch64__.
  */
 #if HAVE_NEON_INTRIN && (HAVE_PMULL_NATIVE || HAVE_PMULL_TARGET) && \
-	!(defined(__arm__) && defined(__clang__)) && \
+	!(defined(ARCH_ARM32) && defined(__clang__)) && \
 	CPU_IS_LITTLE_ENDIAN() /* pmull code on big endian is untested */
 #  define HAVE_PMULL_INTRIN	1
 #else
@@ -149,7 +149,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 				 (GCC_PREREQ(9, 5) && !GCC_PREREQ(10, 0))))))
 
 /* SHA3 (needed for the eor3 instruction) */
-#ifdef __aarch64__
+#ifdef ARCH_ARM64
 #  ifdef __ARM_FEATURE_SHA3
 #    define HAVE_SHA3_NATIVE	1
 #  else
@@ -169,7 +169,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #endif
 
 /* dotprod */
-#ifdef __aarch64__
+#ifdef ARCH_ARM64
 #  ifdef __ARM_FEATURE_DOTPROD
 #    define HAVE_DOTPROD_NATIVE	1
 #  else
@@ -194,7 +194,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  * corresponding __ARM_FEATURE_* macros while including the headers.
  */
 #if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && \
-	(defined(__clang__) || defined(__arm__))
+	(defined(__clang__) || defined(ARCH_ARM32))
 #  define __ARM_FEATURE_CRC32	1
 #endif
 #if HAVE_SHA3_INTRIN && !HAVE_SHA3_NATIVE && defined(__clang__)
@@ -204,7 +204,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #  define __ARM_FEATURE_DOTPROD	1
 #endif
 #if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && \
-	(defined(__clang__) || defined(__arm__))
+	(defined(__clang__) || defined(ARCH_ARM32))
 #  include <arm_acle.h>
 #  undef __ARM_FEATURE_CRC32
 #endif
@@ -217,6 +217,6 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #  undef __ARM_FEATURE_DOTPROD
 #endif
 
-#endif /* __arm__ || __aarch64__ */
+#endif /* ARCH_ARM32 || ARCH_ARM64 */
 
 #endif /* LIB_ARM_CPU_FEATURES_H */

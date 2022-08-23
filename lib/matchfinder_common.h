@@ -61,9 +61,9 @@ typedef s16 mf_pos_t;
 #undef matchfinder_rebase
 #ifdef _aligned_attribute
 #  define MATCHFINDER_ALIGNED _aligned_attribute(MATCHFINDER_MEM_ALIGNMENT)
-#  if defined(__arm__) || defined(__aarch64__)
+#  if defined(ARCH_ARM32) || defined(ARCH_ARM64)
 #    include "arm/matchfinder_impl.h"
-#  elif defined(__i386__) || defined(__x86_64__)
+#  elif defined(ARCH_X86_32) || defined(ARCH_X86_64)
 #    include "x86/matchfinder_impl.h"
 #  endif
 #else
