@@ -358,6 +358,11 @@ do {									\
  * take longer, which decreases performance.  We choose values that work well in
  * practice, making subtables rarely needed without making the tables too large.
  *
+ * Our choice of OFFSET_TABLEBITS == 8 is a bit low; without any special
+ * considerations, 9 would fit the trade-off curve better.  However, there is a
+ * performance benefit to using exactly 8 bits when it is a compile-time
+ * constant, as many CPUs can take the low byte more easily than the low 9 bits.
+ *
  * Each TABLEBITS value has a corresponding ENOUGH value that gives the
  * worst-case maximum number of decode table entries, including the main table
  * and all subtables.  The ENOUGH value depends on three parameters:
@@ -370,12 +375,10 @@ do {									\
  */
 #define PRECODE_TABLEBITS	7
 #define PRECODE_ENOUGH		128	/* enough 19 7 7	*/
-
 #define LITLEN_TABLEBITS	11
 #define LITLEN_ENOUGH		2342	/* enough 288 11 15	*/
-
-#define OFFSET_TABLEBITS	9
-#define OFFSET_ENOUGH		594	/* enough 32 9 15	*/
+#define OFFSET_TABLEBITS	8
+#define OFFSET_ENOUGH		402	/* enough 32 8 15	*/
 
 /*
  * make_decode_table_entry() creates a decode table entry for the given symbol
@@ -998,7 +1001,7 @@ build_offset_decode_table(struct libdeflate_decompressor *d,
 			  unsigned num_litlen_syms, unsigned num_offset_syms)
 {
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
-	STATIC_ASSERT(OFFSET_TABLEBITS == 9 && OFFSET_ENOUGH == 594);
+	STATIC_ASSERT(OFFSET_TABLEBITS == 8 && OFFSET_ENOUGH == 402);
 
 	STATIC_ASSERT(ARRAY_LEN(offset_decode_results) ==
 		      DEFLATE_NUM_OFFSET_SYMS);
