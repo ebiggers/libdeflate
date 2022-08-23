@@ -56,6 +56,8 @@ FUNCNAME(struct libdeflate_decompressor * restrict d,
 	u16 nlen;
 	unsigned num_litlen_syms;
 	unsigned num_offset_syms;
+	u8 litlen_tablebits;
+	machine_word_t litlen_tablemask;
 	bitbuf_t tmpbits;
 
 next_block:
@@ -270,6 +272,8 @@ next_block:
 	SAFETY_CHECK(build_offset_decode_table(d, num_litlen_syms, num_offset_syms));
 	SAFETY_CHECK(build_litlen_decode_table(d, num_litlen_syms, num_offset_syms));
 have_decode_tables:
+	litlen_tablebits = d->litlen_tablebits;
+	litlen_tablemask = (1 << litlen_tablebits) - 1;
 
 	/*
 	 * This is the "fastloop" for decoding literals and matches.  It does
@@ -284,7 +288,7 @@ have_decode_tables:
 
 		/* Refill the bitbuffer and decode a litlen symbol. */
 		REFILL_BITS_IN_FASTLOOP();
-		entry = d->u.litlen_decode_table[BITS(LITLEN_TABLEBITS)];
+		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 preloaded:
 		if (CAN_ENSURE(3 * LITLEN_TABLEBITS +
 			       DEFLATE_MAX_LITLEN_CODEWORD_LEN +
@@ -304,17 +308,17 @@ preloaded:
 			 */
 			REMOVE_ENTRY_BITS_FAST(entry);
 			lit = entry >> 16;
-			entry = d->u.litlen_decode_table[BITS(LITLEN_TABLEBITS)];
+			entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 			*out_next++ = lit;
 			if (entry & HUFFDEC_LITERAL) {
 				REMOVE_ENTRY_BITS_FAST(entry);
 				lit = entry >> 16;
-				entry = d->u.litlen_decode_table[BITS(LITLEN_TABLEBITS)];
+				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 				*out_next++ = lit;
 				if (entry & HUFFDEC_LITERAL) {
 					REMOVE_ENTRY_BITS_FAST(entry);
 					lit = entry >> 16;
-					entry = d->u.litlen_decode_table[BITS(LITLEN_TABLEBITS)];
+					entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 					*out_next++ = lit;
 				}
 			}
@@ -322,7 +326,7 @@ preloaded:
 		if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
 			/* Subtable pointer or end-of-block entry */
 			if (entry & HUFFDEC_SUBTABLE_POINTER) {
-				REMOVE_BITS(LITLEN_TABLEBITS);
+				REMOVE_BITS(litlen_tablebits);
 				entry = d->u.litlen_decode_table[(entry >> 16) + BITS((u8)entry)];
 			}
 			SAVE_BITBUF();
@@ -395,7 +399,7 @@ preloaded:
 		 * latency of the two operations to overlap.
 		 */
 		REFILL_BITS_IN_FASTLOOP();
-		entry = d->u.litlen_decode_table[BITS(LITLEN_TABLEBITS)];
+		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 
 		/*
 		 * Copy the match.  On most CPUs the fastest method is a
@@ -469,9 +473,9 @@ preloaded:
 		u8 *dst;
 
 		REFILL_BITS();
-		entry = d->u.litlen_decode_table[BITS(LITLEN_TABLEBITS)];
+		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 		if (unlikely(entry & HUFFDEC_SUBTABLE_POINTER)) {
-			REMOVE_BITS(LITLEN_TABLEBITS);
+			REMOVE_BITS(litlen_tablebits);
 			entry = d->u.litlen_decode_table[(entry >> 16) + BITS((u8)entry)];
 		}
 		SAVE_BITBUF();

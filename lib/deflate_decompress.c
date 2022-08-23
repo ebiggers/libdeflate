@@ -363,6 +363,16 @@ do {									\
  * performance benefit to using exactly 8 bits when it is a compile-time
  * constant, as many CPUs can take the low byte more easily than the low 9 bits.
  *
+ * zlib treats its equivalents of TABLEBITS as maximum values; whenever it
+ * builds a table, it caps the actual table_bits to the longest codeword.  This
+ * makes sense in theory, as there's no need for the table to be any larger than
+ * needed to support the longest codeword.  However, having the table bits be a
+ * compile-time constant is beneficial to the performance of the decode loop, so
+ * there is a trade-off.  libdeflate currently uses the dynamic table_bits
+ * strategy for the litlen table only, due to its larger maximum size.
+ * PRECODE_TABLEBITS and OFFSET_TABLEBITS are smaller, so going dynamic there
+ * isn't as useful, and OFFSET_TABLEBITS=8 is useful as mentioned above.
+ *
  * Each TABLEBITS value has a corresponding ENOUGH value that gives the
  * worst-case maximum number of decode table entries, including the main table
  * and all subtables.  The ENOUGH value depends on three parameters:
@@ -651,6 +661,7 @@ struct libdeflate_decompressor {
 	u16 sorted_syms[DEFLATE_MAX_NUM_SYMS];
 
 	bool static_codes_loaded;
+	unsigned litlen_tablebits;
 };
 
 /*
@@ -681,11 +692,16 @@ struct libdeflate_decompressor {
  *	make the final decode table entries using make_decode_table_entry().
  * @table_bits
  *	The log base-2 of the number of main table entries to use.
+ *	If @table_bits_ret != NULL, then @table_bits is treated as a maximum
+ *	value and it will be decreased if a smaller table would be sufficient.
  * @max_codeword_len
  *	The maximum allowed codeword length for this Huffman code.
  *	Must be <= DEFLATE_MAX_CODEWORD_LEN.
  * @sorted_syms
  *	A temporary array of length @num_syms.
+ * @table_bits_ret
+ *	If non-NULL, then the dynamic table_bits is enabled, and the actual
+ *	table_bits value will be returned here.
  *
  * Returns %true if successful; %false if the codeword lengths do not form a
  * valid Huffman code.
@@ -695,9 +711,10 @@ build_decode_table(u32 decode_table[],
 		   const u8 lens[],
 		   const unsigned num_syms,
 		   const u32 decode_results[],
-		   const unsigned table_bits,
+		   unsigned table_bits,
 		   const unsigned max_codeword_len,
-		   u16 *sorted_syms)
+		   u16 *sorted_syms,
+		   unsigned *table_bits_ret)
 {
 	unsigned len_counts[DEFLATE_MAX_CODEWORD_LEN + 1];
 	unsigned offsets[DEFLATE_MAX_CODEWORD_LEN + 1];
@@ -739,6 +756,20 @@ build_decode_table(u32 decode_table[],
 		codespace_used = (codespace_used << 1) + len_counts[len];
 	}
 	codespace_used = (codespace_used << 1) + len_counts[len];
+
+	/* If allowed, decrease table_bits to the longest codeword length. */
+	if (table_bits_ret != NULL) {
+		unsigned table_bits_needed = 1;
+
+		for (len = max_codeword_len; len > 1; len--) {
+			if (len_counts[len] != 0) {
+				table_bits_needed = len;
+				break;
+			}
+		}
+		table_bits = MIN(table_bits, table_bits_needed);
+		*table_bits_ret = table_bits;
+	}
 
 	for (sym = 0; sym < num_syms; sym++)
 		sorted_syms[offsets[lens[sym]]++] = sym;
@@ -972,7 +1003,8 @@ build_precode_decode_table(struct libdeflate_decompressor *d)
 				  precode_decode_results,
 				  PRECODE_TABLEBITS,
 				  DEFLATE_MAX_PRE_CODEWORD_LEN,
-				  d->sorted_syms);
+				  d->sorted_syms,
+				  NULL);
 }
 
 /* Build the decode table for the literal/length code.  */
@@ -992,7 +1024,8 @@ build_litlen_decode_table(struct libdeflate_decompressor *d,
 				  litlen_decode_results,
 				  LITLEN_TABLEBITS,
 				  DEFLATE_MAX_LITLEN_CODEWORD_LEN,
-				  d->sorted_syms);
+				  d->sorted_syms,
+				  &d->litlen_tablebits);
 }
 
 /* Build the decode table for the offset code.  */
@@ -1012,7 +1045,8 @@ build_offset_decode_table(struct libdeflate_decompressor *d,
 				  offset_decode_results,
 				  OFFSET_TABLEBITS,
 				  DEFLATE_MAX_OFFSET_CODEWORD_LEN,
-				  d->sorted_syms);
+				  d->sorted_syms,
+				  NULL);
 }
 
 static forceinline machine_word_t
