@@ -144,7 +144,8 @@ typedef size_t machine_word_t;
 /* restrict - hint that writes only occur through the given pointer */
 #ifdef __GNUC__
 #  define restrict		__restrict__
-#else
+#elif defined(_MSC_VER) && (!defined(__STDC_VERSION__) || \
+			    __STDC_VERSION__ < 201112L)
 /* Don't use MSVC's __restrict; it has nonstandard behavior. */
 #  define restrict
 #endif
