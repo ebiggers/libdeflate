@@ -513,8 +513,10 @@ bsr32(u32 v)
 #ifdef __GNUC__
 	return 31 - __builtin_clz(v);
 #elif defined(_MSC_VER)
-	_BitScanReverse(&v, v);
-	return v;
+	unsigned long i;
+
+	_BitScanReverse(&i, v);
+	return i;
 #else
 	unsigned i = 0;
 
@@ -530,8 +532,10 @@ bsr64(u64 v)
 #ifdef __GNUC__
 	return 63 - __builtin_clzll(v);
 #elif defined(_MSC_VER) && defined(_M_X64)
-	_BitScanReverse64(&v, v);
-	return v;
+	unsigned long i;
+
+	_BitScanReverse64(&i, v);
+	return i;
 #else
 	unsigned i = 0;
 
@@ -563,8 +567,10 @@ bsf32(u32 v)
 #ifdef __GNUC__
 	return __builtin_ctz(v);
 #elif defined(_MSC_VER)
-	_BitScanForward(&v, v);
-	return v;
+	unsigned long i;
+
+	_BitScanForward(&i, v);
+	return i;
 #else
 	unsigned i = 0;
 
@@ -580,8 +586,10 @@ bsf64(u64 v)
 #ifdef __GNUC__
 	return __builtin_ctzll(v);
 #elif defined(_MSC_VER) && defined(_M_X64)
-	_BitScanForward64(&v, v);
-	return v;
+	unsigned long i;
+
+	_BitScanForward64(&i, v);
+	return i;
 #else
 	unsigned i = 0;
 
