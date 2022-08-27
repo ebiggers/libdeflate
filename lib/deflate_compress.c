@@ -475,7 +475,7 @@ struct deflate_output_bitstream;
 struct libdeflate_compressor {
 
 	/* Pointer to the compress() implementation chosen at allocation time */
-	void (*impl)(struct libdeflate_compressor *c, const u8 *in,
+	void (*impl)(struct libdeflate_compressor *restrict c, const u8 *in,
 		     size_t in_nbytes, struct deflate_output_bitstream *os);
 
 	/* The compression level with which this compressor was created */
