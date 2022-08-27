@@ -28,7 +28,9 @@
 #ifndef LIB_ARM_MATCHFINDER_IMPL_H
 #define LIB_ARM_MATCHFINDER_IMPL_H
 
-#ifdef __ARM_NEON
+#include "cpu_features.h"
+
+#if HAVE_NEON_NATIVE
 #  include <arm_neon.h>
 static forceinline void
 matchfinder_init_neon(mf_pos_t *data, size_t size)
@@ -81,6 +83,6 @@ matchfinder_rebase_neon(mf_pos_t *data, size_t size)
 }
 #define matchfinder_rebase matchfinder_rebase_neon
 
-#endif /* __ARM_NEON */
+#endif /* HAVE_NEON_NATIVE */
 
 #endif /* LIB_ARM_MATCHFINDER_IMPL_H */
