@@ -1041,7 +1041,6 @@ compute_length_counts(u32 A[], unsigned root_idx, unsigned len_counts[],
 		unsigned parent = A[node] >> NUM_SYMBOL_BITS;
 		unsigned parent_depth = A[parent] >> NUM_SYMBOL_BITS;
 		unsigned depth = parent_depth + 1;
-		unsigned len = depth;
 
 		/*
 		 * Set the depth of this node so that it is available when its
@@ -1054,19 +1053,19 @@ compute_length_counts(u32 A[], unsigned root_idx, unsigned len_counts[],
 		 * constraint.  This is not the optimal method for generating
 		 * length-limited Huffman codes!  But it should be good enough.
 		 */
-		if (len >= max_codeword_len) {
-			len = max_codeword_len;
+		if (depth >= max_codeword_len) {
+			depth = max_codeword_len;
 			do {
-				len--;
-			} while (len_counts[len] == 0);
+				depth--;
+			} while (len_counts[depth] == 0);
 		}
 
 		/*
 		 * Account for the fact that we have a non-leaf node at the
 		 * current depth.
 		 */
-		len_counts[len]--;
-		len_counts[len + 1] += 2;
+		len_counts[depth]--;
+		len_counts[depth + 1] += 2;
 	}
 }
 
@@ -1189,11 +1188,9 @@ gen_codewords(u32 A[], u8 lens[], const unsigned len_counts[],
 			(next_codewords[len - 1] + len_counts[len - 1]) << 1;
 
 	for (sym = 0; sym < num_syms; sym++) {
-		u8 len = lens[sym];
-		u32 codeword = next_codewords[len]++;
-
 		/* DEFLATE requires bit-reversed codewords. */
-		A[sym] = reverse_codeword(codeword, len);
+		A[sym] = reverse_codeword(next_codewords[lens[sym]]++,
+					  lens[sym]);
 	}
 }
 

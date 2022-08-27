@@ -55,12 +55,13 @@ cc-option = $(shell if $(CC) $(1) -c -x c /dev/null -o /dev/null \
 
 override CFLAGS :=							\
 	-O2 -fomit-frame-pointer -std=c99 -I. -Wall -Wundef		\
-	$(call cc-option,-Wpedantic)					\
 	$(call cc-option,-Wdeclaration-after-statement)			\
+	$(call cc-option,-Wimplicit-fallthrough)			\
 	$(call cc-option,-Wmissing-prototypes)				\
+	$(call cc-option,-Wpedantic)					\
+	$(call cc-option,-Wshadow)					\
 	$(call cc-option,-Wstrict-prototypes)				\
 	$(call cc-option,-Wvla)						\
-	$(call cc-option,-Wimplicit-fallthrough)			\
 	$(CFLAGS)
 
 FREESTANDING :=
