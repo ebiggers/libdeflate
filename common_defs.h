@@ -531,7 +531,7 @@ bsr64(u64 v)
 {
 #ifdef __GNUC__
 	return 63 - __builtin_clzll(v);
-#elif defined(_MSC_VER) && defined(_M_X64)
+#elif defined(_MSC_VER) && defined(_WIN64)
 	unsigned long i;
 
 	_BitScanReverse64(&i, v);
@@ -585,7 +585,7 @@ bsf64(u64 v)
 {
 #ifdef __GNUC__
 	return __builtin_ctzll(v);
-#elif defined(_MSC_VER) && defined(_M_X64)
+#elif defined(_MSC_VER) && defined(_WIN64)
 	unsigned long i;
 
 	_BitScanForward64(&i, v);
