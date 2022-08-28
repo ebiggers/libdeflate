@@ -505,11 +505,9 @@ have_decode_tables:
 				dst += WORDBYTES;
 			} while (dst < out_next);
 		} else if (UNALIGNED_ACCESS_IS_FAST && offset == 1) {
-			machine_word_t v = *src;
+			machine_word_t v;
 
-			v |= v << 8;
-			v |= v << 16;
-			v |= v << ((WORDBITS == 64) ? 32 : 0);
+			v = (machine_word_t)0x0101010101010101 * src[0];
 			store_word_unaligned(v, dst);
 			dst += WORDBYTES;
 			store_word_unaligned(v, dst);
