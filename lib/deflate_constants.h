@@ -49,11 +49,8 @@
 /*
  * Maximum number of extra bits that may be required to represent a match
  * length or offset.
- *
- * TODO: are we going to have full DEFLATE64 support?  If so, up to 16
- * length bits must be supported.
  */
 #define DEFLATE_MAX_EXTRA_LENGTH_BITS		5
-#define DEFLATE_MAX_EXTRA_OFFSET_BITS		14
+#define DEFLATE_MAX_EXTRA_OFFSET_BITS		13
 
 #endif /* LIB_DEFLATE_CONSTANTS_H */
