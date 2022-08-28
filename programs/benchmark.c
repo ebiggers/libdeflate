@@ -25,7 +25,9 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define _GNU_SOURCE
 #include "test_util.h"
+#include <sys/mman.h>
 
 static const tchar *const optstring = T("0::1::2::3::4::5::6::7::8::9::C:D:eghs:VYZz");
 
@@ -475,8 +477,12 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 			/* Decompress the data we just compressed and compare
 			 * the result with the original. */
 			start_time = timer_ticks();
+
+			memmove((u8 *)compressed_buf + compressed_buf_size - compressed_size,
+				compressed_buf, compressed_size);
 			ok = do_decompress(decompressor,
-					   compressed_buf, compressed_size,
+					   (u8 *)compressed_buf + compressed_buf_size - compressed_size,
+					   compressed_size,
 					   decompressed_buf, original_size);
 			total_decompress_time += timer_ticks() - start_time;
 
@@ -550,7 +556,7 @@ tmain(int argc, tchar *argv[])
 	struct decompressor decompressor = { 0 };
 	size_t compressed_buf_size;
 	void *original_buf = NULL;
-	void *compressed_buf = NULL;
+	void *compressed_buf = MAP_FAILED;
 	void *decompressed_buf = NULL;
 	tchar *default_file_list[] = { NULL };
 	int opt_char;
@@ -643,11 +649,13 @@ tmain(int argc, tchar *argv[])
 		compressed_buf_size = chunk_size - 1;
 
 	original_buf = xmalloc(chunk_size);
-	compressed_buf = xmalloc(compressed_buf_size);
+	compressed_buf = mmap(NULL,ALIGN(compressed_buf_size,4096)+4096,PROT_READ|PROT_WRITE,
+			  MAP_PRIVATE|MAP_ANON,-1,0);
+	munmap((u8 *)compressed_buf + ALIGN(compressed_buf_size,4096), 4096);
 	decompressed_buf = xmalloc(chunk_size);
 
 	ret = -1;
-	if (original_buf == NULL || compressed_buf == NULL ||
+	if (original_buf == NULL || compressed_buf == MAP_FAILED ||
 	    decompressed_buf == NULL)
 		goto out;
 
@@ -688,7 +696,8 @@ tmain(int argc, tchar *argv[])
 	ret = 0;
 out:
 	free(decompressed_buf);
-	free(compressed_buf);
+	if (compressed_buf != MAP_FAILED)
+		munmap(compressed_buf, compressed_buf_size);
 	free(original_buf);
 	decompressor_destroy(&decompressor);
 	compressor_destroy(&compressor);
