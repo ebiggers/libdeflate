@@ -42,6 +42,11 @@
  *   instructions enabled and is used automatically at runtime when supported.
  */
 
+#ifdef __x86_64__
+#include <immintrin.h>
+#else
+#include <arm_neon.h>
+#endif
 #include <limits.h>
 
 #include "lib_common.h"
@@ -630,20 +635,20 @@ struct libdeflate_decompressor {
 				DEFLATE_NUM_OFFSET_SYMS +
 				DEFLATE_MAX_LENS_OVERRUN];
 
-			u32 precode_decode_table[PRECODE_ENOUGH];
+			u32 precode_decode_table[PRECODE_ENOUGH] _aligned_attribute(64);
 		} l;
 
-		u32 litlen_decode_table[LITLEN_ENOUGH];
+		u32 litlen_decode_table[LITLEN_ENOUGH] _aligned_attribute(64);
 	} u;
 
-	u32 offset_decode_table[OFFSET_ENOUGH];
+	u32 offset_decode_table[OFFSET_ENOUGH] _aligned_attribute(64);
 
 	/* used only during build_decode_table() */
 	u16 sorted_syms[DEFLATE_MAX_NUM_SYMS];
 
 	bool static_codes_loaded;
 	unsigned litlen_tablebits;
-};
+} _aligned_attribute(64);
 
 /*
  * Build a table for fast decoding of symbols from a Huffman code.  As input,
@@ -687,6 +692,42 @@ struct libdeflate_decompressor {
  * Returns %true if successful; %false if the codeword lengths do not form a
  * valid Huffman code.
  */
+static forceinline void
+tableexpand(u32 *decode_table, unsigned old_bits, unsigned new_bits)
+{
+	unsigned cur_table_end = 1U << old_bits;
+	unsigned t;
+	unsigned i;
+#ifdef __x86_64__
+	const __m128i *src;
+	__m128i *dst;
+#else
+	const uint8x16_t *src;
+	uint8x16_t *dst;
+#endif
+
+	if (new_bits == old_bits)
+		return;
+	if (old_bits < 4) {
+		t = MIN(new_bits, 4);
+		for (i = 1 << old_bits; i < 1 << t; i++)
+			decode_table[i] = decode_table[i - cur_table_end];
+		old_bits = t;
+	}
+	if (new_bits == old_bits)
+		return;
+
+	src = (void *)&decode_table[0];
+	dst = (void *)&decode_table[1 << old_bits];
+	t = (1 << (new_bits - 4)) - (1 << (old_bits - 4));
+	do {
+		*dst++ = *src++;
+		*dst++ = *src++;
+		*dst++ = *src++;
+		*dst++ = *src++;
+	} while (--t);
+}
+
 static bool
 build_decode_table(u32 decode_table[],
 		   const u8 lens[],
@@ -855,13 +896,7 @@ build_decode_table(u32 decode_table[],
 
 			if (codeword == cur_table_end - 1) {
 				/* Last codeword (all 1's) */
-				for (; len < table_bits; len++) {
-					memcpy(&decode_table[cur_table_end],
-					       decode_table,
-					       cur_table_end *
-						sizeof(decode_table[0]));
-					cur_table_end <<= 1;
-				}
+				tableexpand(decode_table, len, table_bits);
 				return true;
 			}
 			/*
@@ -885,14 +920,12 @@ build_decode_table(u32 decode_table[],
 		} while (--count);
 
 		/* Advance to the next codeword length. */
+		unsigned old_bits = len;
 		do {
-			if (++len <= table_bits) {
-				memcpy(&decode_table[cur_table_end],
-				       decode_table,
-				       cur_table_end * sizeof(decode_table[0]));
-				cur_table_end <<= 1;
-			}
+			++len;
 		} while ((count = len_counts[len]) == 0);
+		tableexpand(decode_table, old_bits, MIN(len, table_bits));
+		cur_table_end = 1U << len;
 	}
 
 	/* Process codewords with len > table_bits.  These require subtables. */
@@ -1129,7 +1162,7 @@ libdeflate_alloc_decompressor(void)
 	 *
 	 * But for simplicity, we currently just zero the whole decompressor.
 	 */
-	struct libdeflate_decompressor *d = libdeflate_malloc(sizeof(*d));
+	struct libdeflate_decompressor *d = libdeflate_aligned_malloc(64, sizeof(*d));
 
 	if (d == NULL)
 		return NULL;
@@ -1140,5 +1173,5 @@ libdeflate_alloc_decompressor(void)
 LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_decompressor(struct libdeflate_decompressor *d)
 {
-	libdeflate_free(d);
+	libdeflate_aligned_free(d);
 }
