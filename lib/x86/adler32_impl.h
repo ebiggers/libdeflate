@@ -46,6 +46,7 @@
 	__v4su s1_last = (v_s1), s2_last = (v_s2);			    \
 									    \
 	/* 128 => 32 bits */						    \
+	s1_last += (__v4su)_mm_shuffle_epi32((__m128i)s1_last, 0x31);	    \
 	s2_last += (__v4su)_mm_shuffle_epi32((__m128i)s2_last, 0x31);	    \
 	s1_last += (__v4su)_mm_shuffle_epi32((__m128i)s1_last, 0x02);	    \
 	s2_last += (__v4su)_mm_shuffle_epi32((__m128i)s2_last, 0x02);	    \
@@ -164,7 +165,7 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 #  define FUNCNAME		adler32_avx2
 #  define FUNCNAME_CHUNK	adler32_avx2_chunk
 #  define IMPL_ALIGNMENT	32
-#  define IMPL_SEGMENT_LEN	64
+#  define IMPL_SEGMENT_LEN	1024
 #  define IMPL_MAX_CHUNK_LEN	(64 * (0x7FFF / 0xFF))
 #  if HAVE_AVX2_NATIVE
 #    define ATTRIBUTES
@@ -176,47 +177,74 @@ static forceinline ATTRIBUTES void
 adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 {
 	const __m256i zeroes = _mm256_setzero_si256();
-	/*
-	 * Note, the multipliers have to be in this order because
-	 * _mm256_unpack{lo,hi}_epi8 work on each 128-bit lane separately.
-	 */
-	const __v16hu mults_a = { 64, 63, 62, 61, 60, 59, 58, 57,
-				  48, 47, 46, 45, 44, 43, 42, 41, };
-	const __v16hu mults_b = { 56, 55, 54, 53, 52, 51, 50, 49,
-				  40, 39, 38, 37, 36, 35, 34, 33, };
-	const __v16hu mults_c = { 32, 31, 30, 29, 28, 27, 26, 25,
-				  16, 15, 14, 13, 12, 11, 10,  9, };
-	const __v16hu mults_d = { 24, 23, 22, 21, 20, 19, 18, 17,
-				  8,  7,  6,  5,  4,  3,  2,  1, };
-	__v8su v_s1 = (__v8su)zeroes;
-	__v8su v_s2 = (__v8su)zeroes;
-	__v16hu v_byte_sums_a = (__v16hu)zeroes;
-	__v16hu v_byte_sums_b = (__v16hu)zeroes;
-	__v16hu v_byte_sums_c = (__v16hu)zeroes;
-	__v16hu v_byte_sums_d = (__v16hu)zeroes;
+	const __v16hu ones = (__v16hu)_mm256_set1_epi16(1);
+	const __v16hu sixtyfours = (__v16hu)_mm256_set1_epi16(64);
+	const __v16hu mults_a = {
+		64, 63, 62, 61, 60, 59, 58, 57,
+		56, 55, 54, 53, 52, 51, 50, 49, };
+	const __v16hu mults_b = {
+		48, 47, 46, 45, 44, 43, 42, 41,
+		40, 39, 38, 37, 36, 35, 34, 33, };
+	const __v16hu mults_c = {
+		32, 31, 30, 29, 28, 27, 26, 25,
+		24, 23, 22, 21, 20, 19, 18, 17, };
+	const __v16hu mults_d = {
+		16, 15, 14, 13, 12, 11, 10,  9,
+		8,  7,  6,  5,  4,  3,  2,  1, };
+
+	__v8si v_s1 = (__v8si)zeroes;
+	__v8si v_s2 = (__v8si)zeroes;
 
 	do {
-		const __m256i bytes1 = *p++;
-		const __m256i bytes2 = *p++;
+		const __m128i *p128 = (const __m128i *)p;
+		__v16hu v_s1_a = (__v16hu)zeroes;
+		__v16hu v_s1_b = (__v16hu)zeroes;
+		__v16hu v_s1_c = (__v16hu)zeroes;
+		__v16hu v_s1_d = (__v16hu)zeroes;
+		__v16hu v_s2_a = (__v16hu)zeroes;
+		__v16hu v_s2_b = (__v16hu)zeroes;
+		__v16hu v_s2_c = (__v16hu)zeroes;
+		__v16hu v_s2_d = (__v16hu)zeroes;
+		int i;
 
-		v_s2 += v_s1;
-		v_s1 += (__v8su)_mm256_sad_epu8(bytes1, zeroes);
-		v_s1 += (__v8su)_mm256_sad_epu8(bytes2, zeroes);
-		v_byte_sums_a += (__v16hu)_mm256_unpacklo_epi8(bytes1, zeroes);
-		v_byte_sums_b += (__v16hu)_mm256_unpackhi_epi8(bytes1, zeroes);
-		v_byte_sums_c += (__v16hu)_mm256_unpacklo_epi8(bytes2, zeroes);
-		v_byte_sums_d += (__v16hu)_mm256_unpackhi_epi8(bytes2, zeroes);
+		v_s1_a = (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+		v_s1_b = (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+		v_s1_c = (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+		v_s1_d = (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+		v_s2_a = v_s1_a;
+		v_s2_b = v_s1_b;
+		v_s2_c = v_s1_c;
+		v_s2_d = v_s1_d;
+		v_s1_a += (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+		v_s1_b += (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+		v_s1_c += (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+		v_s1_d += (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+		for (i = 0; i < 14; i++) {
+			v_s2_a += v_s1_a;
+			v_s2_b += v_s1_b;
+			v_s2_c += v_s1_c;
+			v_s2_d += v_s1_d;
+			v_s1_a += (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+			v_s1_b += (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+			v_s1_c += (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+			v_s1_d += (__v16hu)_mm256_cvtepu8_epi16(*p128++);
+		}
+
+		v_s2 += (__v8si)_mm256_slli_epi32((__m256i)v_s1, 10) +
+			(__v8si)_mm256_madd_epi16((__m256i)v_s2_a, (__m256i)sixtyfours) +
+			(__v8si)_mm256_madd_epi16((__m256i)v_s2_b, (__m256i)sixtyfours) +
+			(__v8si)_mm256_madd_epi16((__m256i)v_s2_c, (__m256i)sixtyfours) +
+			(__v8si)_mm256_madd_epi16((__m256i)v_s2_d, (__m256i)sixtyfours) +
+			(__v8si)_mm256_madd_epi16((__m256i)v_s1_a, (__m256i)mults_a) +
+			(__v8si)_mm256_madd_epi16((__m256i)v_s1_b, (__m256i)mults_b) +
+			(__v8si)_mm256_madd_epi16((__m256i)v_s1_c, (__m256i)mults_c) +
+			(__v8si)_mm256_madd_epi16((__m256i)v_s1_d, (__m256i)mults_d);
+
+		v_s1 += (__v8si)_mm256_madd_epi16((__m256i)(v_s1_a + v_s1_b + v_s1_c + v_s1_d),
+						  (__m256i)ones);
+		p = (const __m256i *)p128;
 	} while (p != end);
 
-	v_s2 = (__v8su)_mm256_slli_epi32((__m256i)v_s2, 6);
-	v_s2 += (__v8su)_mm256_madd_epi16((__m256i)v_byte_sums_a,
-					  (__m256i)mults_a);
-	v_s2 += (__v8su)_mm256_madd_epi16((__m256i)v_byte_sums_b,
-					  (__m256i)mults_b);
-	v_s2 += (__v8su)_mm256_madd_epi16((__m256i)v_byte_sums_c,
-					  (__m256i)mults_c);
-	v_s2 += (__v8su)_mm256_madd_epi16((__m256i)v_byte_sums_d,
-					  (__m256i)mults_d);
 	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2);
 }
 #  include "../adler32_vec_template.h"
