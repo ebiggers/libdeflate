@@ -47,7 +47,7 @@ FUNCNAME(struct libdeflate_decompressor * restrict d,
 		in_end - MIN(in_nbytes, FASTLOOP_MAX_BYTES_READ);
 	bitbuf_t bitbuf = 0;
 	bitbuf_t saved_bitbuf;
-	u32 bitsleft = 0;
+	u32 bitsfree = MAX_BITSFREE;
 	size_t overread_count = 0;
 	unsigned i;
 	bool is_final_block;
@@ -108,23 +108,23 @@ next_block:
 			d->u.precode_lens[deflate_precode_lens_permutation[0]] =
 				(bitbuf >> 17) & BITMASK(3);
 			bitbuf >>= 20;
-			bitsleft -= 20;
+			bitsfree += 20;
 			REFILL_BITS();
 			for (i = 1; i < num_explicit_precode_lens; i++) {
 				d->u.precode_lens[deflate_precode_lens_permutation[i]] =
 					bitbuf & BITMASK(3);
 				bitbuf >>= 3;
-				bitsleft -= 3;
+				bitsfree += 3;
 			}
 		} else {
 			bitbuf >>= 17;
-			bitsleft -= 17;
+			bitsfree += 17;
 			for (i = 0; i < num_explicit_precode_lens; i++) {
 				ENSURE_BITS(3);
 				d->u.precode_lens[deflate_precode_lens_permutation[i]] =
 					bitbuf & BITMASK(3);
 				bitbuf >>= 3;
-				bitsleft -= 3;
+				bitsfree += 3;
 			}
 		}
 		for (; i < DEFLATE_NUM_PRECODE_SYMS; i++)
@@ -151,7 +151,7 @@ next_block:
 			entry = d->u.l.precode_decode_table[
 				bitbuf & BITMASK(DEFLATE_MAX_PRE_CODEWORD_LEN)];
 			bitbuf >>= (u8)entry;
-			bitsleft -= (u8)entry;
+			bitsfree += (u8)entry;
 			presym = entry >> 16;
 
 			if (presym < 16) {
@@ -188,7 +188,7 @@ next_block:
 				STATIC_ASSERT(3 + ((1 << 2) - 1) == 6);
 				rep_count = 3 + (bitbuf & BITMASK(2));
 				bitbuf >>= 2;
-				bitsleft -= 2;
+				bitsfree += 2;
 				d->u.l.lens[i + 0] = rep_val;
 				d->u.l.lens[i + 1] = rep_val;
 				d->u.l.lens[i + 2] = rep_val;
@@ -201,7 +201,7 @@ next_block:
 				STATIC_ASSERT(3 + ((1 << 3) - 1) == 10);
 				rep_count = 3 + (bitbuf & BITMASK(3));
 				bitbuf >>= 3;
-				bitsleft -= 3;
+				bitsfree += 3;
 				d->u.l.lens[i + 0] = 0;
 				d->u.l.lens[i + 1] = 0;
 				d->u.l.lens[i + 2] = 0;
@@ -218,7 +218,7 @@ next_block:
 				STATIC_ASSERT(11 + ((1 << 7) - 1) == 138);
 				rep_count = 11 + (bitbuf & BITMASK(7));
 				bitbuf >>= 7;
-				bitsleft -= 7;
+				bitsfree += 7;
 				memset(&d->u.l.lens[i], 0,
 				       rep_count * sizeof(d->u.l.lens[i]));
 				i += rep_count;
@@ -230,7 +230,7 @@ next_block:
 		 * buffer to the output buffer.
 		 */
 
-		bitsleft -= 3; /* for BTYPE and BFINAL */
+		bitsfree += 3; /* for BTYPE and BFINAL */
 
 		/*
 		 * Align the bitstream to the next byte boundary.  This means
@@ -239,11 +239,12 @@ next_block:
 		 * that have been refilled but not actually consumed yet (not
 		 * counting overread bytes, which don't increment 'in_next').
 		 */
-		SAFETY_CHECK(overread_count <= (bitsleft >> 3));
-		in_next -= (bitsleft >> 3) - overread_count;
+		SAFETY_CHECK(overread_count <=
+			     ((MAX_BITSFREE - bitsfree) >> 3));
+		in_next -= ((MAX_BITSFREE - bitsfree) >> 3) - overread_count;
 		overread_count = 0;
 		bitbuf = 0;
-		bitsleft = 0;
+		bitsfree = MAX_BITSFREE;
 
 		SAFETY_CHECK(in_end - in_next >= 4);
 		len = get_unaligned_le16(in_next);
@@ -275,7 +276,7 @@ next_block:
 		 */
 
 		bitbuf >>= 3; /* for BTYPE and BFINAL */
-		bitsleft -= 3;
+		bitsfree += 3;
 
 		if (d->static_codes_loaded)
 			goto have_decode_tables;
@@ -314,9 +315,9 @@ have_decode_tables:
 	 * additional bounds checks aren't needed inside the loop body.
 	 *
 	 * The fastloop also uses an optimization where bits 8 and higher of
-	 * 'bitsleft' are allowed to contain garbage.  This is sometimes a
+	 * 'bitsfree' are allowed to contain garbage.  This is sometimes a
 	 * useful microoptimization because it means the whole 32-bit decode
-	 * table entry can be subtracted from 'bitsleft' without an intermediate
+	 * table entry can be subtracted from 'bitsfree' without an intermediate
 	 * step to convert it to 8 bits.  (It still needs to be converted to 8
 	 * bits for the shift of 'bitbuf', but most CPUs ignore high bits in
 	 * shift amounts, so that happens implicitly with zero overhead.)
@@ -331,7 +332,7 @@ have_decode_tables:
 	entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 	saved_bitbuf = bitbuf;
 	bitbuf >>= (u8)entry;
-	bitsleft -= entry; /* optimization: subtract full entry */
+	bitsfree += (u8)entry; /* optimization: subtract full entry */
 	do {
 		u32 length, offset;
 		const u8 *src;
@@ -362,19 +363,19 @@ have_decode_tables:
 			entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 			saved_bitbuf = bitbuf;
 			bitbuf >>= (u8)entry;
-			bitsleft -= entry; /* optimization: subtract full entry */
+			bitsfree += (u8)entry; /* optimization: subtract full entry */
 			if (entry & HUFFDEC_LITERAL) {
 				*out_next++ = entry >> 16;
 				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 				saved_bitbuf = bitbuf;
 				bitbuf >>= (u8)entry;
-				bitsleft -= entry; /* optimization: subtract full entry */
+				bitsfree += (u8)entry; /* optimization: subtract full entry */
 				if (entry & HUFFDEC_LITERAL) {
 					*out_next++ = entry >> 16;
 					entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 					saved_bitbuf = bitbuf;
 					bitbuf >>= (u8)entry;
-					bitsleft -= entry; /* optimization: subtract full entry */
+					bitsfree += (u8)entry; /* optimization: subtract full entry */
 				}
 			}
 		}
@@ -385,12 +386,10 @@ have_decode_tables:
 						(bitbuf & BITMASK((entry >> 8) & 0xF))];
 				saved_bitbuf = bitbuf;
 				bitbuf >>= (u8)entry;
-				bitsleft -= entry; /* optimization: subtract full entry */
+				bitsfree += (u8)entry; /* optimization: subtract full entry */
 			}
-			if (unlikely(entry & HUFFDEC_END_OF_BLOCK)) {
-				bitsleft = (u8)bitsleft;
+			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
 				goto block_done;
-			}
 		}
 		/* Literal or length entry */
 		length = entry >> 16;
@@ -409,7 +408,7 @@ have_decode_tables:
 			entry = d->u.litlen_decode_table[saved_bitbuf & litlen_tablemask];
 			saved_bitbuf = bitbuf;
 			bitbuf >>= (u8)entry;
-			bitsleft -= entry; /* optimization: subtract full entry */
+			bitsfree += (u8)entry; /* optimization: subtract full entry */
 			continue;
 		}
 		/*
@@ -423,14 +422,14 @@ have_decode_tables:
 		/* Decode the match offset. */
 
 		/* Refill the bitbuffer if it may be needed for the offset. */
-		if (unlikely((u8)bitsleft < OFFSET_MAXBITS))
+		if (unlikely(bitsfree > MAX_BITSFREE - OFFSET_MAXBITS))
 			REFILL_BITS_IN_FASTLOOP();
 
 		entry = d->offset_decode_table[bitbuf & BITMASK(OFFSET_TABLEBITS)];
 		if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
 			/* Offset codeword requires a subtable */
 			bitbuf >>= OFFSET_TABLEBITS;
-			bitsleft -= OFFSET_TABLEBITS;
+			bitsfree += OFFSET_TABLEBITS;
 			entry = d->offset_decode_table[(entry >> 16) +
 					(bitbuf & BITMASK((entry >> 8) & 0xF))];
 			/*
@@ -448,7 +447,7 @@ have_decode_tables:
 		}
 		saved_bitbuf = bitbuf;
 		bitbuf >>= (u8)entry;
-		bitsleft -= entry; /* optimization: subtract full entry */
+		bitsfree += (u8)entry; /* optimization: subtract full entry */
 		offset = entry >> 16;
 		offset += (saved_bitbuf & BITMASK((u8)entry)) >> (u8)(entry >> 8);
 
@@ -468,15 +467,18 @@ have_decode_tables:
 		 * Usually enough bits remain to do the preload without
 		 * depending on the refill.  Reduce latency by using these bits.
 		 */
-		if (unlikely((u8)bitsleft < LITLEN_TABLEBITS -
-			     MAX(FASTLOOP_USABLE_NBITS - MAX_BITSLEFT, 0)))
+		if (unlikely(bitsfree >
+			     FASTLOOP_USABLE_NBITS - LITLEN_TABLEBITS)) {
 			REFILL_BITS_IN_FASTLOOP();
-		saved_bitbuf = bitbuf;
-		REFILL_BITS_IN_FASTLOOP();
-		entry = d->u.litlen_decode_table[saved_bitbuf & litlen_tablemask];
+			entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+		} else {
+			saved_bitbuf = bitbuf;
+			REFILL_BITS_IN_FASTLOOP();
+			entry = d->u.litlen_decode_table[saved_bitbuf & litlen_tablemask];
+		}
 		saved_bitbuf = bitbuf;
 		bitbuf >>= (u8)entry;
-		bitsleft -= entry; /* optimization: subtract full entry */
+		bitsfree += (u8)entry; /* optimization: subtract full entry */
 
 		/*
 		 * Copy the match.  On most CPUs the fastest method is a
@@ -544,10 +546,10 @@ have_decode_tables:
 
 	/*
 	 * When leaving the fastloop, clear any garbage from the high bits of
-	 * 'bitsleft' and undo the pre-consumption of the litlen table entry.
+	 * 'bitsfree' and undo the pre-consumption of the litlen table entry.
 	 */
 	bitbuf = saved_bitbuf;
-	bitsleft = (u8)(bitsleft + entry);
+	bitsfree -= (u8)entry;
 
 	/*
 	 * This is the generic loop for decoding literals and matches.  This
@@ -556,6 +558,7 @@ have_decode_tables:
 	 * critical, as most time is spent in the fastloop above instead.  We
 	 * therefore omit some optimizations here in favor of smaller code.
 	 */
+	goto generic_loop_skip_refill;
 generic_loop:
 	for (;;) {
 		u32 length, offset;
@@ -563,16 +566,17 @@ generic_loop:
 		u8 *dst;
 
 		REFILL_BITS();
+generic_loop_skip_refill:
 		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 		saved_bitbuf = bitbuf;
 		bitbuf >>= (u8)entry;
-		bitsleft -= (u8)entry;
+		bitsfree += (u8)entry;
 		if (unlikely(entry & HUFFDEC_SUBTABLE_POINTER)) {
 			entry = d->u.litlen_decode_table[(entry >> 16) +
 					(bitbuf & BITMASK((entry >> 8) & 0xF))];
 			saved_bitbuf = bitbuf;
 			bitbuf >>= (u8)entry;
-			bitsleft -= (u8)entry;
+			bitsfree += (u8)entry;
 		}
 		length = entry >> 16;
 		if (entry & HUFFDEC_LITERAL) {
@@ -596,7 +600,7 @@ generic_loop:
 		entry = d->offset_decode_table[bitbuf & BITMASK(OFFSET_TABLEBITS)];
 		if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
 			bitbuf >>= OFFSET_TABLEBITS;
-			bitsleft -= OFFSET_TABLEBITS;
+			bitsfree += OFFSET_TABLEBITS;
 			entry = d->offset_decode_table[(entry >> 16) +
 					(bitbuf & BITMASK((entry >> 8) & 0xF))];
 			if (GUARANTEED_BITSLEFT < OFFSET_MAXBITS)
@@ -605,7 +609,7 @@ generic_loop:
 		offset = entry >> 16;
 		offset += (bitbuf & BITMASK((u8)entry)) >> (u8)(entry >> 8);
 		bitbuf >>= (u8)entry;
-		bitsleft -= (u8)entry;
+		bitsfree += (u8)entry;
 
 		SAFETY_CHECK(offset <= out_next - (const u8 *)out);
 		src = out_next - offset;
@@ -632,12 +636,12 @@ block_done:
 	 * If any of the implicit appended zero bytes were consumed (not just
 	 * refilled) before hitting end of stream, then the data is bad.
 	 */
-	SAFETY_CHECK(overread_count <= (bitsleft >> 3));
+	SAFETY_CHECK(overread_count <= ((MAX_BITSFREE - bitsfree) >> 3));
 
 	/* Optionally return the actual number of bytes consumed. */
 	if (actual_in_nbytes_ret) {
 		/* Don't count bytes that were refilled but not consumed. */
-		in_next -= (bitsleft >> 3) - overread_count;
+		in_next -= ((MAX_BITSFREE - bitsfree) >> 3) - overread_count;
 
 		*actual_in_nbytes_ret = in_next - (u8 *)in;
 	}
