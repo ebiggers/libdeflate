@@ -545,7 +545,7 @@ tmain(int argc, tchar *argv[])
 	enum format format = DEFLATE_FORMAT;
 	const struct engine *compress_engine = &DEFAULT_ENGINE;
 	const struct engine *decompress_engine = &DEFAULT_ENGINE;
-	bool allow_expansion = false;
+	bool allow_expansion = true;
 	struct compressor compressor = { 0 };
 	struct decompressor decompressor = { 0 };
 	size_t compressed_buf_size;

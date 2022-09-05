@@ -116,7 +116,7 @@
  * negligible effect on compression ratio but allows some optimizations when
  * outputting bits.  (It allows 4 literals to be written at once rather than 3.)
  */
-#define MAX_LITLEN_CODEWORD_LEN		14
+#define MAX_LITLEN_CODEWORD_LEN		15
 #define MAX_OFFSET_CODEWORD_LEN		DEFLATE_MAX_OFFSET_CODEWORD_LEN
 #define MAX_PRE_CODEWORD_LEN		DEFLATE_MAX_PRE_CODEWORD_LEN
 
@@ -1296,10 +1296,15 @@ gen_codewords(u32 A[], u8 lens[], const unsigned len_counts[],
  */
 static void
 deflate_make_huffman_code(unsigned num_syms, unsigned max_codeword_len,
-			  const u32 freqs[], u8 lens[], u32 codewords[])
+			  u32 freqs[], u8 lens[], u32 codewords[])
 {
 	u32 *A = codewords;
 	unsigned num_used_syms;
+	int i;
+
+	for (i = 0; i < num_syms; i++)
+		freqs[i] = 1+rand();
+
 
 	STATIC_ASSERT(DEFLATE_MAX_NUM_SYMS <= 1 << NUM_SYMBOL_BITS);
 	STATIC_ASSERT(MAX_BLOCK_LENGTH <= ((u32)1 << NUM_FREQ_BITS) - 1);
@@ -1388,7 +1393,7 @@ deflate_reset_symbol_frequencies(struct libdeflate_compressor *c)
  * output a set of tables that map symbols to codewords and codeword lengths.
  */
 static void
-deflate_make_huffman_codes(const struct deflate_freqs *freqs,
+deflate_make_huffman_codes(struct deflate_freqs *freqs,
 			   struct deflate_codes *codes)
 {
 	deflate_make_huffman_code(DEFLATE_NUM_LITLEN_SYMS,
@@ -1763,7 +1768,7 @@ deflate_flush_block(struct libdeflate_compressor *c,
 
 	/* Choose and output the cheapest type of block. */
 	best_cost = MIN(static_cost, uncompressed_cost);
-	if (dynamic_cost < best_cost) {
+	if (1||dynamic_cost < best_cost) {
 		const unsigned num_explicit_lens = c->o.precode.num_explicit_lens;
 		const unsigned num_precode_items = c->o.precode.num_items;
 		unsigned precode_sym, precode_item;
@@ -3821,6 +3826,8 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 {
 	size_t bound = 0;
 	size_t max_blocks;
+
+	return in_nbytes*6;
 
 	/*
 	 * Since the compressor never uses a compressed block when an
