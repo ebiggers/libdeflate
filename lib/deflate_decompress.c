@@ -27,14 +27,14 @@
  * ---------------------------------------------------------------------------
  *
  * This is a highly optimized DEFLATE decompressor.  It is much faster than
- * zlib, typically more than twice as fast, though results vary by CPU.
+ * vanilla zlib, typically well over twice as fast, though results vary by CPU.
  *
- * Why this is faster than zlib's implementation:
+ * Why this is faster than vanilla zlib:
  *
  * - Word accesses rather than byte accesses when reading input
  * - Word accesses rather than byte accesses when copying matches
  * - Faster Huffman decoding combined with various DEFLATE-specific tricks
- * - Larger bitbuffer variable that doesn't need to be filled as often
+ * - Larger bitbuffer variable that doesn't need to be refilled as often
  * - Other optimizations to remove unnecessary branches
  * - Only full-buffer decompression is supported, so the code doesn't need to
  *   support stopping and resuming decompression.
@@ -64,14 +64,6 @@
 #  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return LIBDEFLATE_BAD_DATA
 #endif
 
-/* Maximum number of bits that can be consumed by decoding a match length */
-#define LENGTH_MAXBITS		(DEFLATE_MAX_LITLEN_CODEWORD_LEN + \
-				 DEFLATE_MAX_EXTRA_LENGTH_BITS)
-
-/* Maximum number of bits that can be consumed by decoding a match offset */
-#define OFFSET_MAXBITS		(DEFLATE_MAX_OFFSET_CODEWORD_LEN + \
-				 DEFLATE_MAX_EXTRA_OFFSET_BITS)
-
 /*****************************************************************************
  *				Input bitstream                              *
  *****************************************************************************/
@@ -79,28 +71,32 @@
 /*
  * The state of the "input bitstream" consists of the following variables:
  *
- *	- in_next: pointer to the next unread byte in the input buffer
+ *	- in_next: a pointer to the next unread byte in the input buffer
  *
- *	- in_end: pointer just past the end of the input buffer
+ *	- in_end: a pointer to just past the end of the input buffer
  *
  *	- bitbuf: a word-sized variable containing bits that have been read from
- *		  the input buffer or from the implicit 0 bytes past 'in_end'.
- *		  The buffered bits are the low-order bits.
+ *		  the input buffer or from the implicit appended zero bytes
  *
- *	- bitsleft: the number of "consumable" bits in 'bitbuf'.  This can be
- *		    less than the number of "usable" bits (bits that are present
- *		    in 'bitbuf' but not counted in 'bitsleft'); this can happen
- *		    immediately after REFILL_BITS_BRANCHLESS().
+ *	- bitsleft: the number of bits in 'bitbuf' available to be consumed.
+ *		    After REFILL_BITS_BRANCHLESS(), 'bitbuf' can actually
+ *		    contain more bits than this.  However, only the bits counted
+ *		    by 'bitsleft' can actually be consumed; the rest can only be
+ *		    used for preloading.
  *
- *		    NOTE: in the fastloop, bits 8 and above of 'bitsleft' can
- *		    contain garbage.
+ *		    As a micro-optimization, we allow bits 8 and higher of
+ *		    'bitsleft' to contain garbage.  When consuming the bits
+ *		    associated with a decode table entry, this allows us to do
+ *		    'bitsleft -= entry' instead of 'bitsleft -= (u8)entry'.
+ *		    On some CPUs, this helps reduce instruction dependencies.
+ *		    This does have the disadvantage that 'bitsleft' sometimes
+ *		    needs to be cast to 'u8', such as when it's used as a shift
+ *		    amount in REFILL_BITS_BRANCHLESS().  But that one happens
+ *		    for free since most CPUs ignore high bits in shift amounts.
  *
- *	- overread_count: the total number of implicit 0 bytes past 'in_end'
- *			  that have been loaded into the bitbuffer
- *
- * For performance reasons, these variables are declared as standalone variables
- * and are manipulated directly or by macros, rather than being packed into a
- * struct that is operated on by functions.
+ *	- overread_count: the total number of implicit appended zero bytes that
+ *			  have been loaded into the bitbuffer, including any
+ *			  counted by 'bitsleft' and any already consumed
  */
 
 /*
@@ -111,9 +107,62 @@
  * which they don't have to refill as often.
  */
 typedef machine_word_t bitbuf_t;
+#define BITBUF_NBITS	(8 * (int)sizeof(bitbuf_t))
 
 /* BITMASK(n) returns a bitmask of length 'n'. */
 #define BITMASK(n)	(((bitbuf_t)1 << (n)) - 1)
+
+/*
+ * MAX_BITSLEFT is the maximum number of consumable bits, i.e. the maximum value
+ * of '(u8)bitsleft'.  This is the size of the bitbuffer variable, minus 1 if
+ * the branchless refill method is being used (see REFILL_BITS_BRANCHLESS()).
+ */
+#define MAX_BITSLEFT	\
+	(UNALIGNED_ACCESS_IS_FAST ? BITBUF_NBITS - 1 : BITBUF_NBITS)
+
+/*
+ * CONSUMABLE_NBITS is the minimum number of bits that are guaranteed to be
+ * consumable (counted in 'bitsleft') immediately after refilling the bitbuffer.
+ * Since only whole bytes can be added to 'bitsleft', the worst case is
+ * 'MAX_BITSLEFT - 7': the smallest amount where another byte doesn't fit.
+ */
+#define CONSUMABLE_NBITS	(MAX_BITSLEFT - 7)
+
+/*
+ * FASTLOOP_PRELOADABLE_NBITS is the minimum number of bits that are guaranteed
+ * to be preloadable immediately after REFILL_BITS_IN_FASTLOOP().  (It is *not*
+ * guaranteed after REFILL_BITS(), since REFILL_BITS() falls back to a
+ * byte-at-a-time refill method near the end of input.)  This may exceed the
+ * number of consumable bits (counted by 'bitsleft').  Any bits not counted in
+ * 'bitsleft' can only be used for precomputation and cannot be consumed.
+ */
+#define FASTLOOP_PRELOADABLE_NBITS	\
+	(UNALIGNED_ACCESS_IS_FAST ? BITBUF_NBITS : CONSUMABLE_NBITS)
+
+/*
+ * PRELOAD_SLACK is the minimum number of bits that are guaranteed to be
+ * preloadable but not consumable, following REFILL_BITS_IN_FASTLOOP() and any
+ * subsequent consumptions.  This is 1 bit if the branchless refill method is
+ * being used, and 0 bits otherwise.
+ */
+#define PRELOAD_SLACK	MAX(0, FASTLOOP_PRELOADABLE_NBITS - MAX_BITSLEFT)
+
+/*
+ * CAN_CONSUME(n) is true if it's guaranteed that if the bitbuffer has just been
+ * refilled, then it's always possible to consume 'n' bits from it.  'n' should
+ * be a compile-time constant, to enable compile-time evaluation.
+ */
+#define CAN_CONSUME(n)	(CONSUMABLE_NBITS >= (n))
+
+/*
+ * CAN_CONSUME_AND_THEN_PRELOAD(consume_nbits, preload_nbits) is true if it's
+ * guaranteed that after REFILL_BITS_IN_FASTLOOP(), it's always possible to
+ * consume 'consume_nbits' bits, then preload 'preload_nbits' bits.  The
+ * arguments should be compile-time constants to enable compile-time evaluation.
+ */
+#define CAN_CONSUME_AND_THEN_PRELOAD(consume_nbits, preload_nbits)	\
+	(CONSUMABLE_NBITS >= (consume_nbits) &&				\
+	 FASTLOOP_PRELOADABLE_NBITS >= (consume_nbits) + (preload_nbits))
 
 /*
  * REFILL_BITS_BRANCHLESS() branchlessly refills the bitbuffer variable by
@@ -128,7 +177,7 @@ typedef machine_word_t bitbuf_t;
  *
  * To make it faster, we define MAX_BITSLEFT to be 'WORDBITS - 1' rather than
  * WORDBITS, so that in binary it looks like 111111 or 11111.  Then, we update
- * 'bitsleft' just by setting the bits above the low 3 bits:
+ * 'bitsleft' by just setting the bits above the low 3 bits:
  *
  *	bitsleft |= MAX_BITSLEFT & ~7;
  *
@@ -155,54 +204,23 @@ typedef machine_word_t bitbuf_t;
  * extraction instruction (e.g. arm's ubfx), it stays at 3, and is potentially
  * more efficient because the length of the longest dependency chain decreases
  * from 3 to 2.  This alternative also has the advantage that it ignores the
- * high bits in 'bitsleft', so it is compatible with the fastloop optimization
- * (described later) where we let the high bits of 'bitsleft' contain garbage.
+ * high bits in 'bitsleft', so it is compatible with the micro-optimization we
+ * use where we let the high bits of 'bitsleft' contain garbage.
  */
-#define REFILL_BITS_BRANCHLESS()				\
-do {								\
-	bitbuf |= get_unaligned_leword(in_next) << (u8)bitsleft;\
-	in_next += sizeof(bitbuf_t) - 1;			\
-	in_next -= (bitsleft >> 3) & 0x7;			\
-	bitsleft |= MAX_BITSLEFT & ~7;				\
+#define REFILL_BITS_BRANCHLESS()					\
+do {									\
+	bitbuf |= get_unaligned_leword(in_next) << (u8)bitsleft;	\
+	in_next += sizeof(bitbuf_t) - 1;				\
+	in_next -= (bitsleft >> 3) & 0x7;				\
+	bitsleft |= MAX_BITSLEFT & ~7;					\
 } while (0)
-
-/* Decide whether to use the branchless refill method or not. */
-#if UNALIGNED_ACCESS_IS_FAST && CPU_IS_LITTLE_ENDIAN()
-#  define USE_BRANCHLESS_REFILL	1
-#else
-#  define USE_BRANCHLESS_REFILL 0
-#endif
-
-/*
- * MAX_BITSLEFT is the maximum number of consumable bits ('bitsleft').  See
- * REFILL_BITS_BRANCHLESS() for why this is 1 less than the obvious value of the
- * bitbuffer variable size when the branchless refill method is used.
- *
- * GUARANTEED_BITSLEFT is the number of bits that are guaranteed to be
- * consumable (counted in 'bitsleft') immediately after refilling the bitbuffer.
- * Since only whole bytes can be added to 'bitsleft', the worst case is
- * 'MAX_BITSLEFT - 7': the smallest amount where another byte doesn't fit.
- *
- * FASTLOOP_USABLE_NBITS is the number of bits that are guaranteed to be usable,
- * but not necessarily consumable, immediately after the refilling the bitbuffer
- * with REFILL_BITS_IN_FASTLOOP().  These bits can be used for precomputation,
- * but cannot be consumed as they are not counted in 'bitsleft'.
- */
-#if USE_BRANCHLESS_REFILL
-#  define MAX_BITSLEFT			(8 * (int)sizeof(bitbuf_t) - 1)
-#  define GUARANTEED_BITSLEFT		(MAX_BITSLEFT - 7)
-#  define FASTLOOP_USABLE_NBITS		(8 * (int)sizeof(bitbuf_t))
-#else
-#  define MAX_BITSLEFT			(8 * (int)sizeof(bitbuf_t))
-#  define GUARANTEED_BITSLEFT		(MAX_BITSLEFT - 7)
-#  define FASTLOOP_USABLE_NBITS		GUARANTEED_BITSLEFT
-#endif
 
 /*
  * REFILL_BITS() loads bits from the input buffer until the bitbuffer variable
- * contains at least GUARANTEED_BITSLEFT consumable bits.
+ * contains at least CONSUMABLE_NBITS consumable bits.
  *
- * This checks for the end of input, and it cannot be used in the fastloop.
+ * This checks for the end of input, and it doesn't guarantee
+ * FASTLOOP_PRELOADABLE_NBITS, so it can't be used in the fastloop.
  *
  * If we would overread the input buffer, we just don't read anything, leaving
  * the bits zeroed but marking them filled.  This simplifies the decompressor
@@ -221,42 +239,36 @@ do {								\
  */
 #define REFILL_BITS()							\
 do {									\
-	if (USE_BRANCHLESS_REFILL &&					\
+	if (UNALIGNED_ACCESS_IS_FAST &&					\
 	    likely(in_end - in_next >= sizeof(bitbuf_t))) {		\
 		REFILL_BITS_BRANCHLESS();				\
 	} else {							\
-		while (bitsleft < GUARANTEED_BITSLEFT) {		\
+		while ((u8)bitsleft < CONSUMABLE_NBITS) {		\
 			if (likely(in_next != in_end)) {		\
-				bitbuf |= (bitbuf_t)*in_next++ << bitsleft;	\
+				bitbuf |= (bitbuf_t)*in_next++ <<	\
+					  (u8)bitsleft;			\
 			} else {					\
 				overread_count++;			\
-				SAFETY_CHECK(overread_count <= sizeof(bitbuf));	\
+				SAFETY_CHECK(overread_count <=		\
+					     sizeof(bitbuf_t));		\
 			}						\
 			bitsleft += 8;					\
 		}							\
 	}								\
 } while (0)
 
-/* ENSURE_BITS(n) calls REFILL_BITS() if fewer than 'n' bits are consumable. */
-#define ENSURE_BITS(n)							\
-do {									\
-	if (bitsleft < (n))						\
-		REFILL_BITS();						\
-} while (0)
-
 /*
- * REFILL_BITS_IN_FASTLOOP() is like REFILL_BITS(), but for the fastloop.  It
- * doesn't check for the end of the input, and it assumes that the high bits of
- * bitsleft may contain garbage.
+ * REFILL_BITS_IN_FASTLOOP() is like REFILL_BITS(), but it doesn't check for the
+ * end of the input.  It can only be used in the fastloop.
  */
 #define REFILL_BITS_IN_FASTLOOP()					\
 do {									\
-	STATIC_ASSERT(USE_BRANCHLESS_REFILL ||				\
-		      FASTLOOP_USABLE_NBITS == GUARANTEED_BITSLEFT);	\
-	if (USE_BRANCHLESS_REFILL) {					\
+	STATIC_ASSERT(UNALIGNED_ACCESS_IS_FAST ||			\
+		      FASTLOOP_PRELOADABLE_NBITS == CONSUMABLE_NBITS);	\
+	if (UNALIGNED_ACCESS_IS_FAST) {					\
 		REFILL_BITS_BRANCHLESS();				\
 	} else {							\
-		while ((u8)bitsleft < GUARANTEED_BITSLEFT) {		\
+		while ((u8)bitsleft < CONSUMABLE_NBITS) {		\
 			bitbuf |= (bitbuf_t)*in_next++ << (u8)bitsleft;	\
 			bitsleft += 8;					\
 		}							\
@@ -265,12 +277,13 @@ do {									\
 
 /*
  * This is the worst-case maximum number of output bytes that are written to
- * during each iteration of the fastloop.  The worst case is 3 literals, then a
+ * during each iteration of the fastloop.  The worst case is 2 literals, then a
  * match of length DEFLATE_MAX_MATCH_LEN.  The match length must be rounded up
- * to a '2 * WORDBYTES' boundary due to the match copy implementation.
+ * slightly to account for intentional overrun in the match copy implementation.
  */
 #define FASTLOOP_MAX_BYTES_WRITTEN	\
-	(3 + ALIGN(DEFLATE_MAX_MATCH_LEN, 2 * WORDBYTES))
+	(2 + MAX(ROUND_UP(DEFLATE_MAX_MATCH_LEN, 5 * WORDBYTES), \
+		 ROUND_UP(DEFLATE_MAX_MATCH_LEN, 2 * WORDBYTES)))
 
 /*
  * This is the worst-case maximum number of input bytes that are read during
@@ -278,20 +291,14 @@ do {									\
  * greatest number of bits that can be refilled during a loop iteration.  The
  * refill at the beginning can add at most MAX_BITSLEFT, and the amount that can
  * be refilled later is no more than the maximum amount that can be consumed by
- * 3 literals that don't need a subtable, then a match, then the pre-consumed
- * litlen table entry.  We convert this value to bytes, rounding up.  Finally,
- * we add sizeof(bitbuf_t) to account for REFILL_BITS_BRANCHLESS() reading up to
- * a word past the part really used.
+ * 2 literals that don't need a subtable, then a match.  We convert this value
+ * to bytes, rounding up.  Finally, we add sizeof(bitbuf_t) to account for
+ * REFILL_BITS_BRANCHLESS() reading up to a word past the part really used.
  */
 #define FASTLOOP_MAX_BYTES_READ					\
-	(DIV_ROUND_UP(MAX_BITSLEFT +				\
-		     ((3 * LITLEN_TABLEBITS) +			\
-		      DEFLATE_MAX_LITLEN_CODEWORD_LEN +		\
-		      DEFLATE_MAX_EXTRA_LENGTH_BITS +		\
-		      DEFLATE_MAX_OFFSET_CODEWORD_LEN +		\
-		      DEFLATE_MAX_EXTRA_OFFSET_BITS +		\
-		      LITLEN_TABLEBITS), 8) +	\
-	sizeof(bitbuf_t))
+	(DIV_ROUND_UP(MAX_BITSLEFT + (2 * LITLEN_TABLEBITS) +	\
+		      LENGTH_MAXBITS + OFFSET_MAXBITS, 8) +	\
+	 sizeof(bitbuf_t))
 
 /*****************************************************************************
  *                              Huffman decoding                             *
@@ -359,7 +366,7 @@ do {									\
  * and all subtables.  The ENOUGH value depends on three parameters:
  *
  *	(1) the maximum number of symbols in the code (DEFLATE_NUM_*_SYMS)
- *	(2) the number of main table bits (the corresponding TABLEBITS value)
+ *	(2) the maximum number of main table bits (*_TABLEBITS)
  *	(3) the maximum allowed codeword length (DEFLATE_MAX_*_CODEWORD_LEN)
  *
  * The ENOUGH values were computed using the utility program 'enough' from zlib.
@@ -392,8 +399,8 @@ make_decode_table_entry(const u32 decode_results[], u32 sym, u32 len)
  * described contain zeroes:
  *
  *	Bit 20-16:  presym
- *	Bit 10-8:   codeword_len [not used]
- *	Bit 2-0:    codeword_len
+ *	Bit 10-8:   codeword length [not used]
+ *	Bit 2-0:    codeword length
  *
  * The precode decode table never has subtables, since we use
  * PRECODE_TABLEBITS == DEFLATE_MAX_PRE_CODEWORD_LEN.
@@ -424,6 +431,12 @@ static const u32 precode_decode_results[] = {
 
 /* Indicates an end-of-block entry in the litlen decode table */
 #define HUFFDEC_END_OF_BLOCK		0x00002000
+
+/* Maximum number of bits that can be consumed by decoding a match length */
+#define LENGTH_MAXBITS		(DEFLATE_MAX_LITLEN_CODEWORD_LEN + \
+				 DEFLATE_MAX_EXTRA_LENGTH_BITS)
+#define LENGTH_MAXFASTBITS	(LITLEN_TABLEBITS /* no subtable needed */ + \
+				 DEFLATE_MAX_EXTRA_LENGTH_BITS)
 
 /*
  * Here is the format of our litlen decode table entries.  Bits not explicitly
@@ -459,7 +472,7 @@ static const u32 precode_decode_results[] = {
  *		Bit 14:     1 (HUFFDEC_SUBTABLE_POINTER)
  *		Bit 13:     0 (!HUFFDEC_END_OF_BLOCK)
  *		Bit 11-8:   number of subtable bits
- *		Bit 7-0:    number of main table bits
+ *		Bit 3-0:    number of main table bits
  *
  * This format has several desirable properties:
  *
@@ -476,12 +489,18 @@ static const u32 precode_decode_results[] = {
  *
  *	- The low byte is the number of bits that need to be removed from the
  *	  bitstream; this makes this value easily accessible, and it enables the
- *	  optimization used in REMOVE_ENTRY_BITS_FAST().  It also includes the
- *	  number of extra bits, so they don't need to be removed separately.
+ *	  micro-optimization of doing 'bitsleft -= entry' instead of
+ *	  'bitsleft -= (u8)entry'.  It also includes the number of extra bits,
+ *	  so they don't need to be removed separately.
  *
- *	- The flags in bits 13-15 are arranged to be 0 when the
+ *	- The flags in bits 15-13 are arranged to be 0 when the
  *	  "remaining codeword length" in bits 11-8 is needed, making this value
  *	  fairly easily accessible as well via a shift and downcast.
+ *
+ *	- Similarly, bits 13-12 are 0 when the "subtable bits" in bits 11-8 are
+ *	  needed, making it possible to extract this value with '& 0x3F' rather
+ *	  than '& 0xF'.  This value is only used as a shift amount, so this can
+ *	  save an 'and' instruction as the masking by 0x3F happens implicitly.
  *
  * litlen_decode_results[] contains the static part of the entry for each
  * symbol.  make_decode_table_entry() produces the final entries.
@@ -489,7 +508,7 @@ static const u32 precode_decode_results[] = {
 static const u32 litlen_decode_results[] = {
 
 	/* Literals */
-#define ENTRY(literal)	(((u32)literal << 16) | HUFFDEC_LITERAL)
+#define ENTRY(literal)	(HUFFDEC_LITERAL | ((u32)literal << 16))
 	ENTRY(0)   , ENTRY(1)   , ENTRY(2)   , ENTRY(3)   ,
 	ENTRY(4)   , ENTRY(5)   , ENTRY(6)   , ENTRY(7)   ,
 	ENTRY(8)   , ENTRY(9)   , ENTRY(10)  , ENTRY(11)  ,
@@ -573,6 +592,12 @@ static const u32 litlen_decode_results[] = {
 #undef ENTRY
 };
 
+/* Maximum number of bits that can be consumed by decoding a match offset */
+#define OFFSET_MAXBITS		(DEFLATE_MAX_OFFSET_CODEWORD_LEN + \
+				 DEFLATE_MAX_EXTRA_OFFSET_BITS)
+#define OFFSET_MAXFASTBITS	(OFFSET_TABLEBITS /* no subtable needed */ + \
+				 DEFLATE_MAX_EXTRA_OFFSET_BITS)
+
 /*
  * Here is the format of our offset decode table entries.  Bits not explicitly
  * described contain zeroes:
@@ -588,7 +613,7 @@ static const u32 litlen_decode_results[] = {
  *		Bit 15:     1 (HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     1 (HUFFDEC_SUBTABLE_POINTER)
  *		Bit 11-8:   number of subtable bits
- *		Bit 7-0:    number of main table bits
+ *		Bit 3-0:    number of main table bits
  *
  * These work the same way as the length entries and subtable pointer entries in
  * the litlen decode table; see litlen_decode_results[] above.
@@ -608,10 +633,15 @@ static const u32 offset_decode_results[] = {
 };
 
 /*
- * The main DEFLATE decompressor structure.  Since this implementation only
- * supports full buffer decompression, this structure does not store the entire
- * decompression state, but rather only some arrays that are too large to
- * comfortably allocate on the stack.
+ * The main DEFLATE decompressor structure.  Since libdeflate only supports
+ * full-buffer decompression, this structure doesn't store the entire
+ * decompression state, most of which is in stack variables.  Instead, this
+ * struct just contains the decode tables and some temporary arrays used for
+ * building them, as these are too large to comfortably allocate on the stack.
+ *
+ * Storing the decode tables in the decompressor struct also allows the decode
+ * tables for the static codes to be reused whenever two static Huffman blocks
+ * are decoded without an intervening dynamic block, even across streams.
  */
 struct libdeflate_decompressor {
 
