@@ -282,8 +282,9 @@ do {									\
  * slightly to account for intentional overrun in the match copy implementation.
  */
 #define FASTLOOP_MAX_BYTES_WRITTEN	\
-	(2 + MAX(ROUND_UP(DEFLATE_MAX_MATCH_LEN, 5 * WORDBYTES), \
-		 ROUND_UP(DEFLATE_MAX_MATCH_LEN, 2 * WORDBYTES)))
+	(2 + MAX(MAX(ROUND_UP(DEFLATE_MAX_MATCH_LEN, 5 * WORDBYTES), \
+		     ROUND_UP(DEFLATE_MAX_MATCH_LEN, 4 * WORDBYTES)), \
+		     ROUND_UP(DEFLATE_MAX_MATCH_LEN, 2 * WORDBYTES)))
 
 /*
  * This is the worst-case maximum number of input bytes that are read during
@@ -292,8 +293,9 @@ do {									\
  * refill at the beginning can add at most MAX_BITSLEFT, and the amount that can
  * be refilled later is no more than the maximum amount that can be consumed by
  * 2 literals that don't need a subtable, then a match.  We convert this value
- * to bytes, rounding up.  Finally, we add sizeof(bitbuf_t) to account for
- * REFILL_BITS_BRANCHLESS() reading up to a word past the part really used.
+ * to bytes, rounding up; this gives the maximum number of bytes that 'in_next'
+ * can be advanced.  Finally, we add sizeof(bitbuf_t) to account for
+ * REFILL_BITS_BRANCHLESS() reading a word past 'in_next'.
  */
 #define FASTLOOP_MAX_BYTES_READ					\
 	(DIV_ROUND_UP(MAX_BITSLEFT + (2 * LITLEN_TABLEBITS) +	\
