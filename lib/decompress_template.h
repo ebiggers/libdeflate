@@ -339,8 +339,9 @@ have_decode_tables:
 		goto generic_loop;
 	REFILL_BITS_IN_FASTLOOP();
 	entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+	*out_next = entry >> 8;
 	do {
-		u32 length, offset, lit;
+		u32 length, offset;
 		const u8 *src;
 		u8 *dst;
 
@@ -381,31 +382,31 @@ have_decode_tables:
 							 DEFLATE_MAX_LITLEN_CODEWORD_LEN,
 							 LITLEN_TABLEBITS)) {
 				/* 1st extra fast literal */
-				lit = entry >> 16;
+				out_next++;
 				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+				*out_next = entry >> 8;
 				saved_bitbuf = bitbuf;
 				bitbuf >>= (u8)entry;
 				bitsleft -= entry;
-				*out_next++ = lit;
 				if (entry & HUFFDEC_LITERAL) {
 					/* 2nd extra fast literal */
-					lit = entry >> 16;
+					out_next++;
 					entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+					*out_next = entry >> 8;
 					saved_bitbuf = bitbuf;
 					bitbuf >>= (u8)entry;
 					bitsleft -= entry;
-					*out_next++ = lit;
 					if (entry & HUFFDEC_LITERAL) {
+						out_next++;
 						/*
 						 * Another fast literal, but
 						 * this one is in lieu of the
 						 * primary item, so it doesn't
 						 * count as one of the extras.
 						 */
-						lit = entry >> 16;
 						entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 						REFILL_BITS_IN_FASTLOOP();
-						*out_next++ = lit;
+						*out_next = entry >> 8;
 						continue;
 					}
 				}
@@ -420,10 +421,10 @@ have_decode_tables:
 				 */
 				STATIC_ASSERT(CAN_CONSUME_AND_THEN_PRELOAD(
 						LITLEN_TABLEBITS, LITLEN_TABLEBITS));
-				lit = entry >> 16;
+				*out_next++ = entry >> 8;
 				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 				REFILL_BITS_IN_FASTLOOP();
-				*out_next++ = lit;
+				*out_next = entry >> 8;
 				continue;
 			}
 		}
@@ -462,10 +463,10 @@ have_decode_tables:
 				REFILL_BITS_IN_FASTLOOP();
 			if (entry & HUFFDEC_LITERAL) {
 				/* Decode a literal that required a subtable. */
-				lit = entry >> 16;
+				*out_next++ = entry >> 8;
 				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 				REFILL_BITS_IN_FASTLOOP();
-				*out_next++ = lit;
+				*out_next = entry >> 8;
 				continue;
 			}
 			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
@@ -563,6 +564,7 @@ have_decode_tables:
 			REFILL_BITS_IN_FASTLOOP();
 		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 		REFILL_BITS_IN_FASTLOOP();
+		*out_next = entry >> 8;
 
 		/*
 		 * Copy the match.  On most CPUs the fastest method is a
@@ -679,22 +681,28 @@ generic_loop:
 		saved_bitbuf = bitbuf;
 		bitbuf >>= (u8)entry;
 		bitsleft -= entry;
+		if (entry & HUFFDEC_LITERAL) {
+			if (unlikely(out_next == out_end))
+				return LIBDEFLATE_INSUFFICIENT_SPACE;
+			*out_next++ = entry >> 8;
+			continue;
+		}
 		if (unlikely(entry & HUFFDEC_SUBTABLE_POINTER)) {
 			entry = d->u.litlen_decode_table[(entry >> 16) +
 					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
 			saved_bitbuf = bitbuf;
 			bitbuf >>= (u8)entry;
 			bitsleft -= entry;
-		}
-		length = entry >> 16;
-		if (entry & HUFFDEC_LITERAL) {
-			if (unlikely(out_next == out_end))
-				return LIBDEFLATE_INSUFFICIENT_SPACE;
-			*out_next++ = length;
-			continue;
+			if (entry & HUFFDEC_LITERAL) {
+				if (unlikely(out_next == out_end))
+					return LIBDEFLATE_INSUFFICIENT_SPACE;
+				*out_next++ = entry >> 8;
+				continue;
+			}
 		}
 		if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
 			goto block_done;
+		length = entry >> 16;
 		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
 			  (u8)(entry >> 8);
 		if (unlikely(length > out_end - out_next))

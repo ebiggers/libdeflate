@@ -390,11 +390,6 @@ do {									\
  * appropriately-formatted decode table entry.  See the definitions of the
  * *_decode_results[] arrays below, where the entry format is described.
  */
-static forceinline u32
-make_decode_table_entry(const u32 decode_results[], u32 sym, u32 len)
-{
-	return decode_results[sym] + (len << 8) + len;
-}
 
 /*
  * Here is the format of our precode decode table entries.  Bits not explicitly
@@ -510,7 +505,7 @@ static const u32 precode_decode_results[] = {
 static const u32 litlen_decode_results[] = {
 
 	/* Literals */
-#define ENTRY(literal)	(HUFFDEC_LITERAL | ((u32)literal << 16))
+#define ENTRY(literal)	(HUFFDEC_LITERAL | ((u32)literal << 8))
 	ENTRY(0)   , ENTRY(1)   , ENTRY(2)   , ENTRY(3)   ,
 	ENTRY(4)   , ENTRY(5)   , ENTRY(6)   , ENTRY(7)   ,
 	ENTRY(8)   , ENTRY(9)   , ENTRY(10)  , ENTRY(11)  ,
@@ -678,6 +673,14 @@ struct libdeflate_decompressor {
 	bool static_codes_loaded;
 	unsigned litlen_tablebits;
 };
+
+static forceinline u32
+make_decode_table_entry(const u32 decode_results[], u32 sym, u32 len)
+{
+	if (decode_results == litlen_decode_results && sym < 256)
+		return decode_results[sym] + len;
+	return decode_results[sym] + (len << 8) + len;
+}
 
 /*
  * Build a table for fast decoding of symbols from a Huffman code.  As input,
