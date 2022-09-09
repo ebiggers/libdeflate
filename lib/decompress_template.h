@@ -443,8 +443,8 @@ have_decode_tables:
 			 * entry.  The subtable entry can be of any type:
 			 * literal, length, or end-of-block.
 			 */
-			entry = d->u.litlen_decode_table[(entry >> 16) +
-				EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+			entry = d->u.litlen_decode_table[((entry >> 16) & 0xFFF) +
+					(bitbuf & (u8)(entry >> 8))];
 			saved_bitbuf = bitbuf;
 			bitbuf >>= (u8)entry;
 			bitsleft -= entry;
@@ -503,27 +503,27 @@ have_decode_tables:
 			 * need to refill once, but then we can decode the whole
 			 * offset and preload the next litlen table entry.
 			 */
-			if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
+			if (unlikely(entry & 0x80000000)) {
 				/* Offset codeword requires a subtable */
 				if (unlikely((u8)bitsleft < OFFSET_MAXBITS +
 					     LITLEN_TABLEBITS - PRELOAD_SLACK))
 					REFILL_BITS_IN_FASTLOOP();
 				bitbuf >>= OFFSET_TABLEBITS;
 				bitsleft -= OFFSET_TABLEBITS;
-				entry = d->offset_decode_table[(entry >> 16) +
-						EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+				entry = d->offset_decode_table[((entry >> 16) & 0xFFF) +
+						(bitbuf & (u8)(entry >> 8))];
 			} else if (unlikely((u8)bitsleft < OFFSET_MAXFASTBITS +
 					    LITLEN_TABLEBITS - PRELOAD_SLACK))
 				REFILL_BITS_IN_FASTLOOP();
 		} else {
 			/* Decoding a match offset on a 32-bit platform */
 			REFILL_BITS_IN_FASTLOOP();
-			if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
+			if (unlikely(entry & 0x80000000)) {
 				/* Offset codeword requires a subtable */
 				bitbuf >>= OFFSET_TABLEBITS;
 				bitsleft -= OFFSET_TABLEBITS;
-				entry = d->offset_decode_table[(entry >> 16) +
-						EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+				entry = d->offset_decode_table[((entry >> 16) & 0xFFF) +
+						(bitbuf & (u8)(entry >> 8))];
 				REFILL_BITS_IN_FASTLOOP();
 				/* No further refill needed before extra bits */
 				STATIC_ASSERT(CAN_CONSUME(
@@ -688,8 +688,8 @@ generic_loop:
 			continue;
 		}
 		if (unlikely(entry & HUFFDEC_SUBTABLE_POINTER)) {
-			entry = d->u.litlen_decode_table[(entry >> 16) +
-					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+			entry = d->u.litlen_decode_table[((entry >> 16) & 0xFFF) +
+					(bitbuf & (u8)(entry >> 8))];
 			saved_bitbuf = bitbuf;
 			bitbuf >>= (u8)entry;
 			bitsleft -= entry;
@@ -711,11 +711,11 @@ generic_loop:
 		if (!CAN_CONSUME(LENGTH_MAXBITS + OFFSET_MAXBITS))
 			REFILL_BITS();
 		entry = d->offset_decode_table[bitbuf & BITMASK(OFFSET_TABLEBITS)];
-		if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
+		if (unlikely(entry & 0x80000000)) {
 			bitbuf >>= OFFSET_TABLEBITS;
 			bitsleft -= OFFSET_TABLEBITS;
-			entry = d->offset_decode_table[(entry >> 16) +
-					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+			entry = d->offset_decode_table[((entry >> 16) & 0xFFF) +
+					(bitbuf & (u8)(entry >> 8))];
 			if (!CAN_CONSUME(OFFSET_MAXBITS))
 				REFILL_BITS();
 		}

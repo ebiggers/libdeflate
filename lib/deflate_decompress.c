@@ -421,13 +421,13 @@ static const u32 precode_decode_results[] = {
 #define HUFFDEC_LITERAL			0x80000000
 
 /* Indicates that HUFFDEC_SUBTABLE_POINTER or HUFFDEC_END_OF_BLOCK is set */
-#define HUFFDEC_EXCEPTIONAL		0x00008000
+#define HUFFDEC_EXCEPTIONAL		0x40000000
 
 /* Indicates a subtable pointer entry in the litlen or offset decode table */
-#define HUFFDEC_SUBTABLE_POINTER	0x00004000
+#define HUFFDEC_SUBTABLE_POINTER	0x20000000
 
 /* Indicates an end-of-block entry in the litlen decode table */
-#define HUFFDEC_END_OF_BLOCK		0x00002000
+#define HUFFDEC_END_OF_BLOCK		0x10000000
 
 /* Maximum number of bits that can be consumed by decoding a match length */
 #define LENGTH_MAXBITS		(DEFLATE_MAX_LITLEN_CODEWORD_LEN + \
@@ -729,6 +729,7 @@ build_decode_table(u32 decode_table[],
 		   const u8 lens[],
 		   const unsigned num_syms,
 		   const u32 decode_results[],
+		   u32 subtable_indicator,
 		   unsigned table_bits,
 		   const unsigned max_codeword_len,
 		   u16 *sorted_syms,
@@ -974,10 +975,10 @@ build_decode_table(u32 decode_table[],
 			 * the subtable.
 			 */
 			decode_table[subtable_prefix] =
+				subtable_indicator |
 				((u32)subtable_start << 16) |
-				HUFFDEC_EXCEPTIONAL |
-				HUFFDEC_SUBTABLE_POINTER |
-				(subtable_bits << 8) | table_bits;
+				(((1U << subtable_bits) - 1) << 8) |
+				table_bits;
 		}
 
 		/* Fill the subtable entries for the current codeword. */
@@ -1016,6 +1017,7 @@ build_precode_decode_table(struct libdeflate_decompressor *d)
 				  d->u.precode_lens,
 				  DEFLATE_NUM_PRECODE_SYMS,
 				  precode_decode_results,
+				  0,
 				  PRECODE_TABLEBITS,
 				  DEFLATE_MAX_PRE_CODEWORD_LEN,
 				  d->sorted_syms,
@@ -1037,6 +1039,7 @@ build_litlen_decode_table(struct libdeflate_decompressor *d,
 				  d->u.l.lens,
 				  num_litlen_syms,
 				  litlen_decode_results,
+				  HUFFDEC_EXCEPTIONAL | HUFFDEC_SUBTABLE_POINTER,
 				  LITLEN_TABLEBITS,
 				  DEFLATE_MAX_LITLEN_CODEWORD_LEN,
 				  d->sorted_syms,
@@ -1058,6 +1061,7 @@ build_offset_decode_table(struct libdeflate_decompressor *d,
 				  d->u.l.lens + num_litlen_syms,
 				  num_offset_syms,
 				  offset_decode_results,
+				  0x80000000,
 				  OFFSET_TABLEBITS,
 				  DEFLATE_MAX_OFFSET_CODEWORD_LEN,
 				  d->sorted_syms,
