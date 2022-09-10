@@ -119,7 +119,9 @@ fi
 CFLAGS+=" -DLIBDEFLATE_ENABLE_ASSERTIONS"
 
 sudo sh -c "echo core > /proc/sys/kernel/core_pattern"
-sudo sh -c "echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+if [ -e /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]; then
+	sudo sh -c "echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+fi
 
 NPROC=$(getconf _NPROCESSORS_ONLN)
 
