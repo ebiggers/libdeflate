@@ -1064,8 +1064,9 @@ build_offset_decode_table(struct libdeflate_decompressor *d,
  *****************************************************************************/
 
 typedef enum libdeflate_result (*decompress_func_t)
-	(struct libdeflate_decompressor *d,
-	 const void *in, size_t in_nbytes, void *out, size_t out_nbytes_avail,
+	(struct libdeflate_decompressor * restrict d,
+	 const void * restrict in, size_t in_nbytes,
+	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
 #define FUNCNAME deflate_decompress_default
