@@ -428,20 +428,21 @@ have_decode_tables:
 		 */
 		if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
 			/* Subtable pointer or end-of-block entry */
-			if (entry & HUFFDEC_SUBTABLE_POINTER) {
-				/*
-				 * A subtable is required; load and consume the
-				 * subtable entry.  The subtable entry can be of
-				 * any type: literal, length, or end-of-block.
-				 */
-				entry = d->u.litlen_decode_table[(entry >> 16) +
-						(bitbuf & BITMASK((entry >> 8) & 0x3F))];
-				saved_bitbuf = bitbuf;
-				bitbuf >>= (u8)entry;
-				bitsleft -= entry;
-			}
+
 			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
 				goto block_done;
+
+			/*
+			 * A subtable is required.  Load and consume the
+			 * subtable entry.  The subtable entry can be of any
+			 * type: literal, length, or end-of-block.
+			 */
+			entry = d->u.litlen_decode_table[(entry >> 16) +
+				(bitbuf & BITMASK((entry >> 8) & 0x3F))];
+			saved_bitbuf = bitbuf;
+			bitbuf >>= (u8)entry;
+			bitsleft -= entry;
+
 			/*
 			 * 32-bit platforms that use the byte-at-a-time refill
 			 * method have to do a refill here for there to always
@@ -463,6 +464,8 @@ have_decode_tables:
 				*out_next++ = lit;
 				continue;
 			}
+			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
+				goto block_done;
 			/* Else, it's a length that required a subtable. */
 		}
 
