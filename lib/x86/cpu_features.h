@@ -156,6 +156,8 @@ typedef char  __v64qi __attribute__((__vector_size__(64)));
 #define HAVE_BMI2_TARGET \
 	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
 	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di)))
+#define HAVE_BMI2_INTRIN \
+	(HAVE_BMI2_NATIVE || (HAVE_BMI2_TARGET && HAVE_TARGET_INTRINSICS))
 
 #endif /* __i386__ || __x86_64__ */
 

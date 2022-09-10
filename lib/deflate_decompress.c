@@ -1067,7 +1067,9 @@ typedef enum libdeflate_result (*decompress_func_t)
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
 #define FUNCNAME deflate_decompress_default
-#define ATTRIBUTES
+#undef ATTRIBUTES
+#undef EXTRACT_VARBITS
+#undef EXTRACT_VARBITS8
 #include "decompress_template.h"
 
 /* Include architecture-specific implementation(s) if available. */
