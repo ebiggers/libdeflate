@@ -725,7 +725,7 @@ build_decode_table(u32 decode_table[],
 		   const unsigned num_syms,
 		   const u32 decode_results[],
 		   unsigned table_bits,
-		   const unsigned max_codeword_len,
+		   unsigned max_codeword_len,
 		   u16 *sorted_syms,
 		   unsigned *table_bits_ret)
 {
@@ -746,6 +746,17 @@ build_decode_table(u32 decode_table[],
 		len_counts[len] = 0;
 	for (sym = 0; sym < num_syms; sym++)
 		len_counts[lens[sym]]++;
+
+	/*
+	 * Determine the actual maximum codeword length that was used, and
+	 * decrease table_bits to it if allowed.
+	 */
+	while (max_codeword_len > 1 && len_counts[max_codeword_len] == 0)
+		max_codeword_len--;
+	if (table_bits_ret != NULL) {
+		table_bits = MIN(table_bits, max_codeword_len);
+		*table_bits_ret = table_bits;
+	}
 
 	/*
 	 * Sort the symbols primarily by increasing codeword length and
@@ -774,20 +785,6 @@ build_decode_table(u32 decode_table[],
 		sorted_syms[offsets[lens[sym]]++] = sym;
 
 	sorted_syms += offsets[0]; /* Skip unused symbols */
-
-	/* If allowed, decrease table_bits to the longest codeword length. */
-	if (table_bits_ret != NULL) {
-		unsigned table_bits_needed = 1;
-
-		for (len = max_codeword_len; len > 1; len--) {
-			if (len_counts[len] != 0) {
-				table_bits_needed = len;
-				break;
-			}
-		}
-		table_bits = MIN(table_bits, table_bits_needed);
-		*table_bits_ret = table_bits;
-	}
 
 	/* lens[] is done being used, so we can write to decode_table[] now. */
 
