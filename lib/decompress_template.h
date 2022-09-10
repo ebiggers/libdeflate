@@ -566,8 +566,10 @@ have_decode_tables:
 		 * the previous byte, which is the result of compressing long
 		 * runs of the same byte.
 		 *
-		 * If changing the match copy method here, make sure to update
-		 * FASTLOOP_MAX_BYTES_WRITTEN accordingly.
+		 * Writing past the match 'length' is allowed here, since it's
+		 * been ensured there is enough output space left for a slight
+		 * overrun.  FASTLOOP_MAX_BYTES_WRITTEN needs to be updated if
+		 * the maximum possible overrun here is changed.
 		 */
 		if (UNALIGNED_ACCESS_IS_FAST && offset >= WORDBYTES) {
 			store_word_unaligned(load_word_unaligned(src), dst);
@@ -605,6 +607,10 @@ have_decode_tables:
 		} else if (UNALIGNED_ACCESS_IS_FAST && offset == 1) {
 			machine_word_t v;
 
+			/*
+			 * This part tends to get auto-vectorized, so keep it
+			 * copying a multiple of 16 bytes at a time.
+			 */
 			v = (machine_word_t)0x0101010101010101 * src[0];
 			store_word_unaligned(v, dst);
 			dst += WORDBYTES;
@@ -614,11 +620,7 @@ have_decode_tables:
 			dst += WORDBYTES;
 			store_word_unaligned(v, dst);
 			dst += WORDBYTES;
-			store_word_unaligned(v, dst);
-			dst += WORDBYTES;
 			while (dst < out_next) {
-				store_word_unaligned(v, dst);
-				dst += WORDBYTES;
 				store_word_unaligned(v, dst);
 				dst += WORDBYTES;
 				store_word_unaligned(v, dst);
