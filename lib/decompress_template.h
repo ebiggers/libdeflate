@@ -56,7 +56,7 @@ FUNCNAME(struct libdeflate_decompressor * restrict d,
 	unsigned block_type;
 	unsigned num_litlen_syms;
 	unsigned num_offset_syms;
-	machine_word_t litlen_tablemask;
+	bitbuf_t litlen_tablemask;
 	u32 entry;
 
 next_block:
@@ -318,7 +318,7 @@ next_block:
 	SAFETY_CHECK(build_offset_decode_table(d, num_litlen_syms, num_offset_syms));
 	SAFETY_CHECK(build_litlen_decode_table(d, num_litlen_syms, num_offset_syms));
 have_decode_tables:
-	litlen_tablemask = (1 << d->litlen_tablebits) - 1;
+	litlen_tablemask = BITMASK(d->litlen_tablebits);
 
 	/*
 	 * This is the "fastloop" for decoding literals and matches.  It does
