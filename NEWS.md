@@ -1,5 +1,31 @@
 # libdeflate release notes
 
+## Version 1.14
+
+Significantly improved decompression performance on all platforms.  Examples
+include (measuring DEFLATE only):
+
+| Platform                           | Speedup over v1.13 |
+|------------------------------------|--------------------|
+| x86_64 (Intel Comet Lake), gcc     | 1.287x             |
+| x86_64 (Intel Comet Lake), clang   | 1.437x             |
+| x86_64 (Intel Ice Lake), gcc       | 1.332x             |
+| x86_64 (Intel Ice Lake), clang     | 1.296x             |
+| x86_64 (Intel Sandy Bridge), gcc   | 1.162x             |
+| x86_64 (Intel Sandy Bridge), clang | 1.092x             |
+| x86_64 (AMD Zen 2), gcc            | 1.263x             |
+| x86_64 (AMD Zen 2), clang          | 1.259x             |
+| i386 (Intel Comet Lake), gcc       | 1.570x             |
+| i386 (Intel Comet Lake), clang     | 1.344x             |
+| arm64 (Apple M1), clang            | 1.306x             |
+| arm64 (Cortex-A76), clang          | 1.355x             |
+| arm64 (Cortex-A55), clang          | 1.190x             |
+| arm32 (Cortex-A76), clang          | 1.665x             |
+| arm32 (Cortex-A55), clang          | 1.283x             |
+
+Thanks to Dougall Johnson (https://dougallj.wordpress.com/) for ideas for many
+of the improvements.
+
 ## Version 1.13
 
 * Changed the 32-bit Windows build of the library to use the default calling
