@@ -31,12 +31,13 @@ extern "C" {
 #  define LIBDEFLATEEXPORT
 #endif
 
-#if defined(BUILDING_LIBDEFLATE) && defined(__GNUC__) && \
-	defined(_WIN32) && !defined(_WIN64)
+#if defined(BUILDING_LIBDEFLATE) && defined(__GNUC__) && defined(__i386__)
     /*
-     * On 32-bit Windows, gcc assumes 16-byte stack alignment but MSVC only 4.
-     * Realign the stack when entering libdeflate to avoid crashing in SSE/AVX
-     * code when called from an MSVC-compiled application.
+     * On i386, gcc assumes that the stack is 16-byte aligned at function entry.
+     * However, some compilers (e.g. MSVC) and programming languages (e.g.
+     * Delphi) only guarantee 4-byte alignment when calling functions.  Work
+     * around this ABI incompatibility by realigning the stack pointer when
+     * entering libdeflate.  This prevents crashes in SSE/AVX code.
      */
 #  define LIBDEFLATEAPI	__attribute__((force_align_arg_pointer))
 #else
