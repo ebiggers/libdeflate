@@ -85,7 +85,7 @@ LIBDIR ?= $(PREFIX)/lib
 
 SOVERSION          := 0
 
-STATIC_LIB_SUFFIX  := .a
+IMPLIB             :=
 PROG_SUFFIX        :=
 PROG_CFLAGS        :=
 HARD_LINKS         := 1
@@ -94,12 +94,12 @@ TARGET_MACHINE     := $(shell $(CC) -dumpmachine 2>/dev/null)
 
 # Compiling for Windows with MinGW or LLVM?
 ifneq ($(findstring -mingw,$(TARGET_MACHINE))$(findstring -windows-gnu,$(TARGET_MACHINE)),)
-    STATIC_LIB_SUFFIX  := static.lib
     SHARED_LIB         := libdeflate.dll
     SHARED_LIB_SYMLINK :=
     SHARED_LIB_CFLAGS  :=
-    SHARED_LIB_LDFLAGS := -Wl,--out-implib,libdeflate.lib \
+    SHARED_LIB_LDFLAGS := -Wl,--out-implib,libdeflate.dll.a \
                           -Wl,--output-def,libdeflate.def
+    IMPLIB             := libdeflate.dll.a
     PROG_SUFFIX        := .exe
     PROG_CFLAGS        := -static -municode
     HARD_LINKS         :=
@@ -188,7 +188,7 @@ DEFAULT_TARGETS :=
 
 #### Library
 
-STATIC_LIB := libdeflate$(STATIC_LIB_SUFFIX)
+STATIC_LIB := libdeflate.a
 
 LIB_CFLAGS += $(CFLAGS) -fvisibility=hidden -D_ANSI_SOURCE
 
@@ -345,7 +345,12 @@ install:all $(PKGCONFBASE)
 		$(DESTDIR)$(BINDIR)
 	install -m644 $(STATIC_LIB) $(DESTDIR)$(LIBDIR)
 	if [ -z "$(DISABLE_SHARED)" ]; then				\
-		install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR);	\
+		if [ -n "$(IMPLIB)" ]; then				\
+			install -m755 $(SHARED_LIB) $(DESTDIR)$(BINDIR);\
+			install -m644 $(IMPLIB) $(DESTDIR)$(LIBDIR);	\
+		else							\
+			install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR);\
+		fi							\
 	fi
 	sed -e "s|@LIBDIR@|$(LIBDIR)|"					\
 	    -e "s|@INCDIR@|$(INCDIR)|"					\
@@ -369,11 +374,16 @@ install:all $(PKGCONFBASE)
 
 uninstall:
 	rm -f $(DESTDIR)$(LIBDIR)/$(STATIC_LIB)				\
-	      $(DESTDIR)$(LIBDIR)/$(SHARED_LIB)				\
 	      $(DESTDIR)$(LIBDIR)/pkgconfig/libdeflate.pc		\
 	      $(DESTDIR)$(INCDIR)/libdeflate.h				\
 	      $(DESTDIR)$(BINDIR)/libdeflate-gzip$(PROG_SUFFIX)		\
 	      $(DESTDIR)$(BINDIR)/libdeflate-gunzip$(PROG_SUFFIX)
+	if [ -n "$(IMPLIB)" ]; then					\
+	      rm -f $(DESTDIR)$(BINDIR)/$(SHARED_LIB)			\
+		    $(DESTDIR)$(LIBDIR)/$(IMPLIB);			\
+	else								\
+	      rm -f $(DESTDIR)$(LIBDIR)/$(SHARED_LIB);			\
+	fi
 	if [ -n "$(SHARED_LIB_SYMLINK)" ]; then				\
 		rm -f $(DESTDIR)$(LIBDIR)/$(SHARED_LIB_SYMLINK);	\
 	fi
