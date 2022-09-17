@@ -40,10 +40,10 @@ PROG_CFLAGS = $(CFLAGS) -Iprograms
 all: $(STATIC_LIB) $(SHARED_LIB) $(IMPORT_LIB) gzip.exe gunzip.exe
 
 .c.obj:
-	$(CC) -c /Fo$@ $(CFLAGS) $**
+	$(CC) -c /Fo$@ $(CFLAGS) /DLIBDEFLATE_STATIC $**
 
 .c.dllobj:
-	$(CC) -c /Fo$@ $(CFLAGS) /DLIBDEFLATE_DLL $**
+	$(CC) -c /Fo$@ $(CFLAGS) $**
 
 $(STATIC_LIB): $(STATIC_LIB_OBJ)
 	$(AR) $(ARFLAGS) -out:$@ $(STATIC_LIB_OBJ)
