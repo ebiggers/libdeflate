@@ -3,3 +3,4 @@ Description: Fast implementation of DEFLATE, zlib, and gzip
 Version: @VERSION@
 Libs: -L@LIBDIR@ -ldeflate
 Cflags: -I@INCDIR@
+Cflags.private: -DLIBDEFLATE_STATIC

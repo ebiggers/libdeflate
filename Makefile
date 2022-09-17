@@ -223,12 +223,13 @@ SHARED_LIB_OBJ := $(LIB_SRC:.c=.shlib.o)
 
 # Compile static library object files
 $(STATIC_LIB_OBJ): %.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .build-config
-	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(LIB_CFLAGS) $<
+	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(LIB_CFLAGS) \
+		-DLIBDEFLATE_STATIC $<
 
 # Compile shared library object files
 $(SHARED_LIB_OBJ): %.shlib.o: %.c $(LIB_HEADERS) $(COMMON_HEADERS) .build-config
 	$(QUIET_CC) $(CC) -o $@ -c $(CPPFLAGS) $(LIB_CFLAGS) \
-		$(SHARED_LIB_CFLAGS) -DLIBDEFLATE_DLL $<
+		$(SHARED_LIB_CFLAGS) $<
 
 # Create static library
 $(STATIC_LIB):$(STATIC_LIB_OBJ)
@@ -262,6 +263,10 @@ PROG_CFLAGS += $(CFLAGS)		 \
 	       -D_POSIX_C_SOURCE=200809L \
 	       -D_FILE_OFFSET_BITS=64	 \
 	       -DHAVE_CONFIG_H
+
+ifndef USE_SHARED_LIB
+PROG_CFLAGS += -DLIBDEFLATE_STATIC
+endif
 
 ALL_PROG_COMMON_HEADERS := programs/config.h \
 			   programs/prog_util.h \

@@ -17,18 +17,20 @@ extern "C" {
 #include <stdint.h>
 
 /*
- * On Windows, if you want to link to the DLL version of libdeflate, then
- * #define LIBDEFLATE_DLL.  Note that the calling convention is "cdecl".
+ * On Windows, you must define LIBDEFLATE_STATIC if you are linking to the
+ * static library version of libdeflate instead of the DLL.  On other platforms,
+ * LIBDEFLATE_STATIC has no effect.
  */
-#ifdef LIBDEFLATE_DLL
-#  ifdef BUILDING_LIBDEFLATE
-#    define LIBDEFLATEEXPORT	LIBEXPORT
-#  elif defined(_WIN32) || defined(__CYGWIN__)
+#ifdef _WIN32
+#  if defined(LIBDEFLATE_STATIC)
+#    define LIBDEFLATEEXPORT
+#  elif defined(BUILDING_LIBDEFLATE)
+#    define LIBDEFLATEEXPORT	__declspec(dllexport)
+#  else
 #    define LIBDEFLATEEXPORT	__declspec(dllimport)
 #  endif
-#endif
-#ifndef LIBDEFLATEEXPORT
-#  define LIBDEFLATEEXPORT
+#else
+#  define LIBDEFLATEEXPORT	__attribute__((visibility("default")))
 #endif
 
 #if defined(BUILDING_LIBDEFLATE) && defined(__GNUC__) && defined(__i386__)
