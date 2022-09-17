@@ -342,8 +342,7 @@ install:all $(PKGCONFBASE)
 	if [ -z "$(DISABLE_SHARED)" ]; then				\
 		install -m755 $(SHARED_LIB) $(DESTDIR)$(LIBDIR);	\
 	fi
-	sed -e "s|@PREFIX@|$(PREFIX)|"					\
-	    -e "s|@LIBDIR@|$(LIBDIR)|"					\
+	sed -e "s|@LIBDIR@|$(LIBDIR)|"					\
 	    -e "s|@INCDIR@|$(INCDIR)|"					\
 	    -e "s|@VERSION@|$(VERSION)|"				\
 	    $(PKGCONFBASE) > $(DESTDIR)$(LIBDIR)/pkgconfig/libdeflate.pc
