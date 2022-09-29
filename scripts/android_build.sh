@@ -2,12 +2,14 @@
 
 set -eu -o pipefail
 
+SCRIPTDIR="$(dirname "$0")"
+BUILDDIR="$SCRIPTDIR/../build"
 API_LEVEL=28
 ARCH=arm64
 CFLAGS=
 ENABLE_CRC=false
 ENABLE_CRYPTO=false
-NDKDIR=$HOME/android-ndk-r21d
+NDKDIR=$HOME/android-ndk-r23b
 
 usage() {
 	cat << EOF
@@ -15,7 +17,7 @@ Usage: $0 [OPTION]... -- [MAKE_TARGET]...
 Build libdeflate for Android.
 
   --api-level=LEVEL    Android API level to target (default: $API_LEVEL)
-  --arch=ARCH          Architecture: arm32|arm64 (default: $ARCH)
+  --arch=ARCH          Architecture: arm32|arm64|x86|x86_64 (default: $ARCH)
   --enable-crc         Enable crc instructions
   --enable-crypto      Enable crypto instructions
   --ndkdir=NDKDIR      Android NDK directory (default: $NDKDIR)
@@ -65,13 +67,11 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-BINDIR=$NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/
-
 case "$ARCH" in
-arm|arm32|aarch32)
-	CC=$BINDIR/armv7a-linux-androideabi$API_LEVEL-clang
+arm|arm32|aarch32|armeabi-v7a)
+	ANDROID_ABI=armeabi-v7a
 	if $ENABLE_CRC || $ENABLE_CRYPTO; then
-		CFLAGS="-march=armv8-a"
+		export CFLAGS="-march=armv8-a"
 		if $ENABLE_CRC; then
 			CFLAGS+=" -mcrc"
 		else
@@ -84,8 +84,8 @@ arm|arm32|aarch32)
 		fi
 	fi
 	;;
-arm64|aarch64)
-	CC=$BINDIR/aarch64-linux-android$API_LEVEL-clang
+arm64|aarch64|arm64-v8a)
+	ANDROID_ABI=arm64-v8a
 	features=""
 	if $ENABLE_CRC; then
 		features+="+crc"
@@ -94,8 +94,14 @@ arm64|aarch64)
 		features+="+crypto"
 	fi
 	if [ -n "$features" ]; then
-		CFLAGS="-march=armv8-a$features"
+		export CFLAGS="-march=armv8-a$features"
 	fi
+	;;
+x86)
+	ANDROID_ABI=x86
+	;;
+x86_64)
+	ANDROID_ABI=x86_64
 	;;
 *)
 	echo 1>&2 "Unknown architecture: \"$ARCH\""
@@ -103,6 +109,9 @@ arm64|aarch64)
 	exit 1
 esac
 
-cmd=(make "-j$(grep -c processor /proc/cpuinfo)" "CC=$CC" "CFLAGS=$CFLAGS" "$@")
-echo "${cmd[*]}"
-"${cmd[@]}"
+"$SCRIPTDIR"/cmake-helper.sh -G Ninja \
+	-DCMAKE_TOOLCHAIN_FILE="$NDKDIR"/build/cmake/android.toolchain.cmake \
+	-DANDROID_ABI="$ANDROID_ABI" \
+	-DANDROID_PLATFORM="$API_LEVEL" \
+	-DLIBDEFLATE_BUILD_TESTS=1
+cmake --build "$BUILDDIR"

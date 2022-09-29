@@ -1,6 +1,6 @@
 Name: libdeflate
 Description: Fast implementation of DEFLATE, zlib, and gzip
-Version: @VERSION@
-Libs: -L@LIBDIR@ -ldeflate
-Cflags: -I@INCDIR@
+Version: ${PROJECT_VERSION}
+Libs: -L${CMAKE_INSTALL_FULL_LIBDIR} -ldeflate
+Cflags: -I${CMAKE_INSTALL_FULL_INCLUDEDIR}
 Cflags.private: -DLIBDEFLATE_STATIC

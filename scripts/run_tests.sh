@@ -44,9 +44,9 @@ CC_VERSION=$($CC --version | head -1)
 UNAME=$(uname)
 ARCH=$(uname -m)
 
-SHLIB=libdeflate.so
+SHLIB=build/libdeflate.so
 if [ "$UNAME" = Darwin ]; then
-	SHLIB=libdeflate.dylib
+	SHLIB=build/libdeflate.dylib
 fi
 
 for skip in SKIP_FREESTANDING SKIP_VALGRIND SKIP_UBSAN SKIP_ASAN SKIP_CFI \
@@ -115,6 +115,14 @@ valgrind_version_at_least() {
 	[ "$want_vers" = "$(echo -e "$vers\n$want_vers" | sort -V | head -1)" ]
 }
 
+# Build libdeflate, including the test programs.  Set the special test support
+# flag to get support for LIBDEFLATE_DISABLE_CPU_FEATURES.
+build() {
+	CFLAGS="$CFLAGS -DTEST_SUPPORT__DO_NOT_USE=1" scripts/cmake-helper.sh \
+		-DLIBDEFLATE_BUILD_TESTS=1 "$@" > /dev/null
+	$MAKE -C build > /dev/null
+}
+
 build_and_run_tests() {
 	local quick=false
 	if [ "${1:-}" = "--quick" ]; then
@@ -124,9 +132,7 @@ build_and_run_tests() {
 
 	begin "CC=$CC CFLAGS=\"$CFLAGS\" WRAPPER=\"$WRAPPER\" $*"
 
-	# Build libdeflate, including the test programs.  Set the special test
-	# support flag to get support for LIBDEFLATE_DISABLE_CPU_FEATURES.
-	$MAKE "$@" TEST_SUPPORT__DO_NOT_USE=1 all test_programs > /dev/null
+	build "$@"
 
 	# When not using -march=native, run the tests multiple times with
 	# different combinations of CPU features disabled.  This is needed to
@@ -158,7 +164,7 @@ build_and_run_tests() {
 		fi
 		log "Using LIBDEFLATE_DISABLE_CPU_FEATURES=$disable_str"
 		LIBDEFLATE_DISABLE_CPU_FEATURES="$disable_str" \
-		    sh ./scripts/exec_tests.sh > /dev/null
+		    sh ./scripts/exec_tests.sh build/programs/ > /dev/null
 	done
 	end
 }
@@ -169,15 +175,15 @@ verify_freestanding_build() {
 		return 0
 	fi
 	log "Verifying that freestanding build is really freestanding"
-	if nm libdeflate.so | grep -v '\<__stack_chk_fail\>' | grep -q ' U '
-	then
+	build -DLIBDEFLATE_FREESTANDING=1
+	if nm $SHLIB | grep -v '\<__stack_chk_fail\>' | grep -q ' U '; then
 		echo 1>&2 "Freestanding lib links to external functions!:"
-		nm libdeflate.so | grep ' U '
+		nm $SHLIB | grep ' U '
 		return 1
 	fi
-	if ldd libdeflate.so | grep -q -v '\<statically linked\>'; then
+	if ldd $SHLIB | grep -q -v '\<statically linked\>'; then
 		echo 1>&2 "Freestanding lib links to external libraries!:"
-		ldd libdeflate.so
+		ldd $SHLIB
 		return 1
 	fi
 }
@@ -202,8 +208,8 @@ is_compatible_system_gzip() {
 }
 
 gzip_tests() {
-	local gzips=("$PWD/gzip")
-	local gunzips=("$PWD/gunzip")
+	local gzips=("$PWD/build/programs/libdeflate-gzip")
+	local gunzips=("$PWD/build/programs/libdeflate-gzip -d")
 	if [ "${1:-}" != "--quick" ]; then
 		if is_compatible_system_gzip /bin/gzip; then
 			gzips+=(/bin/gzip)
@@ -218,7 +224,7 @@ gzip_tests() {
 	local gzip gunzip
 
 	begin "Running gzip program tests with CC=\"$CC\" CFLAGS=\"$CFLAGS\""
-	$MAKE gzip gunzip > /dev/null
+	build
 	for gzip in "${gzips[@]}"; do
 		for gunzip in "${gunzips[@]}"; do
 			log "GZIP=$gzip, GUNZIP=$gunzip"
@@ -237,7 +243,7 @@ do_run_tests() {
 		elif [ "$UNAME" = Darwin ]; then
 			log "Skipping freestanding build tests due to unsupported OS"
 		else
-			build_and_run_tests FREESTANDING=1
+			build_and_run_tests -DLIBDEFLATE_FREESTANDING=1
 			verify_freestanding_build
 		fi
 	fi
@@ -245,13 +251,13 @@ do_run_tests() {
 }
 
 check_symbol_prefixes() {
+	build
 	log "Checking that all global symbols are prefixed with \"libdeflate_\""
-	$MAKE libdeflate.a > /dev/null
-	if nm libdeflate.a | grep ' T ' | grep -E -v " _?libdeflate_"; then
+	if nm build/libdeflate.a | grep ' T ' | grep -E -v " _?libdeflate_"
+	then
 		fail "Some global symbols aren't prefixed with \"libdeflate_\""
 	fi
 	log "Checking that all exported symbols are prefixed with \"libdeflate\""
-	$MAKE $SHLIB > /dev/null
 	if nm $SHLIB | grep ' T ' \
 			| grep -E -v " _?(libdeflate_|_init\>|_fini\>)"; then
 		fail "Some exported symbols aren't prefixed with \"libdeflate_\""
@@ -274,34 +280,20 @@ test_use_shared_lib() {
 		return
 	fi
 	log "Testing USE_SHARED_LIB=1"
-	$MAKE gzip > /dev/null
-	if is_dynamically_linked gzip; then
+	build
+	if is_dynamically_linked build/programs/libdeflate-gzip; then
 		fail "Binary should be statically linked by default"
 	fi
-	$MAKE USE_SHARED_LIB=1 all check > /dev/null
-	if ! is_dynamically_linked gzip; then
+	build -DLIBDEFLATE_USE_SHARED_LIB=1 > /dev/null
+	if ! is_dynamically_linked build/programs/libdeflate-gzip; then
 		fail "Binary isn't dynamically linked"
 	fi
 }
 
-install_uninstall_tests() {
-	local shell
-
-	begin "Testing 'make install' and 'make uninstall'"
-	for shell in '/bin/bash' '/bin/dash'; do
-		log "Trying SHELL=$shell"
-		$MAKE SHELL=$shell clean > /dev/null
-		$MAKE SHELL=$shell DESTDIR="$TMPDIR/inst" install > /dev/null
-		if (( "$(file_count "$TMPDIR/inst")" == 0 )); then
-			fail "'make install' didn't install any files"
-		fi
-		make SHELL=$shell DESTDIR="$TMPDIR/inst" uninstall > /dev/null
-		if (( "$(file_count "$TMPDIR/inst")" != 0 )); then
-			fail "'make uninstall' didn't uninstall all files"
-		fi
-		rm -r "$TMPDIR/inst"
-	done
-	end
+install_tests() {
+	begin "Testing install"
+	build
+	$MAKE -C build install DESTDIR=inst
 }
 
 run_tests() {
@@ -365,7 +357,7 @@ run_tests() {
 		log "Skipping CFI tests because compiler ($CC_VERSION) doesn't support CFI"
 	fi
 
-	install_uninstall_tests
+	install_tests
 	check_symbol_prefixes
 	test_use_shared_lib
 }

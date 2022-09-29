@@ -12,7 +12,7 @@ if [ $# -ne 0 ]; then
 fi
 
 # Use NDKDIR if specified in environment, else use default value.
-: "${NDKDIR:=$HOME/android-ndk-r21d}"
+: "${NDKDIR:=$HOME/android-ndk-r23b}"
 if [ ! -e "$NDKDIR" ]; then
 	cat 1>&2 << EOF
 Android NDK was not found in NDKDIR=$NDKDIR!  Set the
@@ -45,10 +45,9 @@ CLEANUP_CMDS+=("rm -r '$TMPDIR'")
 android_build_and_test() {
 	echo "Running Android tests with $*"
 
-	./scripts/android_build.sh --ndkdir="$NDKDIR" "$@" \
-		all test_programs > /dev/null
-	adb push "$TESTDATA" ./scripts/exec_tests.sh benchmark test_* \
-		/data/local/tmp/ > /dev/null
+	./scripts/android_build.sh --ndkdir="$NDKDIR" "$@" > /dev/null
+	adb push "$TESTDATA" ./scripts/exec_tests.sh \
+		./build/programs/{benchmark,test_*} /data/local/tmp/ > /dev/null
 
 	# Note: adb shell always returns 0, even if the shell command fails...
 	adb shell "cd /data/local/tmp && WRAPPER= TESTDATA=$(basename "$TESTDATA") sh exec_tests.sh" \

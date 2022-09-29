@@ -19,11 +19,14 @@ have_cpu_feature() {
 make_and_test() {
 	# Build the checksum program and tests.  Set the special test support
 	# flag to get support for LIBDEFLATE_DISABLE_CPU_FEATURES.
-	make "$@" TEST_SUPPORT__DO_NOT_USE=1 checksum test_checksums > /dev/null
+	rm -rf build
+	CFLAGS="$CFLAGS -DTEST_SUPPORT__DO_NOT_USE=1" \
+		cmake -B build -G Ninja -DLIBDEFLATE_BUILD_TESTS=1 > /dev/null
+	cmake --build build > /dev/null
 
 	# Run the checksum tests, for good measure.  (This isn't actually part
 	# of the benchmarking.)
-	./test_checksums > /dev/null
+	./build/programs/test_checksums > /dev/null
 }
 
 __do_benchmark() {
@@ -31,7 +34,8 @@ __do_benchmark() {
 	shift
 	local flags=("$@")
 
-	speed=$(./checksum "${CKSUM_FLAGS[@]}" "${flags[@]}" -t "$FILE" | \
+	speed=$(./build/programs/checksum "${CKSUM_FLAGS[@]}" \
+		"${flags[@]}" -t "$FILE" | \
 		grep -o '[0-9]\+ MB/s' | grep -o '[0-9]\+')
 	printf "%-45s%-10s\n" "$CKSUM_NAME ($impl)" "$speed"
 }
@@ -42,10 +46,10 @@ do_benchmark() {
 	if [ "$impl" = zlib ]; then
 		__do_benchmark "$impl" "-Z"
 	else
-		make_and_test CFLAGS="${EXTRA_CFLAGS[*]}"
+		CFLAGS="${EXTRA_CFLAGS[*]}" make_and_test
 		__do_benchmark "libdeflate, $impl"
 		if [ "$ARCH" = x86_64 ]; then
-			make_and_test CFLAGS="-m32 ${EXTRA_CFLAGS[*]}"
+			CFLAGS="-m32 ${EXTRA_CFLAGS[*]}" make_and_test
 			__do_benchmark "libdeflate, $impl, 32-bit"
 		fi
 	fi

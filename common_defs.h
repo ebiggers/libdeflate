@@ -111,15 +111,6 @@ typedef size_t machine_word_t;
 #  define __has_builtin(builtin)	0
 #endif
 
-/* LIBEXPORT - export a function from a shared library */
-#ifdef _WIN32
-#  define LIBEXPORT		__declspec(dllexport)
-#elif defined(__GNUC__)
-#  define LIBEXPORT		__attribute__((visibility("default")))
-#else
-#  define LIBEXPORT
-#endif
-
 /* inline - suggest that a function be inlined */
 #ifdef _MSC_VER
 #  define inline		__inline
