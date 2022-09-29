@@ -35,7 +35,8 @@ multifile()
 	for file in "$@"; do
 		echo -n "$(basename "$file")"
 		results=()
-		cmd=("$topdir/benchmark" -s"$(stat -c "%s" "$file")" "$file")
+		cmd=("$topdir/build/programs/benchmark"
+		     -s"$(stat -c "%s" "$file")" "$file")
 		run_benchmark "${cmd[@]}" -Y -6
 		results+=("$CSIZE")
 		run_benchmark "${cmd[@]}" -Y -6
@@ -90,7 +91,7 @@ single_file()
 		echo -n "$level"
 		args=("$file" -s "$usize" "-$level")
 
-		run_benchmark "$topdir/benchmark" "${args[@]}"
+		run_benchmark "$topdir/build/programs/benchmark" "${args[@]}"
 		echo -n " | $CSIZE / $CTIME"
 
 		if $include_old; then
@@ -101,7 +102,8 @@ single_file()
 		if (( level > 9 )); then
 			echo -n " | N/A"
 		else
-			run_benchmark "$topdir/benchmark" "${args[@]}" -Y
+			run_benchmark "$topdir/build/programs/benchmark" \
+				      "${args[@]}" -Y
 			echo -n " | $CSIZE / $CTIME"
 		fi
 		echo

@@ -6,6 +6,10 @@
 
 set -eu
 
+DIR=${1:-.}
+
+cd "$DIR"
+
 run_cmd() {
 	echo "$WRAPPER $*"
 	$WRAPPER "$@" > /dev/null

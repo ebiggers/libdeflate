@@ -14,26 +14,29 @@ library, both for compression and decompression, and especially on x86
 processors.  In addition, libdeflate provides optional high compression modes
 that provide a better compression ratio than the zlib's "level 9".
 
-libdeflate itself is a library, but the following command-line programs which
-use this library are also provided:
+libdeflate itself is a library.  The following command-line programs which use
+this library are also included:
 
-* gzip (or gunzip), a program which mostly behaves like the standard equivalent,
-  except that it does not yet have good streaming support and therefore does not
-  yet support very large files
-* benchmark, a program for benchmarking in-memory compression and decompression
+* `libdeflate-gzip`, a program which can be a drop-in replacement for standard
+  `gzip` under some circumstances.  Note that `libdeflate-gzip` has some
+  limitations; it is provided for convenience and is **not** meant to be the
+  main use case of libdeflate.  It needs a lot of memory to process large files,
+  and it omits support for some infrequently-used options of GNU gzip.
+
+* `benchmark`, a test program that does round-trip compression and decompression
+  of the provided data, and measures the compression and decompression speed.
+  It can use libdeflate, zlib, or a combination of the two.
+
+* `checksum`, a test program that checksums the provided data with Adler-32 or
+  CRC-32, and optionally measures the speed.  It can use libdeflate or zlib.
 
 For the release notes, see the [NEWS file](NEWS.md).
 
 ## Table of Contents
 
 - [Building](#building)
-  - [Using the Makefile](#using-the-makefile)
-    - [For UNIX](#for-unix)
-    - [For macOS](#for-macos)
-    - [For Windows](#for-windows)
-      - [Using Cygwin](#using-cygwin)
-      - [Using MSYS2](#using-msys2)
-  - [Using a custom build system](#using-a-custom-build-system)
+  - [Using CMake](#using-cmake)
+  - [Directly integrating the library sources](#directly-integrating-the-library-sources)
 - [API](#api)
 - [Bindings for other programming languages](#bindings-for-other-programming-languages)
 - [DEFLATE vs. zlib vs. gzip](#deflate-vs-zlib-vs-gzip)
@@ -41,142 +44,34 @@ For the release notes, see the [NEWS file](NEWS.md).
 - [Motivation](#motivation)
 - [License](#license)
 
-
 # Building
 
-libdeflate and the provided programs like `gzip` can be built using the provided
-Makefile.  If only the library is needed, it can alternatively be easily
-integrated into applications and built using any build system; see [Using a
-custom build system](#using-a-custom-build-system).
+## Using CMake
 
-## Using the Makefile
+libdeflate uses [CMake](https://cmake.org/).  It can be built just like any
+other CMake project, e.g. with:
 
-### For UNIX
+    cmake -B build && cmake --build build
 
-Just run `make`, then (if desired) `make install`.  You need GNU Make and either
-GCC or Clang.  GCC is recommended because it builds slightly faster binaries.
+By default the following targets are built:
 
-By default, the following targets are built: the static library `libdeflate.a`,
-the shared library `libdeflate.so`, the `gzip` program, and the `gunzip` program
-(which is actually just a hard link to `gzip`).  Benchmarking and test programs
-such as `benchmark` are not built by default.  You can run `make help` to
-display the available build targets.
+- The static library (normally called `libdeflate.a`)
+- The shared library (normally called `libdeflate.so`)
+- The `libdeflate-gzip` program, including its alias `libdeflate-gunzip`
 
-There are also many options which can be set on the `make` command line, e.g. to
-omit library features or to customize the directories into which `make install`
-installs files.  See the Makefile for details.
-
-### For macOS
-
-Prebuilt macOS binaries can be installed with [Homebrew](https://brew.sh):
-
-    brew install libdeflate
-
-But if you need to build the binaries yourself, see the section for UNIX above.
-
-### For Windows
+Besides the standard CMake build and installation options, there are some
+libdeflate-specific build options.  See `CMakeLists.txt` for the list of these
+options.  To set an option, add `-DOPTION=VALUE` to the `cmake` command.
 
 Prebuilt Windows binaries can be downloaded from
-https://github.com/ebiggers/libdeflate/releases.  But if you need to build the
-binaries yourself, MinGW (gcc) is the recommended compiler to use.  If you're
-performing the build *on* Windows (as opposed to cross-compiling for Windows on
-Linux, for example), you'll need to follow the directions in **one** of the two
-sections below to set up a minimal UNIX-compatible environment using either
-Cygwin or MSYS2, then do the build.  (Other MinGW distributions may not work, as
-they often omit basic UNIX tools such as `sh`.)
+https://github.com/ebiggers/libdeflate/releases.
 
-Alternatively, libdeflate may be built using the Visual Studio toolchain by
-running `nmake /f Makefile.msc`.  However, while this is supported in the sense
-that it will produce working binaries, it is not recommended because the
-binaries built with MinGW will be significantly faster.
+## Directly integrating the library sources
 
-Also note that 64-bit binaries are faster than 32-bit binaries and should be
-preferred whenever possible.
-
-#### Using Cygwin
-
-Run the Cygwin installer, available from https://cygwin.com/setup-x86_64.exe.
-When you get to the package selection screen, choose the following additional
-packages from category "Devel":
-
-- git
-- make
-- mingw64-i686-binutils
-- mingw64-i686-gcc-g++
-- mingw64-x86_64-binutils
-- mingw64-x86_64-gcc-g++
-
-(You may skip the mingw64-i686 packages if you don't need to build 32-bit
-binaries.)
-
-After the installation finishes, open a Cygwin terminal.  Then download
-libdeflate's source code (if you haven't already) and `cd` into its directory:
-
-    git clone https://github.com/ebiggers/libdeflate
-    cd libdeflate
-
-(Note that it's not required to use `git`; an alternative is to extract a .zip
-or .tar.gz archive of the source code downloaded from the releases page.
-Also, in case you need to find it in the file browser, note that your home
-directory in Cygwin is usually located at `C:\cygwin64\home\<your username>`.)
-
-Then, to build 64-bit binaries:
-
-    make CC=x86_64-w64-mingw32-gcc
-
-or to build 32-bit binaries:
-
-    make CC=i686-w64-mingw32-gcc
-
-#### Using MSYS2
-
-Run the MSYS2 installer, available from http://www.msys2.org/.  After
-installing, open an MSYS2 shell and run:
-
-    pacman -Syu
-
-Say `y`, then when it's finished, close the shell window and open a new one.
-Then run the same command again:
-
-    pacman -Syu
-
-Then, install the packages needed to build libdeflate:
-
-    pacman -S git \
-              make \
-              mingw-w64-i686-binutils \
-              mingw-w64-i686-gcc \
-              mingw-w64-x86_64-binutils \
-              mingw-w64-x86_64-gcc
-
-(You may skip the mingw-w64-i686 packages if you don't need to build 32-bit
-binaries.)
-
-Then download libdeflate's source code (if you haven't already):
-
-    git clone https://github.com/ebiggers/libdeflate
-
-(Note that it's not required to use `git`; an alternative is to extract a .zip
-or .tar.gz archive of the source code downloaded from the releases page.
-Also, in case you need to find it in the file browser, note that your home
-directory in MSYS2 is usually located at `C:\msys64\home\<your username>`.)
-
-Then, to build 64-bit binaries, open "MSYS2 MinGW 64-bit" from the Start menu
-and run the following commands:
-
-    cd libdeflate
-    make clean
-    make
-
-Or to build 32-bit binaries, do the same but use "MSYS2 MinGW 32-bit" instead.
-
-## Using a custom build system
-
-The source files of the library are designed to be compilable directly, without
-any prerequisite step like running a `./configure` script.  Therefore, as an
-alternative to building the library using the provided Makefile, the library
-source files can be easily integrated directly into your application and built
-using any build system.
+Although the official build system is CMake, care has been taken to keep the
+library source files compilable directly, without a prerequisite configuration
+step.  Therefore, it is also fine to just add the library source files directly
+to your application, without using CMake.
 
 You should compile both `lib/*.c` and `lib/*/*.c`.  You don't need to worry
 about excluding irrelevant architecture-specific code, as this is already
@@ -185,7 +80,7 @@ handled in the source files themselves using `#ifdef`s.
 It is **strongly** recommended to use either gcc or clang, and to use `-O2`.
 
 If you are doing a freestanding build with `-ffreestanding`, you must add
-`-DFREESTANDING` as well, otherwise performance will suffer greatly.
+`-DFREESTANDING` as well (matching what the `CMakeLists.txt` does).
 
 # API
 

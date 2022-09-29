@@ -114,7 +114,7 @@ elif $ubsan; then
 else
 	export AFL_HARDEN=1
 	export CFLAGS="-O2"
-	export CC=afl-clang-fast
+	export CC=afl-gcc
 fi
 CFLAGS+=" -DLIBDEFLATE_ENABLE_ASSERTIONS"
 
@@ -123,13 +123,16 @@ if [ -e /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]; then
 	sudo sh -c "echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
 fi
 
-NPROC=$(getconf _NPROCESSORS_ONLN)
-
-make "-j$NPROC" -C ../../ libdeflate.a
-make "-j$NPROC" -B
+srcdir=../..
+builddir=$srcdir/build
+$srcdir/scripts/cmake-helper.sh -G Ninja
+cmake --build $builddir
 
 for dir in "${targets[@]}"; do
 	cp -vaT "$dir" "/tmp/$dir"
+	# shellcheck disable=SC2086 # Intended word splitting of $CFLAGS
+	$CC $CFLAGS -Wall -I$srcdir "$dir"/fuzz.c $builddir/libdeflate.a \
+		-o "/tmp/$dir/fuzz"
 	indir=/tmp/$dir/inputs
 	outdir=/tmp/$dir/outputs
 	if [ -e "$outdir" ]; then
