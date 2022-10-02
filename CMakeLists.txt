@@ -170,8 +170,13 @@ if(LIBDEFLATE_BUILD_STATIC_LIB)
     # same way with add_subdirectory() as with other ways.
     add_library(libdeflate::libdeflate_static ALIAS libdeflate_static)
 
+    if(WIN32 AND NOT MINGW)
+        set(STATIC_LIB_NAME deflatestatic)
+    else()
+        set(STATIC_LIB_NAME deflate)
+    endif()
     set_target_properties(libdeflate_static PROPERTIES
-                          OUTPUT_NAME deflate
+                          OUTPUT_NAME ${STATIC_LIB_NAME}
                           PUBLIC_HEADER libdeflate.h)
     target_include_directories(libdeflate_static PUBLIC ${LIB_INCLUDE_DIRS})
     target_compile_definitions(libdeflate_static PUBLIC LIBDEFLATE_STATIC)
