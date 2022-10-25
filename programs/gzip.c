@@ -25,6 +25,10 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifdef __sun
+#  define __EXTENSIONS__ /* for futimens() */
+#endif
+
 #include "prog_util.h"
 
 #include <errno.h>
