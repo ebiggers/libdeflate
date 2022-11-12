@@ -28,6 +28,21 @@
 #ifndef PROGRAMS_PROG_UTIL_H
 #define PROGRAMS_PROG_UTIL_H
 
+/*
+ * To keep the code similar on all platforms, sometimes we intentionally use the
+ * "deprecated" non-underscore-prefixed variants of functions in msvcrt.
+ */
+#if defined(_WIN32) && !defined(_CRT_NONSTDC_NO_DEPRECATE)
+#  define _CRT_NONSTDC_NO_DEPRECATE 1
+#endif
+/*
+ * Similarly, to match other platforms we intentionally use the "non-secure"
+ * variants, which aren't actually any less secure when used properly.
+ */
+#if defined(_WIN32) && !defined(_CRT_SECURE_NO_WARNINGS)
+#  define _CRT_SECURE_NO_WARNINGS 1
+#endif
+
 #ifdef HAVE_CONFIG_H
 #  include "config.h"
 #endif
