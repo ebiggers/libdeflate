@@ -102,11 +102,6 @@ typedef unsigned int        __v8su __attribute__((__vector_size__(32)));
 typedef unsigned short     __v16hu __attribute__((__vector_size__(32)));
 typedef unsigned char      __v32qu __attribute__((__vector_size__(32)));
 #endif
-#ifdef __INTEL_COMPILER
-typedef int   __v16si __attribute__((__vector_size__(64)));
-typedef short __v32hi __attribute__((__vector_size__(64)));
-typedef char  __v64qi __attribute__((__vector_size__(64)));
-#endif
 
 /* SSE2 */
 #ifdef __SSE2__
