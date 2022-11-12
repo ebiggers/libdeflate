@@ -105,13 +105,22 @@ jobs:
     - run: cmake --build build --verbose
     - run: ctest --test-dir build
 
-  windows-msvc-build:
-    name: Build (Windows, Visual Studio)
+  windows-visualstudio-msvc-build:
+    name: Build (Windows, Visual Studio + MSVC)
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
     - uses: microsoft/setup-msbuild@v1.1
     - run: cmake -B build -G "Visual Studio 17 2022"
+    - run: cmake --build build --verbose
+
+  windows-visualstudio-clang-build:
+    name: Build (Windows, Visual Studio + Clang)
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: microsoft/setup-msbuild@v1.1
+    - run: cmake -B build -G "Visual Studio 17 2022" -T ClangCL
     - run: cmake --build build --verbose
 
   run-clang-static-analyzer:

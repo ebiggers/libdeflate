@@ -32,6 +32,7 @@
 #include <stddef.h>	/* for size_t */
 #include <stdint.h>
 #ifdef _MSC_VER
+#  include <intrin.h>	/* for _BitScan*() */
 #  include <stdlib.h>	/* for _byteswap_*() */
    /* Disable some annoying warnings that MSVC enables by default. */
 #  pragma warning(disable : 4018) /* signed/unsigned mismatch */
@@ -122,7 +123,7 @@ typedef size_t machine_word_t;
 #endif /* else assume 'inline' is usable as-is */
 
 /* forceinline - force a function to be inlined, if possible */
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_attribute(always_inline)
 #  define forceinline		inline __attribute__((always_inline))
 #elif defined(_MSC_VER)
 #  define forceinline		__forceinline
@@ -131,14 +132,14 @@ typedef size_t machine_word_t;
 #endif
 
 /* MAYBE_UNUSED - mark a function or variable as maybe unused */
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_attribute(unused)
 #  define MAYBE_UNUSED		__attribute__((unused))
 #else
 #  define MAYBE_UNUSED
 #endif
 
 /* restrict - hint that writes only occur through the given pointer */
-#ifdef __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
 #  define restrict		__restrict__
 #elif defined(_MSC_VER)
     /*
@@ -155,28 +156,28 @@ typedef size_t machine_word_t;
 #endif
 
 /* likely(expr) - hint that an expression is usually true */
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_builtin(__builtin_expect)
 #  define likely(expr)		__builtin_expect(!!(expr), 1)
 #else
 #  define likely(expr)		(expr)
 #endif
 
 /* unlikely(expr) - hint that an expression is usually false */
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_builtin(__builtin_expect)
 #  define unlikely(expr)	__builtin_expect(!!(expr), 0)
 #else
 #  define unlikely(expr)	(expr)
 #endif
 
 /* prefetchr(addr) - prefetch into L1 cache for read */
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_builtin(__builtin_prefetch)
 #  define prefetchr(addr)	__builtin_prefetch((addr), 0)
 #else
 #  define prefetchr(addr)
 #endif
 
 /* prefetchw(addr) - prefetch into L1 cache for write */
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_builtin(__builtin_prefetch)
 #  define prefetchw(addr)	__builtin_prefetch((addr), 1)
 #else
 #  define prefetchw(addr)
@@ -187,7 +188,7 @@ typedef size_t machine_word_t;
  * the annotated type, must be aligned on n-byte boundaries.
  */
 #undef _aligned_attribute
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_attribute(aligned)
 #  define _aligned_attribute(n)	__attribute__((aligned(n)))
 #endif
 
@@ -295,7 +296,7 @@ static forceinline u64 bswap64(u64 v)
  * UNALIGNED_ACCESS_IS_FAST() - 1 if unaligned memory accesses can be performed
  * efficiently on the target platform, otherwise 0.
  */
-#if defined(__GNUC__) && \
+#if (defined(__GNUC__) || defined(__clang__)) && \
 	(defined(__x86_64__) || defined(__i386__) || \
 	 defined(__ARM_FEATURE_UNALIGNED) || defined(__powerpc64__) || \
 	 /*
@@ -516,7 +517,7 @@ put_unaligned_leword(machine_word_t v, u8 *p)
 static forceinline unsigned
 bsr32(u32 v)
 {
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_builtin(__builtin_clz)
 	return 31 - __builtin_clz(v);
 #elif defined(_MSC_VER)
 	unsigned long i;
@@ -535,7 +536,7 @@ bsr32(u32 v)
 static forceinline unsigned
 bsr64(u64 v)
 {
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_builtin(__builtin_clzll)
 	return 63 - __builtin_clzll(v);
 #elif defined(_MSC_VER) && defined(_WIN64)
 	unsigned long i;
@@ -570,7 +571,7 @@ bsrw(machine_word_t v)
 static forceinline unsigned
 bsf32(u32 v)
 {
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_builtin(__builtin_ctz)
 	return __builtin_ctz(v);
 #elif defined(_MSC_VER)
 	unsigned long i;
@@ -589,7 +590,7 @@ bsf32(u32 v)
 static forceinline unsigned
 bsf64(u64 v)
 {
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_builtin(__builtin_ctzll)
 	return __builtin_ctzll(v);
 #elif defined(_MSC_VER) && defined(_WIN64)
 	unsigned long i;
@@ -620,7 +621,7 @@ bsfw(machine_word_t v)
  * fallback implementation; use '#ifdef rbit32' to check if this is available.
  */
 #undef rbit32
-#if defined(__GNUC__) && defined(__arm__) && \
+#if (defined(__GNUC__) || defined(__clang__)) && defined(__arm__) && \
 	(__ARM_ARCH >= 7 || (__ARM_ARCH == 6 && defined(__ARM_ARCH_6T2__)))
 static forceinline u32
 rbit32(u32 v)
@@ -629,7 +630,7 @@ rbit32(u32 v)
 	return v;
 }
 #define rbit32 rbit32
-#elif defined(__GNUC__) && defined(__aarch64__)
+#elif (defined(__GNUC__) || defined(__clang__)) && defined(__aarch64__)
 static forceinline u32
 rbit32(u32 v)
 {

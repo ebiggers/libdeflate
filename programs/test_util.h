@@ -32,7 +32,7 @@
 
 #include <zlib.h> /* for comparison purposes */
 
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_attribute(noreturn)
 # define _noreturn __attribute__((noreturn))
 #else
 # define _noreturn
