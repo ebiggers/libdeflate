@@ -67,9 +67,6 @@ read_xcr(u32 index)
 
 #define XCR0_BIT_SSE		BIT(1)
 #define XCR0_BIT_AVX		BIT(2)
-#define XCR0_BIT_OPMASK		BIT(5)
-#define XCR0_BIT_ZMM_HI256	BIT(6)
-#define XCR0_BIT_HI16_ZMM	BIT(7)
 
 #define IS_SET(reg, nr)		((reg) & BIT(nr))
 #define IS_ALL_SET(reg, mask)	(((reg) & (mask)) == (mask))
