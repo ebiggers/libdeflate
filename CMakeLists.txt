@@ -60,6 +60,7 @@ set(CMAKE_C_STANDARD 99)
 if(NOT MSVC)
     check_c_compiler_flag(-Wdeclaration-after-statement HAVE_WDECLARATION_AFTER_STATEMENT)
     check_c_compiler_flag(-Wimplicit-fallthrough HAVE_WIMPLICIT_FALLTHROUGH)
+    check_c_compiler_flag(-Wmissing-field-initializers HAVE_WMISSING_FIELD_INITIALIZERS)
     check_c_compiler_flag(-Wmissing-prototypes HAVE_WMISSING_PROTOTYPES)
     check_c_compiler_flag(-Wpedantic HAVE_WPEDANTIC)
     check_c_compiler_flag(-Wshadow HAVE_WSHADOW)
@@ -70,6 +71,7 @@ if(NOT MSVC)
         -Wall
         $<$<BOOL:${HAVE_WDECLARATION_AFTER_STATEMENT}>:-Wdeclaration-after-statement>
         $<$<BOOL:${HAVE_WIMPLICIT_FALLTHROUGH}>:-Wimplicit-fallthrough>
+        $<$<BOOL:${HAVE_WMISSING_FIELD_INITIALIZERS}>:-Wmissing-field-initializers>
         $<$<BOOL:${HAVE_WMISSING_PROTOTYPES}>:-Wmissing-prototypes>
         $<$<BOOL:${HAVE_WPEDANTIC}>:-Wpedantic>
         $<$<BOOL:${HAVE_WSHADOW}>:-Wshadow>
