@@ -42,6 +42,13 @@
 #  define HAVE_DYNAMIC_ARM_CPU_FEATURES	1
 #endif
 
+#ifdef __GNUC__
+#  define HAVE_INTRIN	1
+#else
+/* intrinsics not compatible (e.g. MSVC, or clang in MSVC mode) */
+#  define HAVE_INTRIN	0
+#endif
+
 #define ARM_CPU_FEATURE_NEON		0x00000001
 #define ARM_CPU_FEATURE_PMULL		0x00000002
 #define ARM_CPU_FEATURE_CRC32		0x00000004
@@ -82,8 +89,9 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  * NEON enabled already.  Exception: with gcc 6.1 and later (r230411 for arm32,
  * r226563 for arm64), hardware floating point support is sufficient.
  */
-#if HAVE_NEON_NATIVE || \
-	(HAVE_NEON_TARGET && GCC_PREREQ(6, 1) && defined(__ARM_FP))
+#if HAVE_INTRIN && \
+	(HAVE_NEON_NATIVE || \
+	 (HAVE_NEON_TARGET && GCC_PREREQ(6, 1) && defined(__ARM_FP)))
 #  define HAVE_NEON_INTRIN	1
 #else
 #  define HAVE_NEON_INTRIN	0
@@ -133,11 +141,12 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  * way to detect the binutils version directly from a C source file.
  */
 #define HAVE_CRC32_INTRIN \
-	(HAVE_CRC32_NATIVE || (HAVE_CRC32_TARGET && \
-			       (!GCC_PREREQ(1, 0) || \
-				GCC_PREREQ(11, 3) || \
-				(GCC_PREREQ(10, 4) && !GCC_PREREQ(11, 0)) || \
-				(GCC_PREREQ(9, 5) && !GCC_PREREQ(10, 0)))))
+	(HAVE_INTRIN && \
+	 (HAVE_CRC32_NATIVE || (HAVE_CRC32_TARGET && \
+				(!GCC_PREREQ(1, 0) || \
+				 GCC_PREREQ(11, 3) || \
+				 (GCC_PREREQ(10, 4) && !GCC_PREREQ(11, 0)) || \
+				 (GCC_PREREQ(9, 5) && !GCC_PREREQ(10, 0))))))
 
 /* SHA3 (needed for the eor3 instruction) */
 #ifdef __aarch64__
@@ -149,7 +158,8 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #  define HAVE_SHA3_TARGET	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
 				 (GCC_PREREQ(8, 1) /* r256478 */ || \
 				  CLANG_PREREQ(7, 0, 10010463) /* r338010 */))
-#  define HAVE_SHA3_INTRIN	((HAVE_SHA3_NATIVE || HAVE_SHA3_TARGET) && \
+#  define HAVE_SHA3_INTRIN	(HAVE_NEON_INTRIN && \
+				 (HAVE_SHA3_NATIVE || HAVE_SHA3_TARGET) && \
 				 (GCC_PREREQ(9, 1) /* r268049 */ || \
 				  __has_builtin(__builtin_neon_veor3q_v)))
 #else

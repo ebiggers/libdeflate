@@ -60,7 +60,7 @@
 
 #include "../common_defs.h"
 
-#ifdef __GNUC__
+#if defined(__GNUC__) || __has_attribute(format)
 # define _printf(str_idx, args_idx)	\
 		__attribute__((format(printf, str_idx, args_idx)))
 #else
@@ -75,6 +75,7 @@
  * get full Unicode support on Windows...
  */
 
+#include <io.h>
 #include <wchar.h>
 int wmain(int argc, wchar_t **argv);
 #  define	tmain		wmain

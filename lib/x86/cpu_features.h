@@ -39,6 +39,13 @@
 #  define HAVE_DYNAMIC_X86_CPU_FEATURES	1
 #endif
 
+#ifdef __GNUC__
+#  define HAVE_INTRIN	1
+#else
+ /* intrinsics not compatible (e.g. MSVC, or clang in MSVC mode) */
+#  define HAVE_INTRIN	0
+#endif
+
 #define X86_CPU_FEATURE_SSE2		0x00000001
 #define X86_CPU_FEATURE_PCLMUL		0x00000002
 #define X86_CPU_FEATURE_AVX		0x00000004
@@ -109,7 +116,8 @@ typedef char  __v64qi __attribute__((__vector_size__(64)));
 #endif
 #define HAVE_SSE2_TARGET	HAVE_DYNAMIC_X86_CPU_FEATURES
 #define HAVE_SSE2_INTRIN \
-	(HAVE_SSE2_NATIVE || (HAVE_SSE2_TARGET && HAVE_TARGET_INTRINSICS))
+	(HAVE_INTRIN &&	\
+	 (HAVE_SSE2_NATIVE || (HAVE_SSE2_TARGET && HAVE_TARGET_INTRINSICS)))
 
 /* PCLMUL */
 #ifdef __PCLMUL__
@@ -121,7 +129,8 @@ typedef char  __v64qi __attribute__((__vector_size__(64)));
 	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
 	 (GCC_PREREQ(4, 4) || __has_builtin(__builtin_ia32_pclmulqdq128)))
 #define HAVE_PCLMUL_INTRIN \
-	(HAVE_PCLMUL_NATIVE || (HAVE_PCLMUL_TARGET && HAVE_TARGET_INTRINSICS))
+	(HAVE_INTRIN && \
+	 (HAVE_PCLMUL_NATIVE || (HAVE_PCLMUL_TARGET && HAVE_TARGET_INTRINSICS)))
 
 /* AVX */
 #ifdef __AVX__
@@ -133,7 +142,8 @@ typedef char  __v64qi __attribute__((__vector_size__(64)));
 	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
 	 (GCC_PREREQ(4, 6) || __has_builtin(__builtin_ia32_maxps256)))
 #define HAVE_AVX_INTRIN \
-	(HAVE_AVX_NATIVE || (HAVE_AVX_TARGET && HAVE_TARGET_INTRINSICS))
+	(HAVE_INTRIN && \
+	 (HAVE_AVX_NATIVE || (HAVE_AVX_TARGET && HAVE_TARGET_INTRINSICS)))
 
 /* AVX2 */
 #ifdef __AVX2__
@@ -145,7 +155,8 @@ typedef char  __v64qi __attribute__((__vector_size__(64)));
 	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
 	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_psadbw256)))
 #define HAVE_AVX2_INTRIN \
-	(HAVE_AVX2_NATIVE || (HAVE_AVX2_TARGET && HAVE_TARGET_INTRINSICS))
+	(HAVE_INTRIN && \
+	 (HAVE_AVX2_NATIVE || (HAVE_AVX2_TARGET && HAVE_TARGET_INTRINSICS)))
 
 /* BMI2 */
 #ifdef __BMI2__
@@ -157,7 +168,8 @@ typedef char  __v64qi __attribute__((__vector_size__(64)));
 	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
 	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di)))
 #define HAVE_BMI2_INTRIN \
-	(HAVE_BMI2_NATIVE || (HAVE_BMI2_TARGET && HAVE_TARGET_INTRINSICS))
+	(HAVE_INTRIN && \
+	 (HAVE_BMI2_NATIVE || (HAVE_BMI2_TARGET && HAVE_TARGET_INTRINSICS)))
 
 #endif /* __i386__ || __x86_64__ */
 
