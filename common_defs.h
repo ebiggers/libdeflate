@@ -33,6 +33,11 @@
 #include <stdint.h>
 #ifdef _MSC_VER
 #  include <stdlib.h>	/* for _byteswap_*() */
+   /* Disable some annoying warnings that MSVC enables by default. */
+#  pragma warning(disable : 4018) /* signed/unsigned mismatch */
+#  pragma warning(disable : 4146) /* unary minus on unsigned type */
+#  pragma warning(disable : 4244) /* possible loss of data */
+#  pragma warning(disable : 4267) /* possible loss of precision */
 #endif
 #ifndef FREESTANDING
 #  include <string.h>	/* for memcpy() */
