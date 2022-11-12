@@ -88,6 +88,8 @@ endif()
 # be used for both the static library and the shared library.
 
 set(LIB_SOURCES
+    common_defs.h
+    libdeflate.h
     lib/arm/cpu_features.c
     lib/arm/cpu_features.h
     lib/cpu_features_common.h
