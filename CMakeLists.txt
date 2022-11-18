@@ -218,8 +218,21 @@ install(TARGETS ${LIB_TARGETS}
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # Generate and install the pkg-config file.  (Don't confuse this with the CMake
-# package config file, which is CMake-specific.)
-configure_file(libdeflate.pc.in libdeflate.pc)
+# package config file, which is CMake-specific.)  Take care to define the
+# include and lib directories in terms of the ${prefix} and ${exec_prefix}
+# pkg-config variables when possible, since some pkg-config users expect to be
+# able to override these variables to relocate packages.
+if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
+    set(CMAKE_PKGCONFIG_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
+else()
+    set(CMAKE_PKGCONFIG_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+endif()
+if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+    set(CMAKE_PKGCONFIG_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+else()
+    set(CMAKE_PKGCONFIG_LIBDIR "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
+endif()
+configure_file(libdeflate.pc.in libdeflate.pc @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libdeflate.pc
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 

@@ -1,6 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+includedir=@CMAKE_PKGCONFIG_INCLUDEDIR@
+libdir=@CMAKE_PKGCONFIG_LIBDIR@
+
 Name: libdeflate
 Description: Fast implementation of DEFLATE, zlib, and gzip
-Version: ${PROJECT_VERSION}
-Libs: -L${CMAKE_INSTALL_FULL_LIBDIR} -ldeflate
-Cflags: -I${CMAKE_INSTALL_FULL_INCLUDEDIR}
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -ldeflate
+Cflags: -I${includedir}
 Cflags.private: -DLIBDEFLATE_STATIC
