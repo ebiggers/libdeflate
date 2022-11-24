@@ -225,6 +225,17 @@ typedef size_t machine_word_t;
 #  define _aligned_attribute(n)	__declspec(align(n))
 #endif
 
+/*
+ * _target_attribute(attrs) - override compilation target for a function. One
+ * or more comma-separated suffixes to the -m prefix jointly forming the name
+ * of a machine-dependent option. Available only for gcc-based compilers.
+ */
+#if defined(__GNUC__) || __has_attribute(target)
+#  define _target_attribute(attrs)	__attribute__((target(attrs)))
+#else
+#  define _target_attribute(attrs)
+#endif
+
 /* Does the compiler support the 'target' function attribute? */
 #define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE \
 	(GCC_PREREQ(4, 4) || __has_attribute(target))

@@ -37,7 +37,7 @@
 #  if HAVE_PCLMUL_NATIVE
 #    define ATTRIBUTES
 #  else
-#    define ATTRIBUTES		__attribute__((target("pclmul")))
+#    define ATTRIBUTES		_target_attribute("pclmul")
 #  endif
 #  define FOLD_PARTIAL_VECS	0
 #  include "crc32_pclmul_template.h"
@@ -61,7 +61,7 @@
 #  if HAVE_PCLMUL_NATIVE && HAVE_AVX_NATIVE
 #    define ATTRIBUTES
 #  else
-#    define ATTRIBUTES		__attribute__((target("pclmul,avx")))
+#    define ATTRIBUTES		_target_attribute("pclmul,avx")
 #  endif
 #  define FOLD_PARTIAL_VECS	1
 #  include "crc32_pclmul_template.h"
