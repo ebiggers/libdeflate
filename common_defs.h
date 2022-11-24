@@ -190,6 +190,8 @@ typedef size_t machine_word_t;
 #undef _aligned_attribute
 #if defined(__GNUC__) || __has_attribute(aligned)
 #  define _aligned_attribute(n)	__attribute__((aligned(n)))
+#elif defined(_MSC_VER)
+#  define _aligned_attribute(n)	__declspec(align(n))
 #endif
 
 /* Does the compiler support the 'target' function attribute? */
