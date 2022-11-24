@@ -83,7 +83,7 @@
 #  if HAVE_SSE2_NATIVE
 #    define ATTRIBUTES
 #  else
-#    define ATTRIBUTES		__attribute__((target("sse2")))
+#    define ATTRIBUTES		_target_attribute("sse2")
 #  endif
 #  include <emmintrin.h>
 static forceinline ATTRIBUTES void
@@ -169,7 +169,7 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 #  if HAVE_AVX2_NATIVE
 #    define ATTRIBUTES
 #  else
-#    define ATTRIBUTES		__attribute__((target("avx2")))
+#    define ATTRIBUTES		_target_attribute("avx2")
 #  endif
 #  include <immintrin.h>
 static forceinline ATTRIBUTES void

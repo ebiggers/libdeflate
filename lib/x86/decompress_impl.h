@@ -8,7 +8,7 @@
 #  define deflate_decompress_bmi2	deflate_decompress_bmi2
 #  define FUNCNAME			deflate_decompress_bmi2
 #  if !HAVE_BMI2_NATIVE
-#    define ATTRIBUTES			__attribute__((target("bmi2")))
+#    define ATTRIBUTES			_target_attribute("bmi2")
 #  endif
    /*
     * Even with __attribute__((target("bmi2"))), gcc doesn't reliably use the

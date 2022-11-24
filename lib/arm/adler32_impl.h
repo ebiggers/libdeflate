@@ -43,9 +43,9 @@
 #    define ATTRIBUTES
 #  else
 #    ifdef ARCH_ARM32
-#      define ATTRIBUTES	__attribute__((target("fpu=neon")))
+#      define ATTRIBUTES	_target_attribute("fpu=neon")
 #    else
-#      define ATTRIBUTES	__attribute__((target("+simd")))
+#      define ATTRIBUTES	_target_attribute("+simd")
 #    endif
 #  endif
 #  include <arm_neon.h>
@@ -156,16 +156,16 @@ adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 #    define ATTRIBUTES
 #  else
 #    ifdef __clang__
-#      define ATTRIBUTES  __attribute__((target("dotprod")))
+#      define ATTRIBUTES  _target_attribute("dotprod")
      /*
       * With gcc, arch=armv8.2-a is needed for dotprod intrinsics, unless the
       * default target is armv8.3-a or later in which case it must be omitted.
       * armv8.3-a or later can be detected by checking for __ARM_FEATURE_JCVT.
       */
 #    elif defined(__ARM_FEATURE_JCVT)
-#      define ATTRIBUTES  __attribute__((target("+dotprod")))
+#      define ATTRIBUTES  _target_attribute("+dotprod")
 #    else
-#      define ATTRIBUTES  __attribute__((target("arch=armv8.2-a+dotprod")))
+#      define ATTRIBUTES  _target_attribute("arch=armv8.2-a+dotprod")
 #    endif
 #  endif
 #  include <arm_neon.h>

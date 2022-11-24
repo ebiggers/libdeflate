@@ -50,15 +50,15 @@
 #  else
 #    ifdef ARCH_ARM32
 #      ifdef __clang__
-#        define ATTRIBUTES	__attribute__((target("armv8-a,crc")))
+#        define ATTRIBUTES	_target_attribute("armv8-a,crc")
 #      else
-#        define ATTRIBUTES	__attribute__((target("arch=armv8-a+crc")))
+#        define ATTRIBUTES	_target_attribute("arch=armv8-a+crc")
 #      endif
 #    else
 #      ifdef __clang__
-#        define ATTRIBUTES	__attribute__((target("crc")))
+#        define ATTRIBUTES	_target_attribute("crc")
 #      else
-#        define ATTRIBUTES	__attribute__((target("+crc")))
+#        define ATTRIBUTES	_target_attribute("+crc")
 #      endif
 #    endif
 #  endif
@@ -240,12 +240,12 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 #    define ATTRIBUTES
 #  else
 #    ifdef ARCH_ARM32
-#      define ATTRIBUTES	__attribute__((target("arch=armv8-a+crc,fpu=crypto-neon-fp-armv8")))
+#      define ATTRIBUTES	_target_attribute("arch=armv8-a+crc,fpu=crypto-neon-fp-armv8")
 #    else
 #      ifdef __clang__
-#        define ATTRIBUTES	__attribute__((target("crc,crypto")))
+#        define ATTRIBUTES	_target_attribute("crc,crypto")
 #      else
-#        define ATTRIBUTES	__attribute__((target("+crc,+crypto")))
+#        define ATTRIBUTES	_target_attribute("+crc,+crypto")
 #      endif
 #    endif
 #  endif
@@ -430,12 +430,12 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 #    define ATTRIBUTES
 #  else
 #    ifdef ARCH_ARM32
-#      define ATTRIBUTES    __attribute__((target("fpu=crypto-neon-fp-armv8")))
+#      define ATTRIBUTES    _target_attribute("fpu=crypto-neon-fp-armv8")
 #    else
 #      ifdef __clang__
-#        define ATTRIBUTES  __attribute__((target("crypto")))
+#        define ATTRIBUTES  _target_attribute("crypto")
 #      else
-#        define ATTRIBUTES  __attribute__((target("+crypto")))
+#        define ATTRIBUTES  _target_attribute("+crypto")
 #      endif
 #    endif
 #  endif
@@ -544,9 +544,9 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #    define ATTRIBUTES
 #  else
 #    ifdef __clang__
-#      define ATTRIBUTES  __attribute__((target("crypto,crc")))
+#      define ATTRIBUTES  _target_attribute("crypto,crc")
 #    else
-#      define ATTRIBUTES  __attribute__((target("+crypto,+crc")))
+#      define ATTRIBUTES  _target_attribute("+crypto,+crc")
 #    endif
 #  endif
 #  define ENABLE_EOR3	0
@@ -571,16 +571,16 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #    define ATTRIBUTES
 #  else
 #    ifdef __clang__
-#      define ATTRIBUTES  __attribute__((target("crypto,crc,sha3")))
+#      define ATTRIBUTES  _target_attribute("crypto,crc,sha3")
      /*
       * With gcc, arch=armv8.2-a is needed for the sha3 intrinsics, unless the
       * default target is armv8.3-a or later in which case it must be omitted.
       * armv8.3-a or later can be detected by checking for __ARM_FEATURE_JCVT.
       */
 #    elif defined(__ARM_FEATURE_JCVT)
-#      define ATTRIBUTES  __attribute__((target("+crypto,+crc,+sha3")))
+#      define ATTRIBUTES  _target_attribute("+crypto,+crc,+sha3")
 #    else
-#      define ATTRIBUTES  __attribute__((target("arch=armv8.2-a+crypto+crc+sha3")))
+#      define ATTRIBUTES  _target_attribute("arch=armv8.2-a+crypto+crc+sha3")
 #    endif
 #  endif
 #  define ENABLE_EOR3	1
