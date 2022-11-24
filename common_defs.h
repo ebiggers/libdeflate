@@ -200,17 +200,37 @@ typedef size_t machine_word_t;
 #  define unlikely(expr)	(expr)
 #endif
 
+#undef prefetchr
 /* prefetchr(addr) - prefetch into L1 cache for read */
 #if defined(__GNUC__) || __has_builtin(__builtin_prefetch)
 #  define prefetchr(addr)	__builtin_prefetch((addr), 0)
-#else
+#elif defined(_MSC_VER)
+#  if defined(ARCH_X86_32) || defined(ARCH_X86_64)
+#    define prefetchr(addr)	_mm_prefetch((addr), _MM_HINT_T0)
+#  elif defined(ARCH_ARM64)
+#    define prefetchr(addr)	__prefetch2((addr), 0/*PLDL1KEEP*/)
+#  elif defined(ARCH_ARM32)
+#    define prefetchr(addr)	__prefetch(addr)
+#  endif
+#endif
+#ifndef prefetchr
 #  define prefetchr(addr)
 #endif
 
+#undef prefetchw
 /* prefetchw(addr) - prefetch into L1 cache for write */
 #if defined(__GNUC__) || __has_builtin(__builtin_prefetch)
 #  define prefetchw(addr)	__builtin_prefetch((addr), 1)
-#else
+#elif defined(_MSC_VER)
+#  if defined(ARCH_X86_32) || defined(ARCH_X86_64)
+#    define prefetchw(addr)	_m_prefetchw(addr)
+#  elif defined(ARCH_ARM64)
+#    define prefetchw(addr)	__prefetch2((addr), 0x10/*PSTL1KEEP*/)
+#  elif defined(ARCH_ARM32)
+#    define prefetchw(addr)	__prefetchw(addr)
+#  endif
+#endif
+#ifndef prefetchw
 #  define prefetchw(addr)
 #endif
 
