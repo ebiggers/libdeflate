@@ -34,11 +34,20 @@
 #ifdef _MSC_VER
 #  include <intrin.h>	/* for _BitScan*() and other intrinsics */
 #  include <stdlib.h>	/* for _byteswap_*() */
-   /* Disable some annoying warnings that MSVC enables by default. */
-#  pragma warning(disable : 4018) /* signed/unsigned mismatch */
+   /* Disable MSVC warnings that are expected. */
+   /* /W2 */
 #  pragma warning(disable : 4146) /* unary minus on unsigned type */
+   /* /W3 */
+#  pragma warning(disable : 4018) /* signed/unsigned mismatch */
 #  pragma warning(disable : 4244) /* possible loss of data */
 #  pragma warning(disable : 4267) /* possible loss of precision */
+#  pragma warning(disable : 4310) /* cast truncates constant value */
+   /* /W4 */
+#  pragma warning(disable : 4100) /* unreferenced formal parameter */
+#  pragma warning(disable : 4127) /* conditional expression is constant */
+#  pragma warning(disable : 4232) /* nonstandard extension used */
+#  pragma warning(disable : 4245) /* conversion from 'int' to 'unsigned int' */
+#  pragma warning(disable : 4295) /* array too small to include terminating null */
 #endif
 #ifndef FREESTANDING
 #  include <string.h>	/* for memcpy() */
