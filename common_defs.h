@@ -32,7 +32,7 @@
 #include <stddef.h>	/* for size_t */
 #include <stdint.h>
 #ifdef _MSC_VER
-#  include <intrin.h>	/* for _BitScan*() */
+#  include <intrin.h>	/* for _BitScan*() and other intrinsics */
 #  include <stdlib.h>	/* for _byteswap_*() */
    /* Disable some annoying warnings that MSVC enables by default. */
 #  pragma warning(disable : 4018) /* signed/unsigned mismatch */
@@ -45,14 +45,14 @@
 #endif
 
 /* ========================================================================== */
-/*                              Target architecture                           */
+/*                             Target architecture                            */
 /* ========================================================================== */
 
+/* If possible, define a compiler-independent ARCH_* macro. */
 #undef ARCH_X86_64
 #undef ARCH_X86_32
 #undef ARCH_ARM64
 #undef ARCH_ARM32
-
 #ifdef _MSC_VER
 #  if defined(_M_X64)
 #    define ARCH_X86_64
@@ -169,22 +169,19 @@ typedef size_t machine_word_t;
 #  define MAYBE_UNUSED
 #endif
 
-/* restrict - hint that writes only occur through the given pointer */
-#if defined(__GNUC__) || defined(__clang__)
-#  define restrict		__restrict__
-#elif defined(_MSC_VER)
-    /*
-     * Don't use MSVC's __restrict; it has nonstandard behavior.
-     * Standard restrict is okay, if it is supported.
-     */
-#  if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
-#    define restrict		restrict
+/*
+ * restrict - hint that writes only occur through the given pointer.
+ *
+ * Don't use MSVC's __restrict, since it has nonstandard behavior.
+ * Standard restrict is okay, if it is supported.
+ */
+#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 201112L)
+#  if defined(__GNUC__) || defined(__clang__)
+#    define restrict		__restrict__
 #  else
 #    define restrict
 #  endif
-#else
-#  define restrict
-#endif
+#endif /* else assume 'restrict' is usable as-is */
 
 /* likely(expr) - hint that an expression is usually true */
 #if defined(__GNUC__) || __has_builtin(__builtin_expect)
@@ -200,15 +197,15 @@ typedef size_t machine_word_t;
 #  define unlikely(expr)	(expr)
 #endif
 
-#undef prefetchr
 /* prefetchr(addr) - prefetch into L1 cache for read */
+#undef prefetchr
 #if defined(__GNUC__) || __has_builtin(__builtin_prefetch)
 #  define prefetchr(addr)	__builtin_prefetch((addr), 0)
 #elif defined(_MSC_VER)
 #  if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 #    define prefetchr(addr)	_mm_prefetch((addr), _MM_HINT_T0)
 #  elif defined(ARCH_ARM64)
-#    define prefetchr(addr)	__prefetch2((addr), 0/*PLDL1KEEP*/)
+#    define prefetchr(addr)	__prefetch2((addr), 0x00 /* prfop=PLDL1KEEP */)
 #  elif defined(ARCH_ARM32)
 #    define prefetchr(addr)	__prefetch(addr)
 #  endif
@@ -217,15 +214,15 @@ typedef size_t machine_word_t;
 #  define prefetchr(addr)
 #endif
 
-#undef prefetchw
 /* prefetchw(addr) - prefetch into L1 cache for write */
+#undef prefetchw
 #if defined(__GNUC__) || __has_builtin(__builtin_prefetch)
 #  define prefetchw(addr)	__builtin_prefetch((addr), 1)
 #elif defined(_MSC_VER)
 #  if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 #    define prefetchw(addr)	_m_prefetchw(addr)
 #  elif defined(ARCH_ARM64)
-#    define prefetchw(addr)	__prefetch2((addr), 0x10/*PSTL1KEEP*/)
+#    define prefetchw(addr)	__prefetch2((addr), 0x10 /* prfop=PSTL1KEEP */)
 #  elif defined(ARCH_ARM32)
 #    define prefetchw(addr)	__prefetchw(addr)
 #  endif
@@ -246,19 +243,21 @@ typedef size_t machine_word_t;
 #endif
 
 /*
- * _target_attribute(attrs) - override compilation target for a function. One
- * or more comma-separated suffixes to the -m prefix jointly forming the name
- * of a machine-dependent option. Available only for gcc-based compilers.
+ * _target_attribute(attrs) - override the compilation target for a function.
+ *
+ * This accepts one or more comma-separated suffixes to the -m prefix jointly
+ * forming the name of a machine-dependent option.  On gcc-like compilers, this
+ * enables codegen for the given targets, including arbitrary compiler-generated
+ * code as well as the corresponding intrinsics.  On other compilers this macro
+ * expands to nothing, though MSVC allows intrinsics to be used anywhere anyway.
  */
-#if defined(__GNUC__) || __has_attribute(target)
+#if GCC_PREREQ(4, 4) || __has_attribute(target)
 #  define _target_attribute(attrs)	__attribute__((target(attrs)))
+#  define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE	1
 #else
 #  define _target_attribute(attrs)
+#  define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE	0
 #endif
-
-/* Does the compiler support the 'target' function attribute? */
-#define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE \
-	(GCC_PREREQ(4, 4) || __has_attribute(target))
 
 /* ========================================================================== */
 /*                          Miscellaneous macros                              */
