@@ -711,6 +711,8 @@ rbit32(u32 v)
 	return v;
 }
 #define rbit32 rbit32
+#elif defined(_MSC_VER) && defined(ARCH_ARM32)
+#define rbit32 _arm_rbit
 #endif
 
 #endif /* COMMON_DEFS_H */
