@@ -34,7 +34,7 @@
 
 #if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 
-#if COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
+#if COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE || defined(_MSC_VER)
 #  undef HAVE_DYNAMIC_X86_CPU_FEATURES
 #  define HAVE_DYNAMIC_X86_CPU_FEATURES	1
 #endif
@@ -80,9 +80,12 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
  * functions.  Unfortunately clang has no feature test macro for this, so we
  * have to check its version.
  */
-#define HAVE_TARGET_INTRINSICS \
-	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
-	 (GCC_PREREQ(4, 9) || CLANG_PREREQ(3, 8, 7030000)))
+#if HAVE_DYNAMIC_X86_CPU_FEATURES && \
+	(GCC_PREREQ(4, 9) || CLANG_PREREQ(3, 8, 7030000) || defined(_MSC_VER))
+#  define HAVE_TARGET_INTRINSICS	1
+#else
+#  define HAVE_TARGET_INTRINSICS	0
+#endif
 
 /*
  * Before gcc 5.1 and clang 3.9, emmintrin.h only defined vectors of signed
