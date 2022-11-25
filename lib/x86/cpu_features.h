@@ -118,17 +118,19 @@ typedef unsigned char      __v32qu __attribute__((__vector_size__(32)));
 #define HAVE_SSE2_INTRIN	(HAVE_SSE2_NATIVE || HAVE_TARGET_INTRINSICS)
 
 /* PCLMUL */
-#ifdef __PCLMUL__
+#if defined(__PCLMUL__) || (defined(_MSC_VER) && defined(__AVX2__))
 #  define HAVE_PCLMUL_NATIVE	1
 #else
 #  define HAVE_PCLMUL_NATIVE	0
 #endif
-#define HAVE_PCLMUL_TARGET \
-	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
-	 (GCC_PREREQ(4, 4) || __has_builtin(__builtin_ia32_pclmulqdq128)))
-#define HAVE_PCLMUL_INTRIN \
-	(HAVE_INTRIN && \
-	 (HAVE_PCLMUL_NATIVE || (HAVE_PCLMUL_TARGET && HAVE_TARGET_INTRINSICS)))
+#if HAVE_PCLMUL_NATIVE || (HAVE_TARGET_INTRINSICS && \
+			   (GCC_PREREQ(4, 4) || \
+			    __has_builtin(__builtin_ia32_pclmulqdq128) || \
+			    defined(_MSC_VER)))
+#  define HAVE_PCLMUL_INTRIN	1
+#else
+#  define HAVE_PCLMUL_INTRIN	0
+#endif
 
 /* AVX */
 #ifdef __AVX__
@@ -136,12 +138,14 @@ typedef unsigned char      __v32qu __attribute__((__vector_size__(32)));
 #else
 #  define HAVE_AVX_NATIVE	0
 #endif
-#define HAVE_AVX_TARGET \
-	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
-	 (GCC_PREREQ(4, 6) || __has_builtin(__builtin_ia32_maxps256)))
-#define HAVE_AVX_INTRIN \
-	(HAVE_INTRIN && \
-	 (HAVE_AVX_NATIVE || (HAVE_AVX_TARGET && HAVE_TARGET_INTRINSICS)))
+#if HAVE_AVX_NATIVE || (HAVE_TARGET_INTRINSICS && \
+			(GCC_PREREQ(4, 6) || \
+			 __has_builtin(__builtin_ia32_maxps256) || \
+			 defined(_MSC_VER)))
+#  define HAVE_AVX_INTRIN	1
+#else
+#  define HAVE_AVX_INTRIN	0
+#endif
 
 /* AVX2 */
 #ifdef __AVX2__

@@ -52,10 +52,11 @@
  * SSSE3 and SSE4.1 support, and we can use SSSE3 and SSE4.1 intrinsics for
  * efficient handling of partial blocks.  (We *could* compile a variant with
  * PCLMUL+SSSE3+SSE4.1 w/o AVX, but for simplicity we don't currently bother.)
+ *
+ * FIXME: with MSVC, this isn't actually compiled with AVX code generation
+ * enabled yet.  That would require that this be moved to its own .c file.
  */
-#if HAVE_PCLMUL_INTRIN && HAVE_AVX_INTRIN && \
-	((HAVE_PCLMUL_NATIVE && HAVE_AVX_NATIVE) || \
-	 (HAVE_PCLMUL_TARGET && HAVE_AVX_TARGET))
+#if HAVE_PCLMUL_INTRIN && HAVE_AVX_INTRIN
 #  define crc32_x86_pclmul_avx	crc32_x86_pclmul_avx
 #  define SUFFIX			 _pclmul_avx
 #  if HAVE_PCLMUL_NATIVE && HAVE_AVX_NATIVE

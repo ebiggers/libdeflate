@@ -49,10 +49,19 @@
  */
 
 #include <immintrin.h>
+/*
+ * With clang in MSVC compatibility mode, immintrin.h incorrectly skips
+ * including some sub-headers.
+ */
+#if defined(__clang__) && defined(_MSC_VER)
+#  include <tmmintrin.h>
+#  include <smmintrin.h>
+#  include <wmmintrin.h>
+#endif
 
 #undef fold_vec
 static forceinline ATTRIBUTES __m128i
-ADD_SUFFIX(fold_vec)(__m128i src, __m128i dst, __v2di multipliers)
+ADD_SUFFIX(fold_vec)(__m128i src, __m128i dst, __m128i /* __v2di */ multipliers)
 {
 	/*
 	 * The immediate constant for PCLMULQDQ specifies which 64-bit halves of
@@ -61,8 +70,9 @@ ADD_SUFFIX(fold_vec)(__m128i src, __m128i dst, __v2di multipliers)
 	 * 0x00 means low halves (higher degree polynomial terms for us)
 	 * 0x11 means high halves (lower degree polynomial terms for us)
 	 */
-	return dst ^ _mm_clmulepi64_si128(src, multipliers, 0x00) ^
-		_mm_clmulepi64_si128(src, multipliers, 0x11);
+	dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, multipliers, 0x00));
+	dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, multipliers, 0x11));
+	return dst;
 }
 #define fold_vec	ADD_SUFFIX(fold_vec)
 
@@ -77,7 +87,7 @@ ADD_SUFFIX(fold_vec)(__m128i src, __m128i dst, __v2di multipliers)
 #undef fold_partial_vec
 static forceinline ATTRIBUTES __m128i
 ADD_SUFFIX(fold_partial_vec)(__m128i v, const u8 *p, size_t len,
-			     __v2di multipliers_1)
+			     __m128i /* __v2du */ multipliers_1)
 {
 	/*
 	 * pshufb(v, shift_tab[len..len+15]) left shifts v by 16-len bytes.
@@ -115,13 +125,20 @@ ADD_SUFFIX(fold_partial_vec)(__m128i v, const u8 *p, size_t len,
 static u32 ATTRIBUTES MAYBE_UNUSED
 ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 {
-	const __v2di multipliers_8 = (__v2di)CRC32_8VECS_MULTS;
-	const __v2di multipliers_4 = (__v2di)CRC32_4VECS_MULTS;
-	const __v2di multipliers_2 = (__v2di)CRC32_2VECS_MULTS;
-	const __v2di multipliers_1 = (__v2di)CRC32_1VECS_MULTS;
-	const __v2di final_multiplier = (__v2di){ CRC32_FINAL_MULT };
-	const __m128i mask32 = (__m128i)(__v4si){ 0xFFFFFFFF };
-	const __v2di barrett_reduction_constants = (__v2di)CRC32_BARRETT_CONSTANTS;
+	const __m128i /* __v2du */ multipliers_8 =
+		_mm_set_epi64x(CRC32_8VECS_MULT_2, CRC32_8VECS_MULT_1);
+	const __m128i /* __v2du */ multipliers_4 =
+		_mm_set_epi64x(CRC32_4VECS_MULT_2, CRC32_4VECS_MULT_1);
+	const __m128i /* __v2du */ multipliers_2 =
+		_mm_set_epi64x(CRC32_2VECS_MULT_2, CRC32_2VECS_MULT_1);
+	const __m128i /* __v2du */ multipliers_1 =
+		_mm_set_epi64x(CRC32_1VECS_MULT_2, CRC32_1VECS_MULT_1);
+	const __m128i /* __v2du */ final_multiplier =
+		_mm_set_epi64x(0, CRC32_FINAL_MULT);
+	const __m128i mask32 = _mm_set_epi32(0, 0, 0, 0xFFFFFFFF);
+	const __m128i /* __v2du */ barrett_reduction_constants =
+		_mm_set_epi64x(CRC32_BARRETT_CONSTANT_2,
+			       CRC32_BARRETT_CONSTANT_1);
 	__m128i v0, v1, v2, v3, v4, v5, v6, v7;
 
 	/*
@@ -135,7 +152,8 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 		if (len < 16)
 			return crc32_slice1(crc, p, len);
 
-		v0 = _mm_loadu_si128((const void *)p) ^ (__m128i)(__v4si){crc};
+		v0 = _mm_xor_si128(_mm_loadu_si128((const void *)p),
+				   _mm_cvtsi32_si128(crc));
 		p += 16;
 
 		if (len >= 64) {
@@ -187,7 +205,8 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 		const __m128i *vp;
 
 	#if FOLD_PARTIAL_VECS
-		v0 = _mm_loadu_si128((const void *)p) ^ (__m128i)(__v4si){crc};
+		v0 = _mm_xor_si128(_mm_loadu_si128((const void *)p),
+				   _mm_cvtsi32_si128(crc));
 		p += 16;
 		/* Align p to the next 16-byte boundary. */
 		if (align) {
@@ -204,7 +223,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 			len -= align;
 		}
 		vp = (const __m128i *)p;
-		v0 = *vp++ ^ (__m128i)(__v4si){crc};
+		v0 = _mm_xor_si128(*vp++, _mm_cvtsi32_si128(crc));
 	#endif
 		v1 = *vp++;
 		v2 = *vp++;
@@ -265,12 +284,13 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	 * which is equivalent to multiplying by x^32.  This is needed because
 	 * the CRC is defined as M(x)*x^32 mod G(x), not just M(x) mod G(x).
 	 */
-	v0 = _mm_srli_si128(v0, 8) ^
-	     _mm_clmulepi64_si128(v0, multipliers_1, 0x10);
+	v0 = _mm_xor_si128(_mm_srli_si128(v0, 8),
+			   _mm_clmulepi64_si128(v0, multipliers_1, 0x10));
 
 	/* Fold 96 => 64 bits. */
-	v0 = _mm_srli_si128(v0, 4) ^
-	     _mm_clmulepi64_si128(v0 & mask32, final_multiplier, 0x00);
+	v0 = _mm_xor_si128(_mm_srli_si128(v0, 4),
+			   _mm_clmulepi64_si128(_mm_and_si128(v0, mask32),
+						final_multiplier, 0x00));
 
 	/*
 	 * Reduce 64 => 32 bits using Barrett reduction.
@@ -314,10 +334,15 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	 *	R(x) = B(x) + G(x)*floor (  -------------------------  )
 	 *	                          \           x^32            /
 	 */
-	v1 = _mm_clmulepi64_si128(v0 & mask32, barrett_reduction_constants, 0x00);
-	v1 = _mm_clmulepi64_si128(v1 & mask32, barrett_reduction_constants, 0x10);
-	crc = ((__v4si)(v0 ^ v1))[1];
-#if !FOLD_PARTIAL_VECS
+	v1 = _mm_clmulepi64_si128(_mm_and_si128(v0, mask32),
+				  barrett_reduction_constants, 0x00);
+	v1 = _mm_clmulepi64_si128(_mm_and_si128(v1, mask32),
+				  barrett_reduction_constants, 0x10);
+	v0 = _mm_xor_si128(v0, v1);
+#if FOLD_PARTIAL_VECS
+	crc = _mm_extract_epi32(v0, 1);
+#else
+	crc = _mm_cvtsi128_si32(_mm_shuffle_epi32(v0, 0x01));
 	/* Process up to 15 bytes left over at the end. */
 	crc = crc32_slice1(crc, p, len);
 #endif
