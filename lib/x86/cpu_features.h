@@ -107,15 +107,15 @@ typedef unsigned char      __v32qu __attribute__((__vector_size__(32)));
 #endif
 
 /* SSE2 */
-#ifdef __SSE2__
+#if defined(__SSE2__) || \
+	(defined(_MSC_VER) && \
+	 (defined(ARCH_X86_64) || \
+	  (defined(ARCH_X86_32) && defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
 #  define HAVE_SSE2_NATIVE	1
 #else
 #  define HAVE_SSE2_NATIVE	0
 #endif
-#define HAVE_SSE2_TARGET	HAVE_DYNAMIC_X86_CPU_FEATURES
-#define HAVE_SSE2_INTRIN \
-	(HAVE_INTRIN &&	\
-	 (HAVE_SSE2_NATIVE || (HAVE_SSE2_TARGET && HAVE_TARGET_INTRINSICS)))
+#define HAVE_SSE2_INTRIN	(HAVE_SSE2_NATIVE || HAVE_TARGET_INTRINSICS)
 
 /* PCLMUL */
 #ifdef __PCLMUL__
