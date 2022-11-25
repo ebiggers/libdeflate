@@ -3,7 +3,12 @@
 
 #include "cpu_features.h"
 
-/* BMI2 optimized version */
+/*
+ * BMI2 optimized version
+ *
+ * FIXME: with MSVC, this isn't actually compiled with BMI2 code generation
+ * enabled yet.  That would require that this be moved to its own .c file.
+ */
 #if HAVE_BMI2_INTRIN
 #  define deflate_decompress_bmi2	deflate_decompress_bmi2
 #  define FUNCNAME			deflate_decompress_bmi2
