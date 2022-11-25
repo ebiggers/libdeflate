@@ -42,17 +42,30 @@
 static inline void
 cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c, u32 *d)
 {
+#ifdef _MSC_VER
+	int result[4];
+
+	__cpuidex(result, leaf, subleaf);
+	*a = result[0];
+	*b = result[1];
+	*c = result[2];
+	*d = result[3];
+#else
 	__asm__(".ifnc %%ebx, %1; mov  %%ebx, %1; .endif\n"
 		"cpuid                                  \n"
 		".ifnc %%ebx, %1; xchg %%ebx, %1; .endif\n"
 		: "=a" (*a), EBX_CONSTRAINT (*b), "=c" (*c), "=d" (*d)
 		: "a" (leaf), "c" (subleaf));
+#endif
 }
 
 /* Read an extended control register.  */
 static inline u64
 read_xcr(u32 index)
 {
+#ifdef _MSC_VER
+	return _xgetbv(index);
+#else
 	u32 edx, eax;
 
 	/* Execute the "xgetbv" instruction.  Old versions of binutils do not
@@ -60,6 +73,7 @@ read_xcr(u32 index)
 	__asm__ (".byte 0x0f, 0x01, 0xd0" : "=d" (edx), "=a" (eax) : "c" (index));
 
 	return ((u64)edx << 32) | eax;
+#endif
 }
 
 #undef BIT
