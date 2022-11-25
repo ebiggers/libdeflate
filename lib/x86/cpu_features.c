@@ -30,6 +30,28 @@
 
 #if HAVE_DYNAMIC_X86_CPU_FEATURES
 
+#ifdef _MSC_VER
+
+static inline void
+cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c, u32 *d)
+{
+	int result[4];
+
+	__cpuidex(result, leaf, subleaf);
+	*a = result[0];
+	*b = result[1];
+	*c = result[2];
+	*d = result[3];
+}
+
+static inline u64
+read_xcr(u32 index)
+{
+	return _xgetbv(index);
+}
+
+#else /* _MSC_VER */
+
 /* With old GCC versions we have to manually save and restore the x86_32 PIC
  * register (ebx).  See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47602  */
 #if defined(ARCH_X86_32) && defined(__PIC__)
@@ -61,6 +83,8 @@ read_xcr(u32 index)
 
 	return ((u64)edx << 32) | eax;
 }
+
+#endif /* !_MSC_VER */
 
 #undef BIT
 #define BIT(nr)			(1UL << (nr))

@@ -167,6 +167,58 @@ static u32 query_arm_cpu_features(void)
 	}
 	return features;
 }
+
+#elif defined(_WIN32)
+
+/*
+ * https://docs.microsoft.com/en-us/cpp/build/arm64-windows-abi-conventions
+ * "The ARM64 version of Windows presupposes that it's running on an ARMv8 or
+ * later architecture at all times. Both floating-point and NEON support are
+ * presumed to be present in hardware."
+ * Some (but not all) other features are exposed in various Windows APIs.
+ * However, the cached values of the CP15 regs can also be read out of the
+ * registry.
+ */
+
+#include <windows.h>
+#include <stdio.h>
+
+/* Note this reads cpu 0 only */
+static bool read_cp_reg(u32 reg, u64* value)
+{
+	char value_name[12];
+	DWORD value_len = sizeof(*value);
+
+	int res = snprintf(value_name, sizeof(value_name), "CP %x", reg);
+	if (res < 0 || res >= sizeof(value_name))
+		return false;
+	return RegGetValueA(HKEY_LOCAL_MACHINE,
+		"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", value_name,
+		RRF_RT_REG_QWORD, NULL, value, &value_len) == ERROR_SUCCESS;
+}
+
+static u32 query_arm_cpu_features(void)
+{
+	u64 reg;
+	u32 AA64ISAR0_EL1 = ARM64_SYSREG(3, 0, 0, 6, 0); // ISA Feature Register 0
+	u32 features = ARM_CPU_FEATURE_NEON;
+
+	/* Where possible, prefer supported APIs instead of looking at registry. */
+	if (IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE))
+		features |= ARM_CPU_FEATURE_PMULL;
+	if (IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE))
+		features |= ARM_CPU_FEATURE_CRC32;
+
+	if (read_cp_reg(AA64ISAR0_EL1, &reg))
+	{
+		if (((reg >> 32) & 0xf) != 0)
+			features |= ARM_CPU_FEATURE_SHA3;
+		if (((reg >> 44) & 0xf) != 0)
+			features |= ARM_CPU_FEATURE_DOTPROD;
+	}
+	return features;
+}
+
 #else
 #error "unhandled case"
 #endif
