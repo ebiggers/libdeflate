@@ -6,6 +6,12 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# With MSVC, don't automatically append /W3 to the compiler flags.
+# This makes it possible for the user to select /W4.
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
+    cmake_policy(SET CMP0092 NEW)
+endif()
+
 # Extract the version string from libdeflate.h so that it doesn't have to be
 # duplicated here.
 set(VERSION_REGEX "#define LIBDEFLATE_VERSION_STRING[ \t]+\"([0-9\\.]+)\"")
