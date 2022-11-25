@@ -13,7 +13,7 @@ check_c_source_compiles("#include <sys/types.h>
 configure_file(config.h.in config.h)
 
 # Build a utility library for the programs.  This library is not installed.
-add_library(libdeflate_prog_utils STATIC prog_util.c tgetopt.c)
+add_library(libdeflate_prog_utils STATIC prog_util.c tgetopt.c ../common_defs.h)
 set_target_properties(libdeflate_prog_utils PROPERTIES
                       OUTPUT_NAME deflate_prog_utils)
 if(LIBDEFLATE_USE_SHARED_LIB)
