@@ -54,10 +54,10 @@
 /* Minimum value of max_len for ht_matchfinder_longest_match() */
 #define HT_MATCHFINDER_REQUIRED_NBYTES	5
 
-struct ht_matchfinder {
+struct MATCHFINDER_ALIGNED ht_matchfinder {
 	mf_pos_t hash_tab[1UL << HT_MATCHFINDER_HASH_ORDER]
 			 [HT_MATCHFINDER_BUCKET_SIZE];
-} MATCHFINDER_ALIGNED;
+};
 
 static forceinline void
 ht_matchfinder_init(struct ht_matchfinder *mf)

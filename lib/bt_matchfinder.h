@@ -85,7 +85,7 @@ struct lz_match {
 	u16 offset;
 };
 
-struct bt_matchfinder {
+struct MATCHFINDER_ALIGNED bt_matchfinder {
 
 	/* The hash table for finding length 3 matches  */
 	mf_pos_t hash3_tab[1UL << BT_MATCHFINDER_HASH3_ORDER][BT_MATCHFINDER_HASH3_WAYS];
@@ -98,8 +98,7 @@ struct bt_matchfinder {
 	 * children of the node for the sequence with position 'pos' are
 	 * 'child_tab[pos * 2]' and 'child_tab[pos * 2 + 1]', respectively.  */
 	mf_pos_t child_tab[2UL * MATCHFINDER_WINDOW_SIZE];
-
-} MATCHFINDER_ALIGNED;
+};
 
 /* Prepare the matchfinder for a new input buffer.  */
 static forceinline void
