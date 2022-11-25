@@ -116,7 +116,7 @@
 	(((1UL << HC_MATCHFINDER_HASH3_ORDER) +		\
 	  (1UL << HC_MATCHFINDER_HASH4_ORDER)) * sizeof(mf_pos_t))
 
-struct hc_matchfinder {
+struct MATCHFINDER_ALIGNED hc_matchfinder  {
 
 	/* The hash table for finding length 3 matches  */
 	mf_pos_t hash3_tab[1UL << HC_MATCHFINDER_HASH3_ORDER];
@@ -128,8 +128,7 @@ struct hc_matchfinder {
 	/* The "next node" references for the linked lists.  The "next node" of
 	 * the node for the sequence with position 'pos' is 'next_tab[pos]'.  */
 	mf_pos_t next_tab[MATCHFINDER_WINDOW_SIZE];
-
-} MATCHFINDER_ALIGNED;
+};
 
 /* Prepare the matchfinder for a new input buffer.  */
 static forceinline void
