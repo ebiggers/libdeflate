@@ -39,13 +39,6 @@
 #  define HAVE_DYNAMIC_X86_CPU_FEATURES	1
 #endif
 
-#ifdef __GNUC__
-#  define HAVE_INTRIN	1
-#else
- /* intrinsics not compatible (e.g. MSVC, or clang in MSVC mode) */
-#  define HAVE_INTRIN	0
-#endif
-
 #define X86_CPU_FEATURE_SSE2		0x00000001
 #define X86_CPU_FEATURE_PCLMUL		0x00000002
 #define X86_CPU_FEATURE_AVX		0x00000004
@@ -163,17 +156,19 @@ typedef unsigned char      __v32qu __attribute__((__vector_size__(32)));
 #endif
 
 /* BMI2 */
-#ifdef __BMI2__
+#if defined(__BMI2__) || (defined(_MSC_VER) && defined(__AVX2__))
 #  define HAVE_BMI2_NATIVE	1
 #else
 #  define HAVE_BMI2_NATIVE	0
 #endif
-#define HAVE_BMI2_TARGET \
-	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
-	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_pdep_di)))
-#define HAVE_BMI2_INTRIN \
-	(HAVE_INTRIN && \
-	 (HAVE_BMI2_NATIVE || (HAVE_BMI2_TARGET && HAVE_TARGET_INTRINSICS)))
+#if HAVE_BMI2_NATIVE || (HAVE_TARGET_INTRINSICS && \
+			 (GCC_PREREQ(4, 7) || \
+			  __has_builtin(__builtin_ia32_pdep_di) || \
+			  defined(_MSC_VER)))
+#  define HAVE_BMI2_INTRIN	1
+#else
+#  define HAVE_BMI2_INTRIN	0
+#endif
 
 #endif /* ARCH_X86_32 || ARCH_X86_64 */
 
