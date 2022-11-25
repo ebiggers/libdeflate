@@ -149,12 +149,14 @@ typedef unsigned char      __v32qu __attribute__((__vector_size__(32)));
 #else
 #  define HAVE_AVX2_NATIVE	0
 #endif
-#define HAVE_AVX2_TARGET \
-	(HAVE_DYNAMIC_X86_CPU_FEATURES && \
-	 (GCC_PREREQ(4, 7) || __has_builtin(__builtin_ia32_psadbw256)))
-#define HAVE_AVX2_INTRIN \
-	(HAVE_INTRIN && \
-	 (HAVE_AVX2_NATIVE || (HAVE_AVX2_TARGET && HAVE_TARGET_INTRINSICS)))
+#if HAVE_AVX2_NATIVE || (HAVE_TARGET_INTRINSICS && \
+			 (GCC_PREREQ(4, 7) || \
+			  __has_builtin(__builtin_ia32_psadbw256) || \
+			  defined(_MSC_VER)))
+#  define HAVE_AVX2_INTRIN	1
+#else
+#  define HAVE_AVX2_INTRIN	0
+#endif
 
 /* BMI2 */
 #ifdef __BMI2__
