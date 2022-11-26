@@ -34,10 +34,11 @@
 
 #if defined(ARCH_ARM32) || defined(ARCH_ARM64)
 
-#if COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE && \
-	!defined(FREESTANDING) && \
-	(defined(__linux__) || \
-	 (defined(ARCH_ARM64) && defined(__APPLE__)))
+#if !defined(FREESTANDING) && \
+    (COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE || defined(_MSC_VER)) && \
+    (defined(__linux__) || \
+     (defined(__APPLE__) && defined(ARCH_ARM64)) || \
+     (defined(_WIN32) && defined(ARCH_ARM64)))
 #  undef HAVE_DYNAMIC_ARM_CPU_FEATURES
 #  define HAVE_DYNAMIC_ARM_CPU_FEATURES	1
 #endif
