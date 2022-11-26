@@ -79,20 +79,18 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #endif /* !HAVE_DYNAMIC_ARM_CPU_FEATURES */
 
 /* NEON */
-#ifdef __ARM_NEON
+#if defined(__ARM_NEON) || defined(ARCH_ARM64)
 #  define HAVE_NEON_NATIVE	1
 #else
 #  define HAVE_NEON_NATIVE	0
 #endif
-#define HAVE_NEON_TARGET	HAVE_DYNAMIC_ARM_CPU_FEATURES
 /*
  * With both gcc and clang, NEON intrinsics require that the main target has
  * NEON enabled already.  Exception: with gcc 6.1 and later (r230411 for arm32,
  * r226563 for arm64), hardware floating point support is sufficient.
  */
-#if HAVE_INTRIN && \
-	(HAVE_NEON_NATIVE || \
-	 (HAVE_NEON_TARGET && GCC_PREREQ(6, 1) && defined(__ARM_FP)))
+#if HAVE_NEON_NATIVE || \
+	(HAVE_DYNAMIC_ARM_CPU_FEATURES && GCC_PREREQ(6, 1) && defined(__ARM_FP))
 #  define HAVE_NEON_INTRIN	1
 #else
 #  define HAVE_NEON_INTRIN	0
