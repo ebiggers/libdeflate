@@ -53,29 +53,35 @@ static forceinline ATTRIBUTES void
 adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 		   u32 *s1, u32 *s2)
 {
-	const uint16x8_t mults_a = { 64, 63, 62, 61, 60, 59, 58, 57, };
-	const uint16x8_t mults_b = { 56, 55, 54, 53, 52, 51, 50, 49, };
-	const uint16x8_t mults_c = { 48, 47, 46, 45, 44, 43, 42, 41, };
-	const uint16x8_t mults_d = { 40, 39, 38, 37, 36, 35, 34, 33, };
-	const uint16x8_t mults_e = { 32, 31, 30, 29, 28, 27, 26, 25, };
-	const uint16x8_t mults_f = { 24, 23, 22, 21, 20, 19, 18, 17, };
-	const uint16x8_t mults_g = { 16, 15, 14, 13, 12, 11, 10,  9, };
-	const uint16x8_t mults_h = {  8,  7,  6,  5,  4,  3,  2,  1, };
+	static const u16 _aligned_attribute(16) mults[64] = {
+		64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
+		48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33,
+		32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
+		16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,
+	};
+	const uint16x8_t mults_a = vld1q_u16(&mults[0]);
+	const uint16x8_t mults_b = vld1q_u16(&mults[8]);
+	const uint16x8_t mults_c = vld1q_u16(&mults[16]);
+	const uint16x8_t mults_d = vld1q_u16(&mults[24]);
+	const uint16x8_t mults_e = vld1q_u16(&mults[32]);
+	const uint16x8_t mults_f = vld1q_u16(&mults[40]);
+	const uint16x8_t mults_g = vld1q_u16(&mults[48]);
+	const uint16x8_t mults_h = vld1q_u16(&mults[56]);
 
-	uint32x4_t v_s1 = { 0, 0, 0, 0 };
-	uint32x4_t v_s2 = { 0, 0, 0, 0 };
+	uint32x4_t v_s1 = vdupq_n_u32(0);
+	uint32x4_t v_s2 = vdupq_n_u32(0);
 	/*
 	 * v_byte_sums_* contain the sum of the bytes at index i across all
 	 * 64-byte segments, for each index 0..63.
 	 */
-	uint16x8_t v_byte_sums_a = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	uint16x8_t v_byte_sums_b = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	uint16x8_t v_byte_sums_c = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	uint16x8_t v_byte_sums_d = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	uint16x8_t v_byte_sums_e = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	uint16x8_t v_byte_sums_f = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	uint16x8_t v_byte_sums_g = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	uint16x8_t v_byte_sums_h = { 0, 0, 0, 0, 0, 0, 0, 0 };
+	uint16x8_t v_byte_sums_a = vdupq_n_u16(0);
+	uint16x8_t v_byte_sums_b = vdupq_n_u16(0);
+	uint16x8_t v_byte_sums_c = vdupq_n_u16(0);
+	uint16x8_t v_byte_sums_d = vdupq_n_u16(0);
+	uint16x8_t v_byte_sums_e = vdupq_n_u16(0);
+	uint16x8_t v_byte_sums_f = vdupq_n_u16(0);
+	uint16x8_t v_byte_sums_g = vdupq_n_u16(0);
+	uint16x8_t v_byte_sums_h = vdupq_n_u16(0);
 
 	do {
 		/* Load the next 64 bytes. */
@@ -89,7 +95,7 @@ adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 		 * Accumulate the previous s1 counters into the s2 counters.
 		 * The needed multiplication by 64 is delayed to later.
 		 */
-		v_s2 += v_s1;
+		v_s2 = vaddq_u32(v_s2, v_s1);
 
 		/*
 		 * Add the 64 bytes to their corresponding v_byte_sums counters,
@@ -138,8 +144,15 @@ adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 #undef umlal2
 
 	/* Horizontal sum to finish up */
-	*s1 += v_s1[0] + v_s1[1] + v_s1[2] + v_s1[3];
-	*s2 += v_s2[0] + v_s2[1] + v_s2[2] + v_s2[3];
+#ifdef ARCH_ARM32
+	*s1 += vgetq_lane_u32(v_s1, 0) + vgetq_lane_u32(v_s1, 1) +
+	       vgetq_lane_u32(v_s1, 2) + vgetq_lane_u32(v_s1, 3);
+	*s2 += vgetq_lane_u32(v_s2, 0) + vgetq_lane_u32(v_s2, 1) +
+	       vgetq_lane_u32(v_s2, 2) + vgetq_lane_u32(v_s2, 3);
+#else
+	*s1 += vaddvq_u32(v_s1);
+	*s2 += vaddvq_u32(v_s2);
+#endif
 }
 #  include "../adler32_vec_template.h"
 #endif /* Regular NEON implementation */
