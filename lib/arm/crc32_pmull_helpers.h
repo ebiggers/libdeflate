@@ -39,21 +39,51 @@
 
 #include <arm_neon.h>
 
+/* Create a vector with 'a' in the first 4 bytes, and the rest zeroed out. */
+#undef u32_to_bytevec
+static forceinline ATTRIBUTES uint8x16_t
+ADD_SUFFIX(u32_to_bytevec)(u32 a)
+{
+	return vreinterpretq_u8_u32(vsetq_lane_u32(a, vdupq_n_u32(0), 0));
+}
+#define u32_to_bytevec	ADD_SUFFIX(u32_to_bytevec)
+
+/* Load two 64-bit values into a vector. */
+#undef load_multipliers
+static forceinline ATTRIBUTES poly64x2_t
+ADD_SUFFIX(load_multipliers)(const u64 p[2])
+{
+	return vreinterpretq_p64_u64(vld1q_u64(p));
+}
+#define load_multipliers	ADD_SUFFIX(load_multipliers)
+
+/* Do carryless multiplication of the low halves of two vectors. */
+#undef clmul_low
+static forceinline ATTRIBUTES uint8x16_t
+ADD_SUFFIX(clmul_low)(uint8x16_t a, poly64x2_t b)
+{
+	return vreinterpretq_u8_p128(
+		     compat_vmull_p64(vgetq_lane_p64(vreinterpretq_p64_u8(a), 0),
+				      vgetq_lane_p64(b, 0)));
+}
+#define clmul_low	ADD_SUFFIX(clmul_low)
+
+/* Do carryless multiplication of the high halves of two vectors. */
 #undef clmul_high
-static forceinline ATTRIBUTES poly128_t
-ADD_SUFFIX(clmul_high)(poly64x2_t a, poly64x2_t b)
+static forceinline ATTRIBUTES uint8x16_t
+ADD_SUFFIX(clmul_high)(uint8x16_t a, poly64x2_t b)
 {
 #if defined(__clang__) && defined(ARCH_ARM64)
 	/*
 	 * Use inline asm to ensure that pmull2 is really used.  This works
 	 * around clang bug https://github.com/llvm/llvm-project/issues/52868.
 	 */
-	poly128_t res;
+	uint8x16_t res;
 
 	__asm__("pmull2 %0.1q, %1.2d, %2.2d" : "=w" (res) : "w" (a), "w" (b));
 	return res;
 #else
-	return vmull_high_p64(a, b);
+	return vreinterpretq_u8_p128(vmull_high_p64(vreinterpretq_p64_u8(a), b));
 #endif
 }
 #define clmul_high	ADD_SUFFIX(clmul_high)
@@ -73,7 +103,7 @@ ADD_SUFFIX(eor3)(uint8x16_t a, uint8x16_t b, uint8x16_t c)
 	return res;
 #endif
 #else /* ENABLE_EOR3 */
-	return a ^ b ^ c;
+	return veorq_u8(veorq_u8(a, b), c);
 #endif /* !ENABLE_EOR3 */
 }
 #define eor3	ADD_SUFFIX(eor3)
@@ -82,15 +112,10 @@ ADD_SUFFIX(eor3)(uint8x16_t a, uint8x16_t b, uint8x16_t c)
 static forceinline ATTRIBUTES uint8x16_t
 ADD_SUFFIX(fold_vec)(uint8x16_t src, uint8x16_t dst, poly64x2_t multipliers)
 {
-	/*
-	 * Using vget_low_* instead of vector indexing is necessary to avoid
-	 * poor code generation with gcc on arm32.
-	 */
-	poly128_t a = vmull_p64((poly64_t)vget_low_u8(src),
-				(poly64_t)vget_low_p64(multipliers));
-	poly128_t b = clmul_high((poly64x2_t)src, multipliers);
+	uint8x16_t a = clmul_low(src, multipliers);
+	uint8x16_t b = clmul_high(src, multipliers);
 
-	return eor3((uint8x16_t)a, (uint8x16_t)b, dst);
+	return eor3(a, b, dst);
 }
 #define fold_vec	ADD_SUFFIX(fold_vec)
 
@@ -144,7 +169,8 @@ ADD_SUFFIX(fold_partial_vec)(uint8x16_t v, const u8 *p, size_t len,
 	x0 = vtbl(v, lshift);
 
 	/* Create a vector of '16 - len' 0x00 bytes, then 'len' 0xff bytes. */
-	bsl_mask = (uint8x16_t)vshrq_n_s8((int8x16_t)rshift, 7);
+	bsl_mask = vreinterpretq_u8_s8(
+			vshrq_n_s8(vreinterpretq_s8_u8(rshift), 7));
 
 	/*
 	 * x1 = the last '16 - len' bytes from v (i.e. v right-shifted by 'len'

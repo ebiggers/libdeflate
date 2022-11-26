@@ -45,7 +45,9 @@
  * Apple M1 processor is an example of such a CPU.
  */
 
-#include <arm_acle.h>
+#ifndef _MSC_VER
+#  include <arm_acle.h>
+#endif
 #include <arm_neon.h>
 
 #include "crc32_pmull_helpers.h"
@@ -53,22 +55,24 @@
 static u32 ATTRIBUTES MAYBE_UNUSED
 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len)
 {
-	const poly64x2_t multipliers_12 = (poly64x2_t)CRC32_12VECS_MULTS;
-	const poly64x2_t multipliers_6 = (poly64x2_t)CRC32_6VECS_MULTS;
-	const poly64x2_t multipliers_4 = (poly64x2_t)CRC32_4VECS_MULTS;
-	const poly64x2_t multipliers_3 = (poly64x2_t)CRC32_3VECS_MULTS;
-	const poly64x2_t multipliers_2 = (poly64x2_t)CRC32_2VECS_MULTS;
-	const poly64x2_t multipliers_1 = (poly64x2_t)CRC32_1VECS_MULTS;
 	uint8x16_t v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11;
 
 	if (len < 3 * 192) {
+		static const u64 _aligned_attribute(16) mults[3][2] = {
+			CRC32_4VECS_MULTS, CRC32_2VECS_MULTS, CRC32_1VECS_MULTS,
+		};
+		poly64x2_t multipliers_4, multipliers_2, multipliers_1;
+
 		if (len < 64)
 			goto tail;
+		multipliers_4 = load_multipliers(mults[0]);
+		multipliers_2 = load_multipliers(mults[1]);
+		multipliers_1 = load_multipliers(mults[2]);
 		/*
 		 * Short length; don't bother aligning the pointer, and fold
 		 * 64 bytes (4 vectors) at a time, at most.
 		 */
-		v0 = vld1q_u8(p + 0) ^ (uint8x16_t)(uint32x4_t){ crc };
+		v0 = veorq_u8(vld1q_u8(p + 0), u32_to_bytevec(crc));
 		v1 = vld1q_u8(p + 16);
 		v2 = vld1q_u8(p + 32);
 		v3 = vld1q_u8(p + 48);
@@ -92,6 +96,14 @@ ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len)
 		}
 		v0 = fold_vec(v0, v1, multipliers_1);
 	} else {
+		static const u64 _aligned_attribute(16) mults[4][2] = {
+			CRC32_12VECS_MULTS, CRC32_6VECS_MULTS,
+			CRC32_3VECS_MULTS, CRC32_1VECS_MULTS,
+		};
+		const poly64x2_t multipliers_12 = load_multipliers(mults[0]);
+		const poly64x2_t multipliers_6 = load_multipliers(mults[1]);
+		const poly64x2_t multipliers_3 = load_multipliers(mults[2]);
+		const poly64x2_t multipliers_1 = load_multipliers(mults[3]);
 		const size_t align = -(uintptr_t)p & 15;
 		const uint8x16_t *vp;
 
@@ -114,7 +126,7 @@ ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len)
 			len -= align;
 		}
 		vp = (const uint8x16_t *)p;
-		v0 = *vp++ ^ (uint8x16_t)(uint32x4_t){ crc };
+		v0 = veorq_u8(*vp++, u32_to_bytevec(crc));
 		v1 = *vp++;
 		v2 = *vp++;
 		v3 = *vp++;
@@ -177,8 +189,8 @@ ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len)
 		p = (const u8 *)vp;
 	}
 	/* Reduce 128 to 32 bits using crc32 instructions. */
-	crc = __crc32d(0, (u64)vget_low_u8(v0));
-	crc = __crc32d(crc, (u64)vget_high_u8(v0));
+	crc = __crc32d(0, vgetq_lane_u64(vreinterpretq_u64_u8(v0), 0));
+	crc = __crc32d(crc, vgetq_lane_u64(vreinterpretq_u64_u8(v0), 1));
 tail:
 	/* Finish up the remainder using crc32 instructions. */
 	if (len & 32) {

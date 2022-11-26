@@ -43,13 +43,6 @@
 #  define HAVE_DYNAMIC_ARM_CPU_FEATURES	1
 #endif
 
-#ifdef __GNUC__
-#  define HAVE_INTRIN	1
-#else
-/* intrinsics not compatible (e.g. MSVC, or clang in MSVC mode) */
-#  define HAVE_INTRIN	0
-#endif
-
 #define ARM_CPU_FEATURE_NEON		0x00000001
 #define ARM_CPU_FEATURE_PMULL		0x00000002
 #define ARM_CPU_FEATURE_CRC32		0x00000004
@@ -102,18 +95,24 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #else
 #  define HAVE_PMULL_NATIVE	0
 #endif
-#define HAVE_PMULL_TARGET \
+#if HAVE_PMULL_NATIVE || \
 	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	 (GCC_PREREQ(6, 1) || __has_builtin(__builtin_neon_vmull_p64)))
-/*
- * On arm32 with clang, the crypto intrinsics (which include pmull) are not
- * defined, even when using -mfpu=crypto-neon-fp-armv8, because clang's
- * <arm_neon.h> puts their definitions behind __aarch64__.
- */
-#if HAVE_NEON_INTRIN && (HAVE_PMULL_NATIVE || HAVE_PMULL_TARGET) && \
-	!(defined(ARCH_ARM32) && defined(__clang__)) && \
-	CPU_IS_LITTLE_ENDIAN() /* pmull code on big endian is untested */
-#  define HAVE_PMULL_INTRIN	1
+	 (GCC_PREREQ(6, 1) || __has_builtin(__builtin_neon_vmull_p64) || \
+	  defined(_MSC_VER)) && \
+	  /*
+	   * On arm32 with clang, the crypto intrinsics (which include pmull)
+	   * are not defined, even when using -mfpu=crypto-neon-fp-armv8,
+	   * because clang's <arm_neon.h> puts their definitions behind
+	   * __aarch64__.
+	   */ \
+	 !(defined(ARCH_ARM32) && defined(__clang__)))
+#  define HAVE_PMULL_INTRIN	CPU_IS_LITTLE_ENDIAN() /* untested on big endian */
+   /* Work around MSVC's vmull_p64() taking poly64x1_t instead of poly64_t */
+#  ifdef _MSC_VER
+#    define compat_vmull_p64(a, b)  vmull_p64(vcreate_p64(a), vcreate_p64(b))
+#  else
+#    define compat_vmull_p64(a, b)  vmull_p64((a), (b))
+#  endif
 #else
 #  define HAVE_PMULL_INTRIN	0
 #endif
@@ -124,9 +123,6 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #else
 #  define HAVE_CRC32_NATIVE	0
 #endif
-#define HAVE_CRC32_TARGET \
-	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	 (GCC_PREREQ(4, 9) || __has_builtin(__builtin_arm_crc32b)))
 /*
  * Support for ARM CRC32 intrinsics when CRC32 instructions are not enabled in
  * the main target has been affected by two gcc bugs, which we must avoid by
@@ -139,16 +135,20 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  * We use the second set of prerequisites, as they are stricter and we have no
  * way to detect the binutils version directly from a C source file.
  */
-#define HAVE_CRC32_INTRIN \
-	(HAVE_INTRIN && \
-	 (HAVE_CRC32_NATIVE || (HAVE_CRC32_TARGET && \
-				(!GCC_PREREQ(1, 0) || \
-				 GCC_PREREQ(11, 3) || \
-				 (GCC_PREREQ(10, 4) && !GCC_PREREQ(11, 0)) || \
-				 (GCC_PREREQ(9, 5) && !GCC_PREREQ(10, 0))))))
+#if HAVE_CRC32_NATIVE || \
+	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
+	 (__has_builtin(__builtin_arm_crc32b) || \
+	  GCC_PREREQ(11, 3) || \
+	  (GCC_PREREQ(10, 4) && !GCC_PREREQ(11, 0)) || \
+	  (GCC_PREREQ(9, 5) && !GCC_PREREQ(10, 0)) || \
+	  defined(_MSC_VER)))
+#  define HAVE_CRC32_INTRIN	1
+#else
+#  define HAVE_CRC32_INTRIN	0
+#endif
 
 /* SHA3 (needed for the eor3 instruction) */
-#ifdef ARCH_ARM64
+#if defined(ARCH_ARM64) && !defined(_MSC_VER)
 #  ifdef __ARM_FEATURE_SHA3
 #    define HAVE_SHA3_NATIVE	1
 #  else

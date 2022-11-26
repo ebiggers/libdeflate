@@ -63,7 +63,9 @@
 #    endif
 #  endif
 
-#include <arm_acle.h>
+#ifndef _MSC_VER
+#  include <arm_acle.h>
+#endif
 
 /*
  * Combine the CRCs for 4 adjacent chunks of length L = CRC32_FIXED_CHUNK_LEN
@@ -233,9 +235,7 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
  * checksummed chunks, not for folding the data itself.  See crc32_arm_pmull*()
  * for implementations that use pmull for folding the data itself.
  */
-#if HAVE_CRC32_INTRIN && HAVE_PMULL_INTRIN && \
-	((HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE) || \
-	 (HAVE_CRC32_TARGET && HAVE_PMULL_TARGET))
+#if HAVE_CRC32_INTRIN && HAVE_PMULL_INTRIN
 #  if HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE
 #    define ATTRIBUTES
 #  else
@@ -250,8 +250,20 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 #    endif
 #  endif
 
-#include <arm_acle.h>
+#ifndef _MSC_VER
+#  include <arm_acle.h>
+#endif
 #include <arm_neon.h>
+
+/* Do carryless multiplication of two 32-bit values. */
+static forceinline ATTRIBUTES u64
+clmul_u32(u32 a, u32 b)
+{
+	uint64x2_t res = vreinterpretq_u64_p128(
+				compat_vmull_p64((poly64_t)a, (poly64_t)b));
+
+	return vgetq_lane_u64(res, 0);
+}
 
 /*
  * Like combine_crcs_slow(), but uses vmull_p64 to do the multiplications more
@@ -262,9 +274,9 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 static forceinline ATTRIBUTES u32
 combine_crcs_fast(u32 crc0, u32 crc1, u32 crc2, u32 crc3, size_t i)
 {
-	u64 res0 = vmull_p64(crc0, crc32_mults_for_chunklen[i][0]);
-	u64 res1 = vmull_p64(crc1, crc32_mults_for_chunklen[i][1]);
-	u64 res2 = vmull_p64(crc2, crc32_mults_for_chunklen[i][2]);
+	u64 res0 = clmul_u32(crc0, crc32_mults_for_chunklen[i][0]);
+	u64 res1 = clmul_u32(crc1, crc32_mults_for_chunklen[i][1]);
+	u64 res2 = clmul_u32(crc2, crc32_mults_for_chunklen[i][2]);
 
 	return __crc32d(0, res0 ^ res1 ^ res2) ^ crc3;
 }
@@ -445,17 +457,25 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 static u32 ATTRIBUTES MAYBE_UNUSED
 crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 {
-	const poly64x2_t multipliers_4 = (poly64x2_t)CRC32_4VECS_MULTS;
-	const poly64x2_t multipliers_2 = (poly64x2_t)CRC32_2VECS_MULTS;
-	const poly64x2_t multipliers_1 = (poly64x2_t)CRC32_1VECS_MULTS;
-	const uint8x16_t zeroes = (uint8x16_t){ 0 };
-	const uint8x16_t mask32 = (uint8x16_t)(uint32x4_t){ 0xFFFFFFFF };
+	static const u64 _aligned_attribute(16) mults[3][2] = {
+		CRC32_1VECS_MULTS,
+		CRC32_4VECS_MULTS,
+		CRC32_2VECS_MULTS,
+	};
+	static const u64 _aligned_attribute(16) final_mults[3][2] = {
+		{ CRC32_FINAL_MULT, 0 },
+		{ CRC32_BARRETT_CONSTANT_1, 0 },
+		{ CRC32_BARRETT_CONSTANT_2, 0 },
+	};
+	const uint8x16_t zeroes = vdupq_n_u8(0);
+	const uint8x16_t mask32 = vreinterpretq_u8_u64(vdupq_n_u64(0xFFFFFFFF));
+	const poly64x2_t multipliers_1 = load_multipliers(mults[0]);
 	uint8x16_t v0, v1, v2, v3;
 
 	if (len < 64 + 15) {
 		if (len < 16)
 			return crc32_slice1(crc, p, len);
-		v0 = vld1q_u8(p) ^ (uint8x16_t)(uint32x4_t){ crc };
+		v0 = veorq_u8(vld1q_u8(p), u32_to_bytevec(crc));
 		p += 16;
 		len -= 16;
 		while (len >= 16) {
@@ -464,10 +484,12 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 			len -= 16;
 		}
 	} else {
+		const poly64x2_t multipliers_4 = load_multipliers(mults[1]);
+		const poly64x2_t multipliers_2 = load_multipliers(mults[2]);
 		const size_t align = -(uintptr_t)p & 15;
 		const uint8x16_t *vp;
 
-		v0 = vld1q_u8(p) ^ (uint8x16_t)(uint32x4_t){ crc };
+		v0 = veorq_u8(vld1q_u8(p), u32_to_bytevec(crc));
 		p += 16;
 		/* Align p to the next 16-byte boundary. */
 		if (align) {
@@ -508,21 +530,19 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 	 * which is equivalent to multiplying by x^32.  This is needed because
 	 * the CRC is defined as M(x)*x^32 mod G(x), not just M(x) mod G(x).
 	 */
-	v0 = vextq_u8(v0, zeroes, 8) ^
-	     (uint8x16_t)vmull_p64((poly64_t)vget_low_u8(v0),
-				   CRC32_1VECS_MULT_2);
+
+	v0 = veorq_u8(vextq_u8(v0, zeroes, 8),
+		      clmul_high(vextq_u8(zeroes, v0, 8), multipliers_1));
 
 	/* Fold 96 => 64 bits. */
-	v0 = vextq_u8(v0, zeroes, 4) ^
-		(uint8x16_t)vmull_p64((poly64_t)vget_low_u8(v0 & mask32),
-				      CRC32_FINAL_MULT);
+	v0 = veorq_u8(vextq_u8(v0, zeroes, 4),
+		      clmul_low(vandq_u8(v0, mask32),
+				load_multipliers(final_mults[0])));
 
 	/* Reduce 64 => 32 bits using Barrett reduction. */
-	v1 = (uint8x16_t)vmull_p64((poly64_t)vget_low_u8(v0 & mask32),
-				   CRC32_BARRETT_CONSTANT_1);
-	v1 = (uint8x16_t)vmull_p64((poly64_t)vget_low_u8(v1 & mask32),
-				   CRC32_BARRETT_CONSTANT_2);
-	return ((uint32x4_t)(v0 ^ v1))[1];
+	v1 = clmul_low(vandq_u8(v0, mask32), load_multipliers(final_mults[1]));
+	v1 = clmul_low(vandq_u8(v1, mask32), load_multipliers(final_mults[2]));
+	return vgetq_lane_u32(vreinterpretq_u32_u8(veorq_u8(v0, v1)), 1);
 }
 #undef SUFFIX
 #undef ATTRIBUTES
@@ -535,9 +555,7 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
  *
  * See crc32_pmull_wide.h for explanation.
  */
-#if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
-	((HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE) || \
-	 (HAVE_PMULL_TARGET && HAVE_CRC32_TARGET))
+#if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN
 #  define crc32_arm_pmullx12_crc	crc32_arm_pmullx12_crc
 #  define SUFFIX				 _pmullx12_crc
 #  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE
@@ -563,8 +581,7 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
  * HAVE_SHA3_INTRIN, as we have an inline asm fallback for eor3.
  */
 #if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
-	((HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE) || \
-	 (HAVE_PMULL_TARGET && HAVE_CRC32_TARGET && HAVE_SHA3_TARGET))
+	(HAVE_SHA3_TARGET || HAVE_SHA3_NATIVE)
 #  define crc32_arm_pmullx12_crc_eor3	crc32_arm_pmullx12_crc_eor3
 #  define SUFFIX				 _pmullx12_crc_eor3
 #  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE
