@@ -186,35 +186,32 @@ static forceinline ATTRIBUTES void
 adler32_neon_dotprod_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 			   u32 *s1, u32 *s2)
 {
-	const uint8x16_t mults_a = {
+	static const u8 _aligned_attribute(16) mults[64] = {
 		64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
-	};
-	const uint8x16_t mults_b = {
 		48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33,
-	};
-	const uint8x16_t mults_c = {
 		32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
-	};
-	const uint8x16_t mults_d = {
 		16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,
 	};
-	const uint8x16_t ones = {
-		 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1 , 1,  1,
-	};
-	uint32x4_t v_s1_a = { 0, 0, 0, 0 };
-	uint32x4_t v_s1_b = { 0, 0, 0, 0 };
-	uint32x4_t v_s1_c = { 0, 0, 0, 0 };
-	uint32x4_t v_s1_d = { 0, 0, 0, 0 };
-	uint32x4_t v_s2_a = { 0, 0, 0, 0 };
-	uint32x4_t v_s2_b = { 0, 0, 0, 0 };
-	uint32x4_t v_s2_c = { 0, 0, 0, 0 };
-	uint32x4_t v_s2_d = { 0, 0, 0, 0 };
-	uint32x4_t v_s1_sums_a = { 0, 0, 0, 0 };
-	uint32x4_t v_s1_sums_b = { 0, 0, 0, 0 };
-	uint32x4_t v_s1_sums_c = { 0, 0, 0, 0 };
-	uint32x4_t v_s1_sums_d = { 0, 0, 0, 0 };
+	const uint8x16_t mults_a = vld1q_u8(&mults[0]);
+	const uint8x16_t mults_b = vld1q_u8(&mults[16]);
+	const uint8x16_t mults_c = vld1q_u8(&mults[32]);
+	const uint8x16_t mults_d = vld1q_u8(&mults[48]);
+	const uint8x16_t ones = vdupq_n_u8(1);
+	uint32x4_t v_s1_a = vdupq_n_u32(0);
+	uint32x4_t v_s1_b = vdupq_n_u32(0);
+	uint32x4_t v_s1_c = vdupq_n_u32(0);
+	uint32x4_t v_s1_d = vdupq_n_u32(0);
+	uint32x4_t v_s2_a = vdupq_n_u32(0);
+	uint32x4_t v_s2_b = vdupq_n_u32(0);
+	uint32x4_t v_s2_c = vdupq_n_u32(0);
+	uint32x4_t v_s2_d = vdupq_n_u32(0);
+	uint32x4_t v_s1_sums_a = vdupq_n_u32(0);
+	uint32x4_t v_s1_sums_b = vdupq_n_u32(0);
+	uint32x4_t v_s1_sums_c = vdupq_n_u32(0);
+	uint32x4_t v_s1_sums_d = vdupq_n_u32(0);
 	uint32x4_t v_s1;
 	uint32x4_t v_s2;
+	uint32x4_t v_s1_sums;
 
 	do {
 		uint8x16_t bytes_a = *p++;
@@ -222,29 +219,31 @@ adler32_neon_dotprod_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 		uint8x16_t bytes_c = *p++;
 		uint8x16_t bytes_d = *p++;
 
-		v_s1_sums_a += v_s1_a;
+		v_s1_sums_a = vaddq_u32(v_s1_sums_a, v_s1_a);
 		v_s1_a = vdotq_u32(v_s1_a, bytes_a, ones);
 		v_s2_a = vdotq_u32(v_s2_a, bytes_a, mults_a);
 
-		v_s1_sums_b += v_s1_b;
+		v_s1_sums_b = vaddq_u32(v_s1_sums_b, v_s1_b);
 		v_s1_b = vdotq_u32(v_s1_b, bytes_b, ones);
 		v_s2_b = vdotq_u32(v_s2_b, bytes_b, mults_b);
 
-		v_s1_sums_c += v_s1_c;
+		v_s1_sums_c = vaddq_u32(v_s1_sums_c, v_s1_c);
 		v_s1_c = vdotq_u32(v_s1_c, bytes_c, ones);
 		v_s2_c = vdotq_u32(v_s2_c, bytes_c, mults_c);
 
-		v_s1_sums_d += v_s1_d;
+		v_s1_sums_d = vaddq_u32(v_s1_sums_d, v_s1_d);
 		v_s1_d = vdotq_u32(v_s1_d, bytes_d, ones);
 		v_s2_d = vdotq_u32(v_s2_d, bytes_d, mults_d);
 	} while (p != end);
 
-	v_s1 = v_s1_a + v_s1_b + v_s1_c + v_s1_d;
-	v_s2 = v_s2_a + v_s2_b + v_s2_c + v_s2_d +
-	       vqshlq_n_u32(v_s1_sums_a + v_s1_sums_b +
-			    v_s1_sums_c + v_s1_sums_d, 6);
-	*s1 += v_s1[0] + v_s1[1] + v_s1[2] + v_s1[3];
-	*s2 += v_s2[0] + v_s2[1] + v_s2[2] + v_s2[3];
+	v_s1 = vaddq_u32(vaddq_u32(v_s1_a, v_s1_b), vaddq_u32(v_s1_c, v_s1_d));
+	v_s2 = vaddq_u32(vaddq_u32(v_s2_a, v_s2_b), vaddq_u32(v_s2_c, v_s2_d));
+	v_s1_sums = vaddq_u32(vaddq_u32(v_s1_sums_a, v_s1_sums_b),
+			      vaddq_u32(v_s1_sums_c, v_s1_sums_d));
+	v_s2 = vaddq_u32(v_s2, vqshlq_n_u32(v_s1_sums, 6));
+
+	*s1 += vaddvq_u32(v_s1);
+	*s2 += vaddvq_u32(v_s2);
 }
 #  include "../adler32_vec_template.h"
 #endif /* NEON+dotprod implementation */
