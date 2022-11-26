@@ -174,14 +174,16 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #  else
 #    define HAVE_DOTPROD_NATIVE	0
 #  endif
-#  define HAVE_DOTPROD_TARGET \
+#  if HAVE_DOTPROD_NATIVE || \
 	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	 (GCC_PREREQ(8, 1) || __has_builtin(__builtin_neon_vdotq_v)))
-#  define HAVE_DOTPROD_INTRIN \
-	(HAVE_NEON_INTRIN && (HAVE_DOTPROD_NATIVE || HAVE_DOTPROD_TARGET))
+	 (GCC_PREREQ(8, 1) || __has_builtin(__builtin_neon_vdotq_v) || \
+	  defined(_MSC_VER)))
+#    define HAVE_DOTPROD_INTRIN	1
+#  else
+#    define HAVE_DOTPROD_INTRIN	0
+#  endif
 #else
 #  define HAVE_DOTPROD_NATIVE	0
-#  define HAVE_DOTPROD_TARGET	0
 #  define HAVE_DOTPROD_INTRIN	0
 #endif
 
