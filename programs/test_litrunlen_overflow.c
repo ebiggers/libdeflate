@@ -20,7 +20,7 @@
 int
 tmain(int argc, tchar *argv[])
 {
-	const size_t data_size = 2 * 250 * 251;
+	const int data_size = 2 * 250 * 251;
 	u8 *orig_data, *compressed_data, *decompressed_data;
 	int i, stride, multiple, j = 0;
 	struct libdeflate_decompressor *d;
