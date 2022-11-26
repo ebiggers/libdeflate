@@ -167,6 +167,23 @@ static u32 query_arm_cpu_features(void)
 	}
 	return features;
 }
+#elif defined(_WIN32)
+
+#include <windows.h>
+
+static u32 query_arm_cpu_features(void)
+{
+	u32 features = ARM_CPU_FEATURE_NEON;
+
+	if (IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE))
+		features |= ARM_CPU_FEATURE_PMULL;
+	if (IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE))
+		features |= ARM_CPU_FEATURE_CRC32;
+
+	/* FIXME: detect SHA3 and DOTPROD support too. */
+
+	return features;
+}
 #else
 #error "unhandled case"
 #endif
