@@ -50,7 +50,7 @@ if [ "$UNAME" = Darwin ]; then
 fi
 
 for skip in SKIP_FREESTANDING SKIP_VALGRIND SKIP_UBSAN SKIP_ASAN SKIP_CFI \
-	    SKIP_SHARED_LIB; do
+	    SKIP_SHARED_LIB SKIP_O3_AND_MARCH_NATIVE; do
 	if [ "${!skip:-}" = "1" ]; then
 		eval $skip=true
 	else
@@ -304,13 +304,17 @@ run_tests() {
 	do_run_tests
 	end
 
-	cflags=("-O3")
-	if cflags_supported "${cflags[@]}" "-march=native"; then
-		cflags+=("-march=native")
+	if $SKIP_O3_AND_MARCH_NATIVE; then
+		log "Skipping -O3 and -march=native tests due to SKIP_O3_AND_MARCH_NATIVE=1"
+	else
+		cflags=("-O3")
+		if cflags_supported "${cflags[@]}" "-march=native"; then
+			cflags+=("-march=native")
+		fi
+		begin "Running tests with ${cflags[*]}"
+		CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests
+		end
 	fi
-	begin "Running tests with ${cflags[*]}"
-	CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests
-	end
 
 	# Need valgrind 3.9.0 for '--errors-for-leak-kinds=all'
 	# Need valgrind 3.12.0 for armv8 crypto and crc instructions

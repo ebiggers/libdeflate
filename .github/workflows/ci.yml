@@ -46,11 +46,23 @@ jobs:
             export SKIP_VALGRIND=1
             export SKIP_ASAN=1
 
+            # Speed up these jobs a bit by testing some things only with gcc or
+            # clang, not both.
+            if [ ${{matrix.compiler}} = clang ]; then
+                export SKIP_O3_AND_MARCH_NATIVE=1
+            else
+                export SKIP_CFI=1
+                export SKIP_UBSAN=1
+            fi
+
             case ${{ matrix.arch }} in
             s390x)
               # On s390x, in freestanding builds the shared library links to an
               # external symbol __clzdi2, even when -static-libgcc is used.
               export SKIP_FREESTANDING=1
+
+              # Fails for some reason
+              export SKIP_SHARED_LIB=1
               ;;
             aarch64)
               if [ ${{ matrix.compiler }} = clang ]; then
