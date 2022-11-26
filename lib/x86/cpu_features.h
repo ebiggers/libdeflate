@@ -83,8 +83,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 /* SSE2 */
 #if defined(__SSE2__) || \
 	(defined(_MSC_VER) && \
-	 (defined(ARCH_X86_64) || \
-	  (defined(ARCH_X86_32) && defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
+	 (defined(ARCH_X86_64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
 #  define HAVE_SSE2_NATIVE	1
 #else
 #  define HAVE_SSE2_NATIVE	0
