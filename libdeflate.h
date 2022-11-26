@@ -81,9 +81,9 @@ libdeflate_alloc_compressor(int compression_level);
 /*
  * libdeflate_deflate_compress() performs raw DEFLATE compression on a buffer of
  * data.  It attempts to compress 'in_nbytes' bytes of data located at 'in' and
- * write the results to 'out', which has space for 'out_nbytes_avail' bytes.
- * The return value is the compressed size in bytes, or 0 if the data could not
- * be compressed to 'out_nbytes_avail' bytes or fewer (but see note below).
+ * write the result to 'out', which has space for 'out_nbytes_avail' bytes.  The
+ * return value is the compressed size in bytes, or 0 if the data could not be
+ * compressed to 'out_nbytes_avail' bytes or fewer (but see note below).
  *
  * If compression is successful, then the output data is guaranteed to be a
  * valid DEFLATE stream that decompresses to the input data.  No other
@@ -119,11 +119,10 @@ libdeflate_deflate_compress(struct libdeflate_compressor *compressor,
  * libdeflate_deflate_compress_bound() returns a worst-case upper bound on the
  * number of bytes of compressed data that may be produced by compressing any
  * buffer of length less than or equal to 'in_nbytes' using
- * libdeflate_deflate_compress() with the specified compressor.  Mathematically,
- * this bound will necessarily be a number greater than or equal to 'in_nbytes'.
- * It may be an overestimate of the true upper bound.  The return value is
- * guaranteed to be the same for all invocations with the same compressor and
- * same 'in_nbytes'.
+ * libdeflate_deflate_compress() with the specified compressor.  This bound will
+ * necessarily be a number greater than or equal to 'in_nbytes'.  It may be an
+ * overestimate of the true upper bound.  The return value is guaranteed to be
+ * the same for all invocations with the same compressor and same 'in_nbytes'.
  *
  * As a special case, 'compressor' may be NULL.  This causes the bound to be
  * taken across *any* libdeflate_compressor that could ever be allocated with
@@ -145,8 +144,8 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *compressor,
 				  size_t in_nbytes);
 
 /*
- * Like libdeflate_deflate_compress(), but stores the data in the zlib wrapper
- * format.
+ * Like libdeflate_deflate_compress(), but uses the zlib wrapper format instead
+ * of raw DEFLATE.
  */
 LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_zlib_compress(struct libdeflate_compressor *compressor,
@@ -163,8 +162,8 @@ libdeflate_zlib_compress_bound(struct libdeflate_compressor *compressor,
 			       size_t in_nbytes);
 
 /*
- * Like libdeflate_deflate_compress(), but stores the data in the gzip wrapper
- * format.
+ * Like libdeflate_deflate_compress(), but uses the gzip wrapper format instead
+ * of raw DEFLATE.
  */
 LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_gzip_compress(struct libdeflate_compressor *compressor,
@@ -217,8 +216,8 @@ enum libdeflate_result {
 	/* Decompression was successful.  */
 	LIBDEFLATE_SUCCESS = 0,
 
-	/* Decompressed failed because the compressed data was invalid, corrupt,
-	 * or otherwise unsupported.  */
+	/* Decompression failed because the compressed data was invalid,
+	 * corrupt, or otherwise unsupported.  */
 	LIBDEFLATE_BAD_DATA = 1,
 
 	/* A NULL 'actual_out_nbytes_ret' was provided, but the data would have
@@ -231,13 +230,12 @@ enum libdeflate_result {
 };
 
 /*
- * libdeflate_deflate_decompress() decompresses the DEFLATE-compressed stream
- * from the buffer 'in' with compressed size up to 'in_nbytes' bytes.  The
- * uncompressed data is written to 'out', a buffer with size 'out_nbytes_avail'
- * bytes.  If decompression succeeds, then 0 (LIBDEFLATE_SUCCESS) is returned.
- * Otherwise, a nonzero result code such as LIBDEFLATE_BAD_DATA is returned.  If
- * a nonzero result code is returned, then the contents of the output buffer are
- * undefined.
+ * libdeflate_deflate_decompress() decompresses a DEFLATE stream from the buffer
+ * 'in' with compressed size up to 'in_nbytes' bytes.  The uncompressed data is
+ * written to 'out', a buffer with size 'out_nbytes_avail' bytes.  If
+ * decompression succeeds, then 0 (LIBDEFLATE_SUCCESS) is returned.  Otherwise,
+ * a nonzero result code such as LIBDEFLATE_BAD_DATA is returned, and the
+ * contents of the output buffer are undefined.
  *
  * Decompression stops at the end of the DEFLATE stream (as indicated by the
  * BFINAL flag), even if it is actually shorter than 'in_nbytes' bytes.
