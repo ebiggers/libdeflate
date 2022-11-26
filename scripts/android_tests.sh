@@ -59,10 +59,11 @@ android_build_and_test() {
 	fi
 }
 
-for arch in arm32 arm64; do
-	android_build_and_test --arch=$arch
-	android_build_and_test --arch=$arch --enable-crc
-	android_build_and_test --arch=$arch --enable-crypto
-	android_build_and_test --arch=$arch --enable-crc --enable-crypto
-done
+android_build_and_test --arch=arm32
+android_build_and_test --arch=arm32 --enable-crc
+android_build_and_test --arch=arm64
+android_build_and_test --arch=arm64 --enable-crc
+android_build_and_test --arch=arm64 --enable-crypto
+android_build_and_test --arch=arm64 --enable-crc --enable-crypto
+
 echo "Android tests passed"
