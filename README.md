@@ -77,7 +77,7 @@ You should compile both `lib/*.c` and `lib/*/*.c`.  You don't need to worry
 about excluding irrelevant architecture-specific code, as this is already
 handled in the source files themselves using `#ifdef`s.
 
-It is **strongly** recommended to use either gcc or clang, and to use `-O2`.
+It is strongly recommended to use either gcc or clang, and to use `-O2`.
 
 If you are doing a freestanding build with `-ffreestanding`, you must add
 `-DFREESTANDING` as well (matching what the `CMakeLists.txt` does).
