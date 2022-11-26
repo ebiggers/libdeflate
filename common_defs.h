@@ -45,6 +45,7 @@
    /* /W4 */
 #  pragma warning(disable : 4100) /* unreferenced formal parameter */
 #  pragma warning(disable : 4127) /* conditional expression is constant */
+#  pragma warning(disable : 4189) /* local variable initialized but not referenced */
 #  pragma warning(disable : 4232) /* nonstandard extension used */
 #  pragma warning(disable : 4245) /* conversion from 'int' to 'unsigned int' */
 #  pragma warning(disable : 4295) /* array too small to include terminating null */
