@@ -6,14 +6,14 @@ SCRIPTDIR="$(dirname "$0")"
 BUILDDIR="$SCRIPTDIR/../build"
 API_LEVEL=28
 ARCH=arm64
-CFLAGS=
+export CFLAGS=${CFLAGS:-}
 ENABLE_CRC=false
 ENABLE_CRYPTO=false
 NDKDIR=$HOME/android-ndk-r23b
 
 usage() {
 	cat << EOF
-Usage: $0 [OPTION]... -- [MAKE_TARGET]...
+Usage: $0 [OPTION]...
 Build libdeflate for Android.
 
   --api-level=LEVEL    Android API level to target (default: $API_LEVEL)
@@ -71,7 +71,7 @@ case "$ARCH" in
 arm|arm32|aarch32|armeabi-v7a)
 	ANDROID_ABI=armeabi-v7a
 	if $ENABLE_CRC || $ENABLE_CRYPTO; then
-		export CFLAGS="-march=armv8-a"
+		CFLAGS+=" -march=armv8-a"
 		if $ENABLE_CRC; then
 			CFLAGS+=" -mcrc"
 		else
@@ -94,7 +94,7 @@ arm64|aarch64|arm64-v8a)
 		features+="+crypto"
 	fi
 	if [ -n "$features" ]; then
-		export CFLAGS="-march=armv8-a$features"
+		CFLAGS+=" -march=armv8-a$features"
 	fi
 	;;
 x86)
