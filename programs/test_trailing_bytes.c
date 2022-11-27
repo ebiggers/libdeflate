@@ -8,16 +8,15 @@
 #include "test_util.h"
 
 static const struct {
-	size_t (LIBDEFLATEAPI *compress)(
-			struct libdeflate_compressor *compressor,
-			const void *in, size_t in_nbytes,
-			void *out, size_t out_nbytes_avail);
-	enum libdeflate_result (LIBDEFLATEAPI *decompress)(
+	size_t (*compress)(struct libdeflate_compressor *compressor,
+			   const void *in, size_t in_nbytes,
+			   void *out, size_t out_nbytes_avail);
+	enum libdeflate_result (*decompress)(
 			struct libdeflate_decompressor *decompressor,
 			const void *in, size_t in_nbytes,
 			void *out, size_t out_nbytes_avail,
 			size_t *actual_out_nbytes_ret);
-	enum libdeflate_result (LIBDEFLATEAPI *decompress_ex)(
+	enum libdeflate_result (*decompress_ex)(
 			struct libdeflate_decompressor *decompressor,
 			const void *in, size_t in_nbytes,
 			void *out, size_t out_nbytes_avail,
