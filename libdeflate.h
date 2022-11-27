@@ -5,6 +5,9 @@
 #ifndef LIBDEFLATE_H
 #define LIBDEFLATE_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -12,9 +15,6 @@ extern "C" {
 #define LIBDEFLATE_VERSION_MAJOR	1
 #define LIBDEFLATE_VERSION_MINOR	14
 #define LIBDEFLATE_VERSION_STRING	"1.14"
-
-#include <stddef.h>
-#include <stdint.h>
 
 /*
  * Users of libdeflate.dll on Windows can define LIBDEFLATE_DLL to cause
