@@ -1,20 +1,30 @@
 #!/bin/bash
 #
 # Test script for libdeflate
+#
+# Usage:
+#    Run all tests:
+#	./run_tests.sh
+#    Run only the given tests:
+#	./run_tests.sh asan valgrind
+#    Run all tests other than the given ones:
+#	./run_tests.sh ^asan ^valgrind
+#
+# See TEST_FUNCS for the available tests.
 
 set -eu -o pipefail
 cd "$(dirname "$0")/.."
-
-if [ $# -ne 0 ]; then
-	echo 1>&2 "Usage: $0"
-	exit 2
-fi
 
 # Use CC if specified in environment, else default to "cc".
 : "${CC:=cc}"
 
 # Use CFLAGS if specified in environment.
 : "${CFLAGS:=}"
+
+# No wrapper by default; overridden by valgrind tests
+export WRAPPER=
+
+TEST_FUNCS=()
 
 CLEANUP_CMDS=()
 cleanup() {
@@ -23,6 +33,8 @@ cleanup() {
 	done
 }
 trap cleanup EXIT
+
+CLEANUP_CMDS+=("rm -rf build")
 
 # Use TESTDATA if specified in environment, else generate it.
 if [ -z "${TESTDATA:-}" ]; then
@@ -39,8 +51,6 @@ CLEANUP_CMDS+=("rm -r '$TMPDIR'")
 
 MAKE="make -j$(getconf _NPROCESSORS_ONLN)"
 
-CC_VERSION=$($CC --version | head -1)
-
 UNAME=$(uname)
 ARCH=$(uname -m)
 
@@ -49,20 +59,12 @@ if [ "$UNAME" = Darwin ]; then
 	SHLIB=build/libdeflate.dylib
 fi
 
-for skip in SKIP_FREESTANDING SKIP_VALGRIND SKIP_UBSAN SKIP_ASAN SKIP_CFI \
-	    SKIP_SHARED_LIB SKIP_O3_AND_MARCH_NATIVE; do
-	if [ "${!skip:-}" = "1" ]; then
-		eval $skip=true
-	else
-		eval $skip=false
-	fi
-done
-
 ###############################################################################
 
 INDENT=0
 
-log() {
+log()
+{
 	echo -n "[$(date)] "
 	if (( INDENT != 0 )); then
 		head -c $(( INDENT * 4 )) /dev/zero | tr '\0' ' '
@@ -70,60 +72,55 @@ log() {
 	echo "$@"
 }
 
-begin() {
+begin()
+{
 	log "$@"
 	(( INDENT++ )) || true
 }
 
-end() {
+end()
+{
 	(( INDENT-- )) || true
 }
 
-run_cmd() {
+run_cmd()
+{
 	log "$@"
 	"$@" > /dev/null
 }
 
-fail() {
+fail()
+{
 	echo 1>&2 "$@"
 	exit 1
 }
 
-file_count() {
+file_count()
+{
 	local dir=$1
 
 	find "$dir" -type f -o -type l | wc -l
 }
 
-cflags_supported() {
+cflags_supported()
+{
 	# -Werror is needed here in order for old versions of clang to reject
 	# invalid options.
 	echo 'int main(void){ return 0; }' \
 		| $CC $CFLAGS "$@" -Werror -x c - -o /dev/null 2>/dev/null
 }
 
-valgrind_version_at_least() {
-	local want_vers=$1
-	local vers
-
-	if ! type -P valgrind &> /dev/null; then
-		return 1
-	fi
-
-	vers=$(valgrind --version | grep -E -o '[0-9\.]+' | head -1)
-
-	[ "$want_vers" = "$(echo -e "$vers\n$want_vers" | sort -V | head -1)" ]
-}
-
 # Build libdeflate, including the test programs.  Set the special test support
 # flag to get support for LIBDEFLATE_DISABLE_CPU_FEATURES.
-build() {
+build()
+{
 	CFLAGS="$CFLAGS -DTEST_SUPPORT__DO_NOT_USE=1" scripts/cmake-helper.sh \
 		-DLIBDEFLATE_BUILD_TESTS=1 "$@" > /dev/null
 	$MAKE -C build > /dev/null
 }
 
-build_and_run_tests() {
+build_and_run_tests()
+{
 	local quick=false
 	if [ "${1:-}" = "--quick" ]; then
 		quick=true
@@ -169,26 +166,8 @@ build_and_run_tests() {
 	end
 }
 
-verify_freestanding_build() {
-	# It is expected that sanitizer builds link to external functions.
-	if [[ "$CFLAGS" =~ "-fsanitize" ]]; then
-		return 0
-	fi
-	log "Verifying that freestanding build is really freestanding"
-	build -DLIBDEFLATE_FREESTANDING=1
-	if nm $SHLIB | grep -v '\<__stack_chk_fail\>' | grep -q ' U '; then
-		echo 1>&2 "Freestanding lib links to external functions!:"
-		nm $SHLIB | grep ' U '
-		return 1
-	fi
-	if ldd $SHLIB | grep -q -v '\<statically linked\>'; then
-		echo 1>&2 "Freestanding lib links to external libraries!:"
-		ldd $SHLIB
-		return 1
-	fi
-}
-
-is_compatible_system_gzip() {
+is_compatible_system_gzip()
+{
 	local prog=$1
 
 	# Needs to exist.
@@ -207,7 +186,8 @@ is_compatible_system_gzip() {
 	return 0
 }
 
-gzip_tests() {
+gzip_tests()
+{
 	local gzips=("$PWD/build/programs/libdeflate-gzip")
 	local gunzips=("$PWD/build/programs/libdeflate-gzip -d")
 	if [ "${1:-}" != "--quick" ]; then
@@ -235,22 +215,106 @@ gzip_tests() {
 	end
 }
 
-do_run_tests() {
+do_run_tests()
+{
 	build_and_run_tests "$@"
-	if [ "${1:-}" != "--quick" ]; then
-		if $SKIP_FREESTANDING; then
-			log "Skipping freestanding build tests due to SKIP_FREESTANDING=1"
-		elif [ "$UNAME" = Darwin ]; then
-			log "Skipping freestanding build tests due to unsupported OS"
-		else
-			build_and_run_tests -DLIBDEFLATE_FREESTANDING=1
-			verify_freestanding_build
-		fi
-	fi
 	gzip_tests "$@"
 }
 
-check_symbol_prefixes() {
+################################################################################
+
+regular_test()
+{
+	do_run_tests
+}
+TEST_FUNCS+=(regular_test)
+
+O3_test()
+{
+	CFLAGS="$CFLAGS -O3" do_run_tests
+}
+TEST_FUNCS+=(O3_test)
+
+march_native_test()
+{
+	if ! cflags_supported "-march=native"; then
+		log "Compiler doesn't support -march=native; skipping test"
+		return
+	fi
+	CFLAGS="$CFLAGS -march=native" do_run_tests
+}
+TEST_FUNCS+=(march_native_test)
+
+valgrind_version_at_least()
+{
+	local want_vers=$1
+	local vers
+
+	if ! type -P valgrind &> /dev/null; then
+		return 1
+	fi
+
+	vers=$(valgrind --version | grep -E -o '[0-9\.]+' | head -1)
+
+	[ "$want_vers" = "$(echo -e "$vers\n$want_vers" | sort -V | head -1)" ]
+}
+
+valgrind_test()
+{
+	# Need valgrind 3.9.0 for '--errors-for-leak-kinds=all'
+	# Need valgrind 3.12.0 for armv8 crypto and crc instructions
+	if ! valgrind_version_at_least 3.12.0; then
+		log "valgrind not found; skipping test"
+		return
+	fi
+	WRAPPER="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all" \
+		do_run_tests --quick
+}
+TEST_FUNCS+=(valgrind_test)
+
+ubsan_test()
+{
+	local cflags=("-fsanitize=undefined" "-fno-sanitize-recover=undefined")
+	if ! cflags_supported "${cflags[@]}"; then
+		log "Compiler doesn't support UBSAN; skipping test"
+		return
+	fi
+	CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests --quick
+}
+TEST_FUNCS+=(ubsan_test)
+
+asan_test()
+{
+	local cflags=("-fsanitize=address" "-fno-sanitize-recover=address")
+	if ! cflags_supported "${cflags[@]}"; then
+		log "Compiler doesn't support ASAN; skipping test"
+		return
+	fi
+	CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests --quick
+}
+TEST_FUNCS+=(asan_test)
+
+cfi_test()
+{
+	local cflags=("-fsanitize=cfi" "-fno-sanitize-recover=cfi" "-flto"
+		      "-fvisibility=hidden")
+	if ! cflags_supported "${cflags[@]}"; then
+		log "Compiler doesn't support CFI; skipping test"
+		return
+	fi
+	CFLAGS="$CFLAGS ${cflags[*]}" AR=llvm-ar do_run_tests --quick
+}
+TEST_FUNCS+=(cfi_test)
+
+install_test()
+{
+	build
+	$MAKE -C build install DESTDIR=inst > /dev/null
+}
+TEST_FUNCS+=(install_test)
+
+symbol_prefix_test()
+{
 	build
 	log "Checking that all global symbols are prefixed with \"libdeflate_\""
 	if nm build/libdeflate.a | grep ' T ' | grep -E -v " _?libdeflate_"
@@ -263,8 +327,10 @@ check_symbol_prefixes() {
 		fail "Some exported symbols aren't prefixed with \"libdeflate_\""
 	fi
 }
+TEST_FUNCS+=(symbol_prefix_test)
 
-is_dynamically_linked() {
+is_dynamically_linked()
+{
 	local prog=$1
 
 	if [ "$UNAME" = Darwin ]; then
@@ -274,11 +340,8 @@ is_dynamically_linked() {
 	fi
 }
 
-test_use_shared_lib() {
-	if $SKIP_SHARED_LIB; then
-		log "Skipping USE_SHARED_LIB=1 tests due to SKIP_SHARED_LIB=1"
-		return
-	fi
+use_shared_lib_test()
+{
 	log "Testing USE_SHARED_LIB=1"
 	build
 	if is_dynamically_linked build/programs/libdeflate-gzip; then
@@ -289,85 +352,65 @@ test_use_shared_lib() {
 		fail "Binary isn't dynamically linked"
 	fi
 }
+TEST_FUNCS+=(use_shared_lib_test)
 
-install_tests() {
-	begin "Testing install"
-	build
-	$MAKE -C build install DESTDIR=inst
+freestanding_test()
+{
+	if [ "$UNAME" = Darwin ]; then
+		log "Skipping freestanding build tests due to unsupported OS"
+		return
+	fi
+	build_and_run_tests --quick -DLIBDEFLATE_FREESTANDING=1
+	if nm $SHLIB | grep -v '\<__stack_chk_fail\>' | grep -q ' U '; then
+		echo 1>&2 "Freestanding lib links to external functions!:"
+		nm $SHLIB | grep ' U '
+		return 1
+	fi
+	if ldd $SHLIB | grep -q -v '\<statically linked\>'; then
+		echo 1>&2 "Freestanding lib links to external libraries!:"
+		ldd $SHLIB
+		return 1
+	fi
 }
-
-run_tests() {
-	export WRAPPER="" # no wrapper by default; overridden by valgrind tests
-	local cflags
-
-	begin "Running tests"
-	do_run_tests
-	end
-
-	if $SKIP_O3_AND_MARCH_NATIVE; then
-		log "Skipping -O3 and -march=native tests due to SKIP_O3_AND_MARCH_NATIVE=1"
-	else
-		cflags=("-O3")
-		if cflags_supported "${cflags[@]}" "-march=native"; then
-			cflags+=("-march=native")
-		fi
-		begin "Running tests with ${cflags[*]}"
-		CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests
-		end
-	fi
-
-	# Need valgrind 3.9.0 for '--errors-for-leak-kinds=all'
-	# Need valgrind 3.12.0 for armv8 crypto and crc instructions
-	if $SKIP_VALGRIND; then
-		log "Skipping valgrind tests due to SKIP_VALGRIND=1"
-	elif valgrind_version_at_least 3.12.0; then
-		begin "Running tests with Valgrind"
-		WRAPPER="valgrind --quiet --error-exitcode=100 --leak-check=full --errors-for-leak-kinds=all" \
-			do_run_tests --quick
-		end
-	fi
-
-	cflags=("-fsanitize=undefined" "-fno-sanitize-recover=undefined")
-	if $SKIP_UBSAN; then
-		log "Skipping UBSAN tests due to SKIP_UBSAN=1"
-	elif cflags_supported "${cflags[@]}"; then
-		begin "Running tests with UBSAN"
-		CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests --quick
-		end
-	else
-		log "Skipping UBSAN tests because compiler ($CC_VERSION) doesn't support UBSAN"
-	fi
-
-	cflags=("-fsanitize=address" "-fno-sanitize-recover=address")
-	if $SKIP_ASAN; then
-		log "Skipping ASAN tests due to SKIP_ASAN=1"
-	elif cflags_supported "${cflags[@]}"; then
-		begin "Running tests with ASAN"
-		CFLAGS="$CFLAGS ${cflags[*]}" do_run_tests --quick
-		end
-	else
-		log "Skipping ASAN tests because compiler ($CC_VERSION) doesn't support ASAN"
-	fi
-
-	cflags=("-fsanitize=cfi" "-fno-sanitize-recover=cfi" "-flto"
-		"-fvisibility=hidden")
-	if $SKIP_CFI; then
-		log "Skipping CFI tests due to SKIP_CFI=1"
-	elif cflags_supported "${cflags[@]}"; then
-		begin "Running tests with CFI"
-		CFLAGS="$CFLAGS ${cflags[*]}" AR=llvm-ar do_run_tests --quick
-		end
-	else
-		log "Skipping CFI tests because compiler ($CC_VERSION) doesn't support CFI"
-	fi
-
-	install_tests
-	check_symbol_prefixes
-	test_use_shared_lib
-}
+TEST_FUNCS+=(freestanding_test)
 
 ###############################################################################
 
-log "Starting libdeflate tests"
-run_tests
+declare -A all_tests
+for test_func in "${TEST_FUNCS[@]}"; do
+	all_tests["${test_func%_test}"]=true
+done
+declare -A tests_to_run
+
+# Determine the set of tests to run by applying any inclusions and exclusions
+# given on the command line.  If no inclusions were given, then default to all
+# tests (subject to exclusions).
+all=true
+for arg; do
+	if [[ $arg != ^* ]]; then
+		all=false
+	fi
+done
+if $all; then
+	for t in "${!all_tests[@]}"; do
+		tests_to_run[$t]=true
+	done
+fi
+for arg; do
+	if [[ $arg == ^* ]]; then
+		unset "tests_to_run[${arg#^}]"
+	elif [[ -z ${all_tests["$arg"]:-} ]]; then
+		fail "Unknown test '$arg'.  Options are: ${!all_tests[*]}"
+	else
+		tests_to_run["$arg"]=true
+	fi
+done
+
+# Actually run the tests.
+log "Running libdeflate tests: ${!tests_to_run[*]}"
+for t in "${!tests_to_run[@]}"; do
+	begin "Running ${t}_test"
+	eval "${t}_test"
+	end
+done
 log "All tests passed!"
