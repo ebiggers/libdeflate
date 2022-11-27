@@ -11,7 +11,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CC: ${{ matrix.compiler }}
-      CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -27,8 +26,6 @@ jobs:
         arch: [armv6, armv7, aarch64, s390x, ppc64le]
         compiler: [gcc, clang]
     runs-on: ubuntu-latest
-    env:
-      CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
       - uses: actions/checkout@v2
       - uses: uraimo/run-on-arch-action@v2.2.0
