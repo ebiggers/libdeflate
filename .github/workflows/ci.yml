@@ -35,44 +35,13 @@ jobs:
           githubToken: ${{ github.token }}
           install: |
             apt-get update
-            apt-get install -y build-essential cmake clang llvm libz-dev valgrind
+            apt-get install -y build-essential cmake clang llvm libz-dev
           run: |
-            # Valgrind and ASAN crash on at least s390x, ppc64le, and aarch64
-            # here.  (It's probably something related to the QEMU user-mode
-            # emulation that run-on-arch-action uses.)
-            export SKIP_VALGRIND=1
-            export SKIP_ASAN=1
-
-            # Speed up these jobs a bit by testing some things only with gcc or
-            # clang, not both.
+            tests=(regular)
             if [ ${{matrix.compiler}} = clang ]; then
-                export SKIP_O3_AND_MARCH_NATIVE=1
-            else
-                export SKIP_CFI=1
-                export SKIP_UBSAN=1
+                tests+=(ubsan)
             fi
-
-            case ${{ matrix.arch }} in
-            s390x)
-              # On s390x, in freestanding builds the shared library links to an
-              # external symbol __clzdi2, even when -static-libgcc is used.
-              export SKIP_FREESTANDING=1
-
-              # Fails for some reason
-              export SKIP_SHARED_LIB=1
-              ;;
-            aarch64)
-              if [ ${{ matrix.compiler }} = clang ]; then
-                # "ldd: exited with unknown exit code (139)"
-                export SKIP_SHARED_LIB=1
-                # "archive has no index; run ranlib to add one"
-                export SKIP_CFI=1
-              fi
-              ;;
-            esac
-
-            export CC=${{ matrix.compiler }}
-            scripts/run_tests.sh
+            CC=${{matrix.compiler}} scripts/run_tests.sh "${tests[@]}"
 
   macos-build-and-test:
     name: Build and test (macOS)
