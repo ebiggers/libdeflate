@@ -30,7 +30,7 @@
 
 #include "libdeflate.h"
 
-LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
+LIBDEFLATEAPI size_t
 libdeflate_zlib_compress(struct libdeflate_compressor *c,
 			 const void *in, size_t in_nbytes,
 			 void *out, size_t out_nbytes_avail)
@@ -75,7 +75,7 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 	return out_next - (u8 *)out;
 }
 
-LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
+LIBDEFLATEAPI size_t
 libdeflate_zlib_compress_bound(struct libdeflate_compressor *c,
 			       size_t in_nbytes)
 {

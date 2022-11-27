@@ -254,7 +254,7 @@ static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len)
 #define crc32_impl DEFAULT_IMPL
 #endif
 
-LIBDEFLATEEXPORT u32 LIBDEFLATEAPI
+LIBDEFLATEAPI u32
 libdeflate_crc32(u32 crc, const void *p, size_t len)
 {
 	if (p == NULL) /* Return initial value. */

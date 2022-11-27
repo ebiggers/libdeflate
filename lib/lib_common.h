@@ -5,14 +5,39 @@
 #ifndef LIB_LIB_COMMON_H
 #define LIB_LIB_COMMON_H
 
+#include "../common_defs.h"
+
 #ifdef LIBDEFLATE_H
+ /*
+  * When building the library, LIBDEFLATEAPI needs to be defined properly before
+  * including libdeflate.h.
+  */
 #  error "lib_common.h must always be included before libdeflate.h"
-   /* because BUILDING_LIBDEFLATE must be set first */
 #endif
 
-#define BUILDING_LIBDEFLATE
+#if defined(LIBDEFLATE_DLL) && (defined(_WIN32) || defined(__CYGWIN__))
+#  define LIBDEFLATE_EXPORT_SYM  __declspec(dllexport)
+#elif defined(__GNUC__)
+#  define LIBDEFLATE_EXPORT_SYM  __attribute__((visibility("default")))
+#else
+#  define LIBDEFLATE_EXPORT_SYM
+#endif
 
-#include "../common_defs.h"
+/*
+ * On i386, gcc assumes that the stack is 16-byte aligned at function entry.
+ * However, some compilers (e.g. MSVC) and programming languages (e.g. Delphi)
+ * only guarantee 4-byte alignment when calling functions.  This is mainly an
+ * issue on Windows, but it has been seen on Linux too.  Work around this ABI
+ * incompatibility by realigning the stack pointer when entering libdeflate.
+ * This prevents crashes in SSE/AVX code.
+ */
+#if defined(__GNUC__) && defined(__i386__)
+#  define LIBDEFLATE_ALIGN_STACK  __attribute__((force_align_arg_pointer))
+#else
+#  define LIBDEFLATE_ALIGN_STACK
+#endif
+
+#define LIBDEFLATEAPI	LIBDEFLATE_EXPORT_SYM LIBDEFLATE_ALIGN_STACK
 
 void *libdeflate_malloc(size_t size);
 void libdeflate_free(void *ptr);

@@ -122,7 +122,7 @@ static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len)
 #define adler32_impl DEFAULT_IMPL
 #endif
 
-LIBDEFLATEEXPORT u32 LIBDEFLATEAPI
+LIBDEFLATEAPI u32
 libdeflate_adler32(u32 adler, const void *buffer, size_t len)
 {
 	if (buffer == NULL) /* Return initial value. */

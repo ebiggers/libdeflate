@@ -70,7 +70,7 @@ libdeflate_aligned_free(void *ptr)
 		libdeflate_free(((void **)ptr)[-1]);
 }
 
-LIBDEFLATEEXPORT void LIBDEFLATEAPI
+LIBDEFLATEAPI void
 libdeflate_set_memory_allocator(void *(*malloc_func)(size_t),
 				void (*free_func)(void *))
 {

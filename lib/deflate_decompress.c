@@ -1121,7 +1121,7 @@ dispatch_decomp(struct libdeflate_decompressor *d,
  * handles calling the appropriate implementation depending on the CPU features
  * at runtime.
  */
-LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
+LIBDEFLATEAPI enum libdeflate_result
 libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 				 const void *in, size_t in_nbytes,
 				 void *out, size_t out_nbytes_avail,
@@ -1132,7 +1132,7 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 			       actual_in_nbytes_ret, actual_out_nbytes_ret);
 }
 
-LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
+LIBDEFLATEAPI enum libdeflate_result
 libdeflate_deflate_decompress(struct libdeflate_decompressor *d,
 			      const void *in, size_t in_nbytes,
 			      void *out, size_t out_nbytes_avail,
@@ -1143,7 +1143,7 @@ libdeflate_deflate_decompress(struct libdeflate_decompressor *d,
 						NULL, actual_out_nbytes_ret);
 }
 
-LIBDEFLATEEXPORT struct libdeflate_decompressor * LIBDEFLATEAPI
+LIBDEFLATEAPI struct libdeflate_decompressor *
 libdeflate_alloc_decompressor(void)
 {
 	/*
@@ -1169,7 +1169,7 @@ libdeflate_alloc_decompressor(void)
 	return d;
 }
 
-LIBDEFLATEEXPORT void LIBDEFLATEAPI
+LIBDEFLATEAPI void
 libdeflate_free_decompressor(struct libdeflate_decompressor *d)
 {
 	libdeflate_free(d);

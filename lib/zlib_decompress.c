@@ -30,7 +30,7 @@
 
 #include "libdeflate.h"
 
-LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
+LIBDEFLATEAPI enum libdeflate_result
 libdeflate_zlib_decompress_ex(struct libdeflate_decompressor *d,
 			      const void *in, size_t in_nbytes,
 			      void *out, size_t out_nbytes_avail,
@@ -94,7 +94,7 @@ libdeflate_zlib_decompress_ex(struct libdeflate_decompressor *d,
 	return LIBDEFLATE_SUCCESS;
 }
 
-LIBDEFLATEEXPORT enum libdeflate_result LIBDEFLATEAPI
+LIBDEFLATEAPI enum libdeflate_result
 libdeflate_zlib_decompress(struct libdeflate_decompressor *d,
 			   const void *in, size_t in_nbytes,
 			   void *out, size_t out_nbytes_avail,
