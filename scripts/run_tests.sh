@@ -18,8 +18,7 @@ cd "$(dirname "$0")/.."
 # Use CC if specified in environment, else default to "cc".
 : "${CC:=cc}"
 
-# Use CFLAGS if specified in environment.
-: "${CFLAGS:=}"
+export CFLAGS="-Werror -DLIBDEFLATE_ENABLE_ASSERTIONS"
 
 # No wrapper by default; overridden by valgrind tests
 export WRAPPER=
@@ -107,7 +106,7 @@ cflags_supported()
 	# -Werror is needed here in order for old versions of clang to reject
 	# invalid options.
 	echo 'int main(void){ return 0; }' \
-		| $CC $CFLAGS "$@" -Werror -x c - -o /dev/null 2>/dev/null
+		| $CC "$@" -Werror -x c - -o /dev/null 2>/dev/null
 }
 
 # Build libdeflate, including the test programs.  Set the special test support
