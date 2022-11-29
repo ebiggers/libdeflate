@@ -67,6 +67,22 @@
 	ADLER32_FINISH_VEC_CHUNK_128((s1), (s2), s1_128bit, s2_128bit);	    \
 }
 
+/*
+ * This is a very silly partial workaround for gcc bug
+ * https://gcc.gnu.org/bugzilla/show_bug.cgi?id=107892.  The bug causes gcc to
+ * generate extra move instructions in some loops containing vector intrinsics.
+ *
+ * An alternate workaround would be to use gcc native vector operations instead
+ * of vector intrinsics.  But that would result in MSVC needing its own code.
+ */
+#if GCC_PREREQ(1, 0)
+#  define GCC_UPDATE_VARS(a, b, c, d, e, f) \
+	__asm__("" : "+x" (a), "+x" (b), "+x" (c), "+x" (d), "+x" (e), "+x" (f))
+#else
+#  define GCC_UPDATE_VARS(a, b, c, d, e, f) \
+	(void)a, (void)b, (void)c, (void)d, (void)e, (void)f
+#endif
+
 /* SSE2 implementation */
 #if HAVE_SSE2_INTRIN
 #  define adler32_sse2		adler32_sse2
@@ -147,6 +163,9 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 			v_byte_sums_c, _mm_unpacklo_epi8(bytes2, zeroes));
 		v_byte_sums_d = _mm_add_epi16(
 			v_byte_sums_d, _mm_unpackhi_epi8(bytes2, zeroes));
+
+		GCC_UPDATE_VARS(v_s1, v_s2, v_byte_sums_a, v_byte_sums_b,
+				v_byte_sums_c, v_byte_sums_d);
 	} while (p != end);
 
 	/* Finish calculating the s2 counters. */
@@ -229,6 +248,9 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 			v_byte_sums_c, _mm256_unpacklo_epi8(bytes2, zeroes));
 		v_byte_sums_d = _mm256_add_epi16(
 			v_byte_sums_d, _mm256_unpackhi_epi8(bytes2, zeroes));
+
+		GCC_UPDATE_VARS(v_s1, v_s2, v_byte_sums_a, v_byte_sums_b,
+				v_byte_sums_c, v_byte_sums_d);
 	} while (p != end);
 
 	v_s2 = _mm256_slli_epi32(v_s2, 6);
