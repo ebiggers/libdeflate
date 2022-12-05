@@ -47,8 +47,8 @@ if(LIBDEFLATE_BUILD_GZIP)
         set(GZIP ${CMAKE_INSTALL_FULL_BINDIR}/libdeflate-gzip)
         set(GUNZIP ${CMAKE_INSTALL_FULL_BINDIR}/libdeflate-gunzip)
         install(CODE "message(\"-- Installing: \$ENV{DESTDIR}${GUNZIP}\")")
-        install(CODE "file(CREATE_LINK \$ENV{DESTDIR}${GZIP}
-                      \$ENV{DESTDIR}${GUNZIP})" COPY_ON_ERROR)
+        install(CODE "file(CREATE_LINK \$ENV{DESTDIR}${GZIP}${CMAKE_EXECUTABLE_SUFFIX}
+                      \$ENV{DESTDIR}${GUNZIP}${CMAKE_EXECUTABLE_SUFFIX})" COPY_ON_ERROR)
     else()
         # The cmake version is too old to support file(CREATE_LINK).
         # Just compile gzip.c again to build libdeflate-gunzip.
