@@ -50,9 +50,10 @@ jobs:
       CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
     - uses: actions/checkout@v2
-    - run: cmake -B build -DLIBDEFLATE_BUILD_TESTS=1
+    - run: cmake -B build -DLIBDEFLATE_BUILD_TESTS=1 -DCMAKE_INSTALL_PREFIX=install_test
     - run: cmake --build build --verbose
     - run: ctest --test-dir build
+    - run: cmake --install build --verbose
 
   windows-msys2-build-and-test:
     name: Build and test (Windows, MSYS2, ${{matrix.sys}})
@@ -79,9 +80,10 @@ jobs:
           mingw-w64-${{matrix.env}}-cmake
           mingw-w64-${{matrix.env}}-ninja
           mingw-w64-${{matrix.env}}-zlib
-    - run: cmake -B build -G Ninja -DLIBDEFLATE_BUILD_TESTS=1
+    - run: cmake -B build -G Ninja -DLIBDEFLATE_BUILD_TESTS=1 -DCMAKE_INSTALL_PREFIX=install_test
     - run: cmake --build build --verbose
     - run: ctest --test-dir build
+    - run: cmake --install build --verbose
 
   windows-visualstudio-build-and-test:
     name: Build and test (Windows, Visual Studio ${{matrix.toolset}}, ${{matrix.platform.vs}})
@@ -103,8 +105,10 @@ jobs:
         -A ${{matrix.platform.vs}} -DLIBDEFLATE_BUILD_TESTS=1
         -DCMAKE_C_FLAGS="/W4 /WX /DLIBDEFLATE_ENABLE_ASSERTIONS /IC:\vcpkg\packages\zlib_${{matrix.platform.vcpkg}}\include"
         -DZLIB_LIBRARY=C:\vcpkg\packages\zlib_${{matrix.platform.vcpkg}}\lib\zlib.lib
+        -DCMAKE_INSTALL_PREFIX=install_test
     - run: cmake --build build --verbose --config Debug
     - run: ctest --test-dir build -C Debug
+    - run: cmake --install build --verbose --config Debug
 
   windows-visualstudio-build:
     name: Build (Windows, Visual Studio ${{matrix.toolset}}, ${{matrix.platform}})
@@ -122,7 +126,9 @@ jobs:
     - run: >
         cmake -B build -G "Visual Studio 17 2022" -T ${{matrix.toolset}}
         -A ${{matrix.platform}} -DCMAKE_C_FLAGS="/W4 /WX"
+        -DCMAKE_INSTALL_PREFIX=install_test
     - run: cmake --build build --verbose
+    - run: cmake --install build --verbose
 
   run-clang-static-analyzer:
     name: Run clang static analyzer
@@ -164,13 +170,17 @@ jobs:
     - name: 32-bit build
       run: |
         scripts/cmake-helper.sh -DLIBDEFLATE_BUILD_TESTS=1 \
-            -DCMAKE_TOOLCHAIN_FILE=scripts/toolchain-i686-w64-mingw32.cmake
+            -DCMAKE_TOOLCHAIN_FILE=scripts/toolchain-i686-w64-mingw32.cmake \
+            -DCMAKE_INSTALL_PREFIX=install_test
         cmake --build build --verbose
+        cmake --install build -verbose
     - name: 64-bit build
       run: |
         scripts/cmake-helper.sh -DLIBDEFLATE_BUILD_TESTS=1 \
-            -DCMAKE_TOOLCHAIN_FILE=scripts/toolchain-x86_64-w64-mingw32.cmake
+            -DCMAKE_TOOLCHAIN_FILE=scripts/toolchain-x86_64-w64-mingw32.cmake \
+            -DCMAKE_INSTALL_PREFIX=install_test
         cmake --build build --verbose
+        cmake --install build --verbose
 
   cross-compile-for-android:
     name: Cross compile for ${{matrix.abi}} Android on ${{matrix.os}}
@@ -188,5 +198,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME"/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=${{matrix.abi}} \
             -DANDROID_PLATFORM=28 \
-            -DLIBDEFLATE_BUILD_TESTS=1
+            -DLIBDEFLATE_BUILD_TESTS=1 \
+            -DCMAKE_INSTALL_PREFIX=install_test
         cmake --build build --verbose
+        cmake --install build --verbose
