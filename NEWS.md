@@ -1,5 +1,16 @@
 # libdeflate release notes
 
+## Version 1.15
+
+* libdeflate now uses CMake instead of a plain Makefile.
+
+* Improved MSVC support.  Enabled most architecture-specific code with MSVC,
+  fixed building with clang in MSVC compatibility mode, and other improvements.
+
+* When libdeflate is built with MinGW, the static library and import library are
+  now named using the MinGW convention (`*.a` and `*.dll.a`) instead of the
+  Visual Studio convention.  This affects the official Windows binaries.
+
 ## Version 1.14
 
 Significantly improved decompression performance on all platforms.  Examples
