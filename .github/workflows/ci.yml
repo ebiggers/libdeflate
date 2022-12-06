@@ -52,6 +52,7 @@ jobs:
     - uses: actions/checkout@v2
     - run: cmake -B build -DLIBDEFLATE_BUILD_TESTS=1
     - run: cmake --build build --verbose
+    - run: DESTDIR=build/install cmake --install build --verbose
     - run: ctest --test-dir build
 
   windows-msys2-build-and-test:
@@ -79,8 +80,10 @@ jobs:
           mingw-w64-${{matrix.env}}-cmake
           mingw-w64-${{matrix.env}}-ninja
           mingw-w64-${{matrix.env}}-zlib
-    - run: cmake -B build -G Ninja -DLIBDEFLATE_BUILD_TESTS=1
+    # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
+    - run: cmake -B build -G Ninja -DLIBDEFLATE_BUILD_TESTS=1 -DCMAKE_INSTALL_PREFIX=build\install
     - run: cmake --build build --verbose
+    - run: cmake --install build --verbose
     - run: ctest --test-dir build
 
   windows-visualstudio-build-and-test:
@@ -98,12 +101,15 @@ jobs:
     - run: >
         echo C:\vcpkg\packages\zlib_${{matrix.platform.vcpkg}}\bin
         | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+    # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
     - run: >
         cmake -B build -G "Visual Studio 17 2022" -T ${{matrix.toolset}}
         -A ${{matrix.platform.vs}} -DLIBDEFLATE_BUILD_TESTS=1
         -DCMAKE_C_FLAGS="/W4 /WX /DLIBDEFLATE_ENABLE_ASSERTIONS /IC:\vcpkg\packages\zlib_${{matrix.platform.vcpkg}}\include"
         -DZLIB_LIBRARY=C:\vcpkg\packages\zlib_${{matrix.platform.vcpkg}}\lib\zlib.lib
+        -DCMAKE_INSTALL_PREFIX=build\install
     - run: cmake --build build --verbose --config Debug
+    - run: cmake --install build --verbose --config Debug
     - run: ctest --test-dir build -C Debug
 
   windows-visualstudio-build:
@@ -119,10 +125,13 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: microsoft/setup-msbuild@v1.1
+    # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
     - run: >
         cmake -B build -G "Visual Studio 17 2022" -T ${{matrix.toolset}}
         -A ${{matrix.platform}} -DCMAKE_C_FLAGS="/W4 /WX"
-    - run: cmake --build build --verbose
+        -DCMAKE_INSTALL_PREFIX=build\install
+    - run: cmake --build build --verbose --config Release
+    - run: cmake --install build --verbose --config Release
 
   run-clang-static-analyzer:
     name: Run clang static analyzer
@@ -166,11 +175,13 @@ jobs:
         scripts/cmake-helper.sh -DLIBDEFLATE_BUILD_TESTS=1 \
             -DCMAKE_TOOLCHAIN_FILE=scripts/toolchain-i686-w64-mingw32.cmake
         cmake --build build --verbose
+        DESTDIR=build/install cmake --install build --verbose
     - name: 64-bit build
       run: |
         scripts/cmake-helper.sh -DLIBDEFLATE_BUILD_TESTS=1 \
             -DCMAKE_TOOLCHAIN_FILE=scripts/toolchain-x86_64-w64-mingw32.cmake
         cmake --build build --verbose
+        DESTDIR=build/install cmake --install build --verbose
 
   cross-compile-for-android:
     name: Cross compile for ${{matrix.abi}} Android on ${{matrix.os}}
@@ -190,3 +201,4 @@ jobs:
             -DANDROID_PLATFORM=28 \
             -DLIBDEFLATE_BUILD_TESTS=1
         cmake --build build --verbose
+        DESTDIR=build/install cmake --install build --verbose
