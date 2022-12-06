@@ -44,11 +44,16 @@ if(LIBDEFLATE_BUILD_GZIP)
     if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.14")
         # Install libdeflate-gunzip as a hard link to libdeflate-gzip.
         # Fall back to a copy if hard links are unsupported.
-        set(GZIP ${CMAKE_INSTALL_FULL_BINDIR}/libdeflate-gzip)
-        set(GUNZIP ${CMAKE_INSTALL_FULL_BINDIR}/libdeflate-gunzip)
+        #
+        # Note: on Windows, prepending DESTDIR like this doesn't work correctly
+        # when ${CMAKE_INSTALL_FULL_BINDIR} includes a drive letter.  But that
+        # is fine since DESTDIR is unsupported on Windows anyway, according to
+        # the CMake documentation.
+        set(GZIP "${CMAKE_INSTALL_FULL_BINDIR}/libdeflate-gzip${CMAKE_EXECUTABLE_SUFFIX}")
+        set(GUNZIP "${CMAKE_INSTALL_FULL_BINDIR}/libdeflate-gunzip${CMAKE_EXECUTABLE_SUFFIX}")
         install(CODE "message(\"-- Installing: \$ENV{DESTDIR}${GUNZIP}\")")
-        install(CODE "file(CREATE_LINK \$ENV{DESTDIR}${GZIP}
-                      \$ENV{DESTDIR}${GUNZIP})" COPY_ON_ERROR)
+        install(CODE "file(CREATE_LINK \"\$ENV{DESTDIR}${GZIP}\"
+                           \"\$ENV{DESTDIR}${GUNZIP}\" COPY_ON_ERROR)")
     else()
         # The cmake version is too old to support file(CREATE_LINK).
         # Just compile gzip.c again to build libdeflate-gunzip.
