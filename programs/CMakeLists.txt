@@ -1,6 +1,10 @@
 include(CheckSymbolExists)
 
 # Check for the availability of OS functionality and generate the config.h file.
+if(NOT MSVC)
+    set(CMAKE_REQUIRED_DEFINITIONS
+        -D_POSIX_C_SOURCE=200809L -D_FILE_OFFSET_BITS=64)
+endif()
 check_symbol_exists(clock_gettime "time.h" HAVE_CLOCK_GETTIME)
 check_symbol_exists(futimens "fcntl.h;sys/stat.h" HAVE_FUTIMENS)
 check_symbol_exists(futimes "sys/time.h" HAVE_FUTIMES)
@@ -31,10 +35,8 @@ if(WIN32)
         target_compile_definitions(libdeflate_prog_utils PUBLIC UNICODE _UNICODE)
     endif()
 endif()
-if(NOT MSVC)
-    target_compile_definitions(libdeflate_prog_utils PUBLIC
-        _POSIX_C_SOURCE=200809L _FILE_OFFSET_BITS=64)
-endif()
+target_compile_definitions(libdeflate_prog_utils PUBLIC
+                           ${CMAKE_REQUIRED_DEFINITIONS})
 
 # Build and install libdeflate-gzip and its alias libdeflate-gunzip.
 if(LIBDEFLATE_BUILD_GZIP)
