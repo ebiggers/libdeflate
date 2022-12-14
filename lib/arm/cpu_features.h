@@ -137,7 +137,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  */
 #if HAVE_CRC32_NATIVE || \
 	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	 (__has_builtin(__builtin_arm_crc32b) || \
+	 ((__has_builtin(__builtin_arm_crc32b) && !GCC_PREREQ(1, 0)) || \
 	  GCC_PREREQ(11, 3) || \
 	  (GCC_PREREQ(10, 4) && !GCC_PREREQ(11, 0)) || \
 	  (GCC_PREREQ(9, 5) && !GCC_PREREQ(10, 0)) || \
