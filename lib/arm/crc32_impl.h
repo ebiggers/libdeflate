@@ -236,7 +236,7 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
  * for implementations that use pmull for folding the data itself.
  */
 #if HAVE_CRC32_INTRIN && HAVE_PMULL_INTRIN
-#  if HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE
+#  if HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
 #    define ATTRIBUTES
 #  else
 #    ifdef ARCH_ARM32
@@ -438,7 +438,7 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 #if HAVE_PMULL_INTRIN
 #  define crc32_arm_pmullx4	crc32_arm_pmullx4
 #  define SUFFIX			 _pmullx4
-#  if HAVE_PMULL_NATIVE
+#  if HAVE_PMULL_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
 #    define ATTRIBUTES
 #  else
 #    ifdef ARCH_ARM32
@@ -558,7 +558,7 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN
 #  define crc32_arm_pmullx12_crc	crc32_arm_pmullx12_crc
 #  define SUFFIX				 _pmullx12_crc
-#  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE
+#  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
 #    define ATTRIBUTES
 #  else
 #    ifdef __clang__
@@ -584,7 +584,8 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 	(HAVE_SHA3_TARGET || HAVE_SHA3_NATIVE)
 #  define crc32_arm_pmullx12_crc_eor3	crc32_arm_pmullx12_crc_eor3
 #  define SUFFIX				 _pmullx12_crc_eor3
-#  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE
+#  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE && \
+	!USE_PMULL_TARGET_EVEN_IF_NATIVE
 #    define ATTRIBUTES
 #  else
 #    ifdef __clang__
