@@ -97,6 +97,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #endif
 #if HAVE_PMULL_NATIVE || \
 	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
+	 HAVE_NEON_INTRIN /* needed to exclude soft float arm32 case */ && \
 	 (GCC_PREREQ(6, 1) || __has_builtin(__builtin_neon_vmull_p64) || \
 	  defined(_MSC_VER)) && \
 	  /*
