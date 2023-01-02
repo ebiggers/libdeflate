@@ -3176,6 +3176,21 @@ deflate_adjust_costs(struct libdeflate_compressor *c,
 		deflate_adjust_costs_impl(c, lit_cost, len_sym_cost, 0);
 }
 
+static void
+deflate_set_initial_costs(struct libdeflate_compressor *c,
+			  const u8 *block_begin, u32 block_length,
+			  bool is_first_block)
+{
+	u32 lit_cost, len_sym_cost;
+
+	deflate_choose_default_litlen_costs(c, block_begin, block_length,
+					    &lit_cost, &len_sym_cost);
+	if (is_first_block)
+		deflate_set_default_costs(c, lit_cost, len_sym_cost);
+	else
+		deflate_adjust_costs(c, lit_cost, len_sym_cost);
+}
+
 /*
  * Find the minimum-cost path through the graph of possible match/literal
  * choices for this block.
@@ -3280,7 +3295,6 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 				 bool is_first_block, bool is_final_block)
 {
 	unsigned num_passes_remaining = c->p.n.num_optim_passes;
-	u32 lit_cost, len_sym_cost;
 	u32 i;
 
 	/*
@@ -3292,13 +3306,8 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 		      ARRAY_LEN(c->p.n.optimum_nodes) - 1); i++)
 		c->p.n.optimum_nodes[i].cost_to_end = 0x80000000;
 
-	/* Set the initial costs. */
-	deflate_choose_default_litlen_costs(c, block_begin, block_length,
-					    &lit_cost, &len_sym_cost);
-	if (is_first_block)
-		deflate_set_default_costs(c, lit_cost, len_sym_cost);
-	else
-		deflate_adjust_costs(c, lit_cost, len_sym_cost);
+	/* Initialize c->p.n.costs with default costs. */
+	deflate_set_initial_costs(c, block_begin, block_length, is_first_block);
 
 	do {
 		/* Find the minimum cost path for this pass. */
