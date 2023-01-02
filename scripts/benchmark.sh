@@ -2,7 +2,7 @@
 
 set -e
 
-SCRIPTDIR="$(dirname "$0")"
+SCRIPTDIR="$(dirname "$(realpath "$0")")"
 BUILDDIR="$SCRIPTDIR/../build"
 
 "$SCRIPTDIR"/cmake-helper.sh -DLIBDEFLATE_BUILD_TESTS=1 -G Ninja > /dev/null
