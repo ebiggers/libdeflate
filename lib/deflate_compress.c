@@ -3361,14 +3361,16 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
  * from the previous block when it seems appropriate.  Later passes use the
  * Huffman codeword lengths from the previous pass as the costs.
  *
- * As an alternate strategy, also consider using only literals.
+ * As an alternate strategy, also consider using only literals.  The boolean
+ * returned in *used_only_literals indicates whether that strategy was best.
  */
 static void
 deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 				 struct deflate_output_bitstream *os,
 				 const u8 *block_begin, u32 block_length,
 				 const struct lz_match *cache_ptr,
-				 bool is_first_block, bool is_final_block)
+				 bool is_first_block, bool is_final_block,
+				 bool *used_only_literals)
 {
 	unsigned num_passes_remaining = c->p.n.max_optim_passes;
 	u32 best_true_cost = UINT32_MAX;
@@ -3434,12 +3436,14 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 
 	} while (--num_passes_remaining);
 
+	*used_only_literals = false;
 	if (only_lits_cost < best_true_cost) {
 		/* Using only literals ended up being best! */
 		c->codes = c->p.n.only_lits_codes;
 		deflate_set_costs_from_codes(c, &c->codes.lens);
 		seq_.litrunlen_and_length = block_length;
 		seq = &seq_;
+		*used_only_literals = true;
 	} else if (true_cost >=
 		   best_true_cost + c->p.n.min_bits_to_use_nonfinal_path) {
 		/*
@@ -3529,6 +3533,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 	unsigned nice_len = MIN(c->nice_match_length, max_len);
 	struct lz_match *cache_ptr = c->p.n.match_cache;
 	u32 next_hashes[2] = {0, 0};
+	bool prev_block_used_only_literals = false;
 
 	bt_matchfinder_init(&c->p.n.bt_mf);
 	deflate_near_optimal_init_stats(c);
@@ -3547,8 +3552,16 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		 * literal/match statistics gathered during matchfinding.
 		 * However, the actual near-optimal parse won't respect min_len,
 		 * as it can accurately assess the costs of different matches.
+		 *
+		 * If the "use only literals" strategy happened to be the best
+		 * strategy on the previous block, then probably the
+		 * min_match_len heuristic is still not aggressive enough for
+		 * the data, so force gathering literal stats only.
 		 */
-		min_len = calculate_min_match_len(
+		if (prev_block_used_only_literals)
+			min_len = DEFLATE_MAX_MATCH_LEN + 1;
+		else
+			min_len = calculate_min_match_len(
 					in_block_begin,
 					in_max_block_end - in_block_begin,
 					c->max_search_depth);
@@ -3725,10 +3738,11 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			} while (--num_bytes_to_rewind);
 			cache_len_rewound = orig_cache_ptr - cache_ptr;
 
-			deflate_optimize_and_flush_block(c, os, in_block_begin,
-							 block_length,
-							 cache_ptr,
-							 is_first, is_final);
+			deflate_optimize_and_flush_block(
+						c, os, in_block_begin,
+						block_length, cache_ptr,
+						is_first, is_final,
+						&prev_block_used_only_literals);
 			memmove(c->p.n.match_cache, cache_ptr,
 				cache_len_rewound * sizeof(*cache_ptr));
 			cache_ptr = &c->p.n.match_cache[cache_len_rewound];
@@ -3750,10 +3764,11 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			bool is_final = (in_next == in_end);
 
 			deflate_near_optimal_merge_stats(c);
-			deflate_optimize_and_flush_block(c, os, in_block_begin,
-							 block_length,
-							 cache_ptr,
-							 is_first, is_final);
+			deflate_optimize_and_flush_block(
+						c, os, in_block_begin,
+						block_length, cache_ptr,
+						is_first, is_final,
+						&prev_block_used_only_literals);
 			cache_ptr = &c->p.n.match_cache[0];
 			deflate_near_optimal_save_stats(c);
 			deflate_near_optimal_init_stats(c);
