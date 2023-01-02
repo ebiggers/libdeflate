@@ -3331,6 +3331,10 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 		}
 		cur_node->cost_to_end = best_cost_to_end;
 	} while (cur_node != &c->p.n.optimum_nodes[0]);
+
+	deflate_reset_symbol_frequencies(c);
+	deflate_tally_item_list(c, block_length);
+	deflate_make_huffman_codes(&c->freqs, &c->codes);
 }
 
 /*
@@ -3388,15 +3392,11 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	deflate_set_initial_costs(c, block_begin, block_length, is_first_block);
 
 	do {
-		/* Find the minimum cost path for this pass. */
+		/*
+		 * Find the minimum-cost path for this pass.
+		 * Also set c->freqs and c->codes to match the path.
+		 */
 		deflate_find_min_cost_path(c, block_length, cache_ptr);
-
-		/* Compute frequencies of the chosen symbols. */
-		deflate_reset_symbol_frequencies(c);
-		deflate_tally_item_list(c, block_length);
-
-		/* Make the Huffman codes. */
-		deflate_make_huffman_codes(&c->freqs, &c->codes);
 
 		/*
 		 * Compute the exact cost of the block if the path were to be
