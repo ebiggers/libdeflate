@@ -3261,21 +3261,23 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 }
 
 /*
- * Choose the literal/match sequence to use for the current block.  The basic
- * algorithm finds a minimum-cost path through the block's graph of
- * literal/match choices, given a cost model.  However, the cost of each symbol
- * is unknown until the Huffman codes have been built, but at the same time the
- * Huffman codes depend on the frequencies of chosen symbols.  Consequently,
- * multiple passes must be used to try to approximate an optimal solution.  The
- * first pass uses default costs, mixed with the costs from the previous block
- * if any.  Later passes use the Huffman codeword lengths from the previous pass
- * as the costs.
+ * Choose the literals and matches for the current block, then output the block.
+ *
+ * To choose the literal/match sequence, we find the minimum-cost path through
+ * the block's graph of literal/match choices, given a cost model.  However, the
+ * true cost of each symbol is unknown until the Huffman codes have been built,
+ * but at the same time the Huffman codes depend on the frequencies of chosen
+ * symbols.  Consequently, multiple passes must be used to try to approximate an
+ * optimal solution.  The first pass uses default costs, mixed with the costs
+ * from the previous block when it seems appropriate.  Later passes use the
+ * Huffman codeword lengths from the previous pass as the costs.
  */
 static void
-deflate_optimize_block(struct libdeflate_compressor *c,
-		       const u8 *block_begin, u32 block_length,
-		       const struct lz_match *cache_ptr, bool is_first_block,
-		       bool is_final_block)
+deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
+				 struct deflate_output_bitstream *os,
+				 const u8 *block_begin, u32 block_length,
+				 const struct lz_match *cache_ptr,
+				 bool is_first_block, bool is_final_block)
 {
 	unsigned num_passes_remaining = c->p.n.num_optim_passes;
 	u32 lit_cost, len_sym_cost;
@@ -3317,6 +3319,9 @@ deflate_optimize_block(struct libdeflate_compressor *c,
 		if (--num_passes_remaining || !is_final_block)
 			deflate_set_costs_from_codes(c, &c->codes.lens);
 	} while (num_passes_remaining);
+
+	deflate_flush_block(c, os, block_begin, block_length, NULL,
+			    is_final_block);
 }
 
 static void
@@ -3590,10 +3595,10 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			} while (--num_bytes_to_rewind);
 			cache_len_rewound = orig_cache_ptr - cache_ptr;
 
-			deflate_optimize_block(c, in_block_begin, block_length,
-					       cache_ptr, is_first, is_final);
-			deflate_flush_block(c, os, in_block_begin, block_length,
-					    NULL, is_final);
+			deflate_optimize_and_flush_block(c, os, in_block_begin,
+							 block_length,
+							 cache_ptr,
+							 is_first, is_final);
 			memmove(c->p.n.match_cache, cache_ptr,
 				cache_len_rewound * sizeof(*cache_ptr));
 			cache_ptr = &c->p.n.match_cache[cache_len_rewound];
@@ -3615,10 +3620,10 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			bool is_final = (in_next == in_end);
 
 			deflate_near_optimal_merge_stats(c);
-			deflate_optimize_block(c, in_block_begin, block_length,
-					       cache_ptr, is_first, is_final);
-			deflate_flush_block(c, os, in_block_begin, block_length,
-					    NULL, is_final);
+			deflate_optimize_and_flush_block(c, os, in_block_begin,
+							 block_length,
+							 cache_ptr,
+							 is_first, is_final);
 			cache_ptr = &c->p.n.match_cache[0];
 			deflate_near_optimal_save_stats(c);
 			deflate_near_optimal_init_stats(c);
