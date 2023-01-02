@@ -607,6 +607,8 @@ struct libdeflate_compressor {
 			/* The current cost model being used */
 			struct deflate_costs costs;
 
+			struct deflate_codes only_lits_codes;
+
 			/*
 			 * A table that maps match offset to offset slot.  This
 			 * differs from deflate_offset_slot[] in that this is a
@@ -3342,6 +3344,8 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
  * optimal solution.  The first pass uses default costs, mixed with the costs
  * from the previous block when it seems appropriate.  Later passes use the
  * Huffman codeword lengths from the previous pass as the costs.
+ *
+ * As an alternate strategy, also consider using only literals.
  */
 static void
 deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
@@ -3353,7 +3357,23 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	unsigned num_passes_remaining = c->p.n.max_optim_passes;
 	u32 best_true_cost = UINT32_MAX;
 	u32 true_cost;
+	u32 only_lits_cost;
+	struct deflate_sequence seq_;
+	struct deflate_sequence *seq = NULL;
 	u32 i;
+
+	/*
+	 * On some data, using only literals (no matches) ends up being better
+	 * than what the iterative optimization algorithm produces.  Therefore,
+	 * consider using only literals.
+	 */
+	deflate_reset_symbol_frequencies(c);
+	for (i = 0; i < block_length; i++)
+		c->freqs.litlen[block_begin[i]]++;
+	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
+	deflate_make_huffman_codes(&c->freqs, &c->codes);
+	only_lits_cost = deflate_compute_true_cost(c);
+	c->p.n.only_lits_codes = c->codes;
 
 	/*
 	 * Force the block to really end at the desired length, even if some
@@ -3401,7 +3421,14 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 
 	} while (--num_passes_remaining);
 
-	deflate_flush_block(c, os, block_begin, block_length, NULL,
+	if (only_lits_cost < best_true_cost) {
+		/* Using only literals ended up being best! */
+		c->codes = c->p.n.only_lits_codes;
+		deflate_set_costs_from_codes(c, &c->codes.lens);
+		seq_.litrunlen_and_length = block_length;
+		seq = &seq_;
+	}
+	deflate_flush_block(c, os, block_begin, block_length, seq,
 			    is_final_block);
 }
 
