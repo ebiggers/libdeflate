@@ -3885,7 +3885,7 @@ libdeflate_alloc_compressor(int compression_level)
 		c->impl = deflate_compress_near_optimal;
 		c->max_search_depth = 100;
 		c->nice_match_length = 150;
-		c->p.n.max_optim_passes = 3;
+		c->p.n.max_optim_passes = 4;
 		c->p.n.min_improvement_to_continue = 16;
 		c->p.n.min_bits_to_use_nonfinal_path = 16;
 		deflate_init_offset_slot_full(c);
@@ -3895,7 +3895,7 @@ libdeflate_alloc_compressor(int compression_level)
 		c->impl = deflate_compress_near_optimal;
 		c->max_search_depth = 300;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
-		c->p.n.max_optim_passes = 4;
+		c->p.n.max_optim_passes = 10;
 		c->p.n.min_improvement_to_continue = 1;
 		c->p.n.min_bits_to_use_nonfinal_path = 1;
 		deflate_init_offset_slot_full(c);
