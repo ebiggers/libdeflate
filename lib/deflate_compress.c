@@ -1696,15 +1696,6 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	ASSERT((bitbuf & ~(((bitbuf_t)1 << bitcount) - 1)) == 0);
 	ASSERT(out_next <= out_end);
 
-	if (sequences != NULL /* !near_optimal */ ||
-	    !SUPPORT_NEAR_OPTIMAL_PARSING) {
-		/* Tally the end-of-block symbol. */
-		c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
-
-		/* Build dynamic Huffman codes. */
-		deflate_make_huffman_codes(&c->freqs, &c->codes);
-	} /* Else, this was already done. */
-
 	/* Precompute the precode items and build the precode. */
 	deflate_precompute_huffman_header(c);
 
@@ -1984,6 +1975,19 @@ out:
 	os->bitbuf = bitbuf;
 	os->bitcount = bitcount;
 	os->next = out_next;
+}
+
+static void
+deflate_finish_block(struct libdeflate_compressor *c,
+		     struct deflate_output_bitstream *os,
+		     const u8 *block_begin, u32 block_length,
+		     const struct deflate_sequence *sequences,
+		     bool is_final_block)
+{
+	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
+	deflate_make_huffman_codes(&c->freqs, &c->codes);
+	deflate_flush_block(c, os, block_begin, block_length, sequences,
+			    is_final_block);
 }
 
 /******************************************************************************/
@@ -2446,9 +2450,9 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 		} while (in_next < in_max_block_end &&
 			 seq < &c->p.f.sequences[FAST_SEQ_STORE_LENGTH]);
 
-		deflate_flush_block(c, os, in_block_begin,
-				    in_next - in_block_begin,
-				    c->p.f.sequences, in_next == in_end);
+		deflate_finish_block(c, os, in_block_begin,
+				     in_next - in_block_begin,
+				     c->p.f.sequences, in_next == in_end);
 	} while (in_next != in_end);
 }
 
@@ -2525,9 +2529,9 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 
-		deflate_flush_block(c, os, in_block_begin,
-				    in_next - in_block_begin,
-				    c->p.g.sequences, in_next == in_end);
+		deflate_finish_block(c, os, in_block_begin,
+				     in_next - in_block_begin,
+				     c->p.g.sequences, in_next == in_end);
 	} while (in_next != in_end);
 }
 
@@ -2731,9 +2735,9 @@ have_cur_match:
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 
-		deflate_flush_block(c, os, in_block_begin,
-				    in_next - in_block_begin,
-				    c->p.g.sequences, in_next == in_end);
+		deflate_finish_block(c, os, in_block_begin,
+				     in_next - in_block_begin,
+				     c->p.g.sequences, in_next == in_end);
 	} while (in_next != in_end);
 }
 
