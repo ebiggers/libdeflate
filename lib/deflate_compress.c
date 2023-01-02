@@ -609,6 +609,8 @@ struct libdeflate_compressor {
 
 			struct deflate_codes only_lits_codes;
 
+			struct deflate_costs costs_producing_best_true_cost;
+
 			/*
 			 * A table that maps match offset to offset slot.  This
 			 * differs from deflate_offset_slot[] in that this is a
@@ -647,6 +649,16 @@ struct libdeflate_compressor {
 			 * Smaller values = more compression.
 			 */
 			unsigned min_improvement_to_continue;
+
+			/*
+			 * The minimum number of bits that would need to be
+			 * saved for it to be considered worth the time to
+			 * regenerate and use the min-cost path from a previous
+			 * optimization pass, in the case where the final
+			 * optimization pass actually increased the cost.
+			 * Smaller values = more compression.
+			 */
+			unsigned min_bits_to_use_nonfinal_path;
 
 		} n; /* (n)ear-optimal */
 	#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
@@ -3415,6 +3427,7 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 			break;
 
 		best_true_cost = true_cost;
+		c->p.n.costs_producing_best_true_cost = c->p.n.costs;
 
 		/* Update the cost model from the Huffman codes. */
 		deflate_set_costs_from_codes(c, &c->codes.lens);
@@ -3427,6 +3440,15 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 		deflate_set_costs_from_codes(c, &c->codes.lens);
 		seq_.litrunlen_and_length = block_length;
 		seq = &seq_;
+	} else if (true_cost >=
+		   best_true_cost + c->p.n.min_bits_to_use_nonfinal_path) {
+		/*
+		 * The best solution was actually from a non-final optimization
+		 * pass, so recover and use the min-cost path from that pass.
+		 */
+		c->p.n.costs = c->p.n.costs_producing_best_true_cost;
+		deflate_find_min_cost_path(c, block_length, cache_ptr);
+		deflate_set_costs_from_codes(c, &c->codes.lens);
 	}
 	deflate_flush_block(c, os, block_begin, block_length, seq,
 			    is_final_block);
@@ -3856,6 +3878,7 @@ libdeflate_alloc_compressor(int compression_level)
 		c->nice_match_length = 75;
 		c->p.n.max_optim_passes = 2;
 		c->p.n.min_improvement_to_continue = 32;
+		c->p.n.min_bits_to_use_nonfinal_path = 32;
 		deflate_init_offset_slot_full(c);
 		break;
 	case 11:
@@ -3864,6 +3887,7 @@ libdeflate_alloc_compressor(int compression_level)
 		c->nice_match_length = 150;
 		c->p.n.max_optim_passes = 3;
 		c->p.n.min_improvement_to_continue = 16;
+		c->p.n.min_bits_to_use_nonfinal_path = 16;
 		deflate_init_offset_slot_full(c);
 		break;
 	case 12:
@@ -3873,6 +3897,7 @@ libdeflate_alloc_compressor(int compression_level)
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		c->p.n.max_optim_passes = 4;
 		c->p.n.min_improvement_to_continue = 1;
+		c->p.n.min_bits_to_use_nonfinal_path = 1;
 		deflate_init_offset_slot_full(c);
 		break;
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
