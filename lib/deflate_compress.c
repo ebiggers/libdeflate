@@ -3883,7 +3883,7 @@ libdeflate_alloc_compressor(int compression_level)
 		break;
 	case 11:
 		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 70;
+		c->max_search_depth = 100;
 		c->nice_match_length = 150;
 		c->p.n.max_optim_passes = 3;
 		c->p.n.min_improvement_to_continue = 16;
@@ -3893,7 +3893,7 @@ libdeflate_alloc_compressor(int compression_level)
 	case 12:
 	default:
 		c->impl = deflate_compress_near_optimal;
-		c->max_search_depth = 150;
+		c->max_search_depth = 300;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		c->p.n.max_optim_passes = 4;
 		c->p.n.min_improvement_to_continue = 1;
