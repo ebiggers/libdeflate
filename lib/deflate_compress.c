@@ -25,6 +25,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <limits.h>
+
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 
@@ -136,7 +138,8 @@
  * BIT_COST should be a power of 2.  A value of 8 or 16 works well.  A higher
  * value isn't very useful since the calculations are approximate anyway.
  *
- * BIT_COST doesn't apply to deflate_flush_block(), which considers whole bits.
+ * BIT_COST doesn't apply to deflate_flush_block() and
+ * deflate_compute_true_cost(), which consider whole bits.
  */
 #define BIT_COST	16
 
@@ -628,7 +631,21 @@ struct libdeflate_compressor {
 			u32 new_match_len_freqs[DEFLATE_MAX_MATCH_LEN + 1];
 			u32 match_len_freqs[DEFLATE_MAX_MATCH_LEN + 1];
 
-			unsigned num_optim_passes;
+			/*
+			 * The maximum number of optimization passes
+			 * (min-cost path searches) per block.
+			 * Larger values = more compression.
+			 */
+			unsigned max_optim_passes;
+
+			/*
+			 * If an optimization pass improves the cost by fewer
+			 * than this number of bits, then optimization will stop
+			 * early, before max_optim_passes has been reached.
+			 * Smaller values = more compression.
+			 */
+			unsigned min_improvement_to_continue;
+
 		} n; /* (n)ear-optimal */
 	#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
@@ -2801,6 +2818,45 @@ deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 }
 
+/*
+ * Compute the exact cost, in bits, that would be required to output the matches
+ * and literals described by @c->freqs as a dynamic Huffman block.  The litlen
+ * and offset codes are assumed to have already been built in @c->codes.
+ */
+static u32
+deflate_compute_true_cost(struct libdeflate_compressor *c)
+{
+	u32 cost = 0;
+	unsigned sym;
+
+	deflate_precompute_huffman_header(c);
+
+	memset(&c->codes.lens.litlen[c->o.precode.num_litlen_syms], 0,
+	       DEFLATE_NUM_LITLEN_SYMS - c->o.precode.num_litlen_syms);
+
+	cost += 5 + 5 + 4 + (3 * c->o.precode.num_explicit_lens);
+	for (sym = 0; sym < DEFLATE_NUM_PRECODE_SYMS; sym++) {
+		cost += c->o.precode.freqs[sym] *
+			(c->o.precode.lens[sym] +
+			 deflate_extra_precode_bits[sym]);
+	}
+
+	for (sym = 0; sym < DEFLATE_FIRST_LEN_SYM; sym++)
+		cost += c->freqs.litlen[sym] * c->codes.lens.litlen[sym];
+
+	for (; sym < DEFLATE_FIRST_LEN_SYM +
+	       ARRAY_LEN(deflate_extra_length_bits); sym++)
+		cost += c->freqs.litlen[sym] *
+			(c->codes.lens.litlen[sym] +
+			 deflate_extra_length_bits[sym - DEFLATE_FIRST_LEN_SYM]);
+
+	for (sym = 0; sym < ARRAY_LEN(deflate_extra_offset_bits); sym++)
+		cost += c->freqs.offset[sym] *
+			(c->codes.lens.offset[sym] +
+			 deflate_extra_offset_bits[sym]);
+	return cost;
+}
+
 /* Set the current cost model from the codeword lengths specified in @lens. */
 static void
 deflate_set_costs_from_codes(struct libdeflate_compressor *c,
@@ -3294,7 +3350,9 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 				 const struct lz_match *cache_ptr,
 				 bool is_first_block, bool is_final_block)
 {
-	unsigned num_passes_remaining = c->p.n.num_optim_passes;
+	unsigned num_passes_remaining = c->p.n.max_optim_passes;
+	u32 best_true_cost = UINT32_MAX;
+	u32 true_cost;
 	u32 i;
 
 	/*
@@ -3321,13 +3379,27 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 		deflate_make_huffman_codes(&c->freqs, &c->codes);
 
 		/*
-		 * Update the costs.  After the last optimization pass, the
-		 * final costs won't be needed for this block, but they will be
-		 * used in determining the initial costs for the next block.
+		 * Compute the exact cost of the block if the path were to be
+		 * used.  Note that this differs from
+		 * c->p.n.optimum_nodes[0].cost_to_end in that true_cost uses
+		 * the actual Huffman codes instead of c->p.n.costs.
 		 */
-		if (--num_passes_remaining || !is_final_block)
-			deflate_set_costs_from_codes(c, &c->codes.lens);
-	} while (num_passes_remaining);
+		true_cost = deflate_compute_true_cost(c);
+
+		/*
+		 * If the cost didn't improve much from the previous pass, then
+		 * doing more passes probably won't be helpful, so stop early.
+		 */
+		if (true_cost + c->p.n.min_improvement_to_continue >
+		    best_true_cost)
+			break;
+
+		best_true_cost = true_cost;
+
+		/* Update the cost model from the Huffman codes. */
+		deflate_set_costs_from_codes(c, &c->codes.lens);
+
+	} while (--num_passes_remaining);
 
 	deflate_flush_block(c, os, block_begin, block_length, NULL,
 			    is_final_block);
@@ -3755,14 +3827,16 @@ libdeflate_alloc_compressor(int compression_level)
 		c->impl = deflate_compress_near_optimal;
 		c->max_search_depth = 35;
 		c->nice_match_length = 75;
-		c->p.n.num_optim_passes = 2;
+		c->p.n.max_optim_passes = 2;
+		c->p.n.min_improvement_to_continue = 32;
 		deflate_init_offset_slot_full(c);
 		break;
 	case 11:
 		c->impl = deflate_compress_near_optimal;
 		c->max_search_depth = 70;
 		c->nice_match_length = 150;
-		c->p.n.num_optim_passes = 3;
+		c->p.n.max_optim_passes = 3;
+		c->p.n.min_improvement_to_continue = 16;
 		deflate_init_offset_slot_full(c);
 		break;
 	case 12:
@@ -3770,7 +3844,8 @@ libdeflate_alloc_compressor(int compression_level)
 		c->impl = deflate_compress_near_optimal;
 		c->max_search_depth = 150;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
-		c->p.n.num_optim_passes = 4;
+		c->p.n.max_optim_passes = 4;
+		c->p.n.min_improvement_to_continue = 1;
 		deflate_init_offset_slot_full(c);
 		break;
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
