@@ -3124,11 +3124,11 @@ deflate_adjust_costs_impl(struct libdeflate_compressor *c,
 /*
  * Adjust the costs when beginning a new block.
  *
- * Since the current costs have been optimized for the data, it's undesirable to
- * throw them away and start over with the default costs.  At the same time, we
- * don't want to bias the parse by assuming that the next block will be similar
- * to the current block.  As a compromise, make the costs closer to the
- * defaults, but don't simply set them to the defaults.
+ * Since the current costs are optimized for the data already, it can be helpful
+ * to reuse them instead of starting over with the default costs.  However, this
+ * depends on how similar the new block is to the previous block.  Therefore,
+ * use a heuristic to decide how similar the blocks are, and mix together the
+ * current costs and the default costs accordingly.
  */
 static void
 deflate_adjust_costs(struct libdeflate_compressor *c,
@@ -3159,7 +3159,10 @@ deflate_adjust_costs(struct libdeflate_compressor *c,
 	cutoff = ((u64)c->p.n.prev_num_observations *
 		  c->split_stats.num_observations * 200) / 512;
 
-	if (4 * total_delta > 9 * cutoff)
+	if (total_delta > 3 * cutoff)
+		/* Big change in the data; just use the default costs. */
+		deflate_set_default_costs(c, lit_cost, len_sym_cost);
+	else if (4 * total_delta > 9 * cutoff)
 		deflate_adjust_costs_impl(c, lit_cost, len_sym_cost, 3);
 	else if (2 * total_delta > 3 * cutoff)
 		deflate_adjust_costs_impl(c, lit_cost, len_sym_cost, 2);
