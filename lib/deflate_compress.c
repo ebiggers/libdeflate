@@ -25,8 +25,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <limits.h>
-
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 
