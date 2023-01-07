@@ -156,8 +156,7 @@ gen_chunk_constants(void)
 	       (table_len - 1) * min_chunk_len);
 	printf("\n");
 	printf("/* Multipliers for implementations that use a variable chunk length */\n");
-	printf("static const u32 crc32_mults_for_chunklen[][CRC32_NUM_CHUNKS - 1] MAYBE_UNUSED = {\n",
-	       num_chunks - 1);
+	printf("static const u32 crc32_mults_for_chunklen[][CRC32_NUM_CHUNKS - 1] MAYBE_UNUSED = {\n");
 	printf("\t{ 0 /* unused row */ },\n");
 	for (size_t i = 1; i < table_len; i++) {
 		const size_t chunk_len = i*min_chunk_len;
