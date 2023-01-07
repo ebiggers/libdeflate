@@ -32,7 +32,6 @@
 #include "prog_util.h"
 
 #include <errno.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #ifdef _WIN32
 #  include <sys/utime.h>

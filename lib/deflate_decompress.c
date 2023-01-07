@@ -42,8 +42,6 @@
  *   instructions enabled and is used automatically at runtime when supported.
  */
 
-#include <limits.h>
-
 #include "lib_common.h"
 #include "deflate_constants.h"
 
