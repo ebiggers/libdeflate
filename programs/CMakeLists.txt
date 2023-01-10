@@ -89,6 +89,7 @@ if(LIBDEFLATE_BUILD_TESTS)
         test_checksums
         test_custom_malloc
         test_incomplete_codes
+        test_invalid_streams
         test_litrunlen_overflow
         test_overread
         test_slow_decompression
