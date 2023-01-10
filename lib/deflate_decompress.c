@@ -427,8 +427,14 @@ static const u32 precode_decode_results[] = {
 /* Indicates a subtable pointer entry in the litlen or offset decode table */
 #define HUFFDEC_SUBTABLE_POINTER	0x00004000
 
-/* Indicates an end-of-block entry in the litlen decode table */
+/*
+ * Indicates an end-of-block entry in the litlen decode table.
+ * Also set if HUFFDEC_INVALID_LITLEN is set.
+ */
 #define HUFFDEC_END_OF_BLOCK		0x00002000
+
+/* Indicates an invalid litlen symbol, i.e. symbol 286 or 287 */
+#define HUFFDEC_INVALID_LITLEN		0x00001000
 
 /* Maximum number of bits that can be consumed by decoding a match length */
 #define LENGTH_MAXBITS		(DEFLATE_MAX_LITLEN_CODEWORD_LEN + \
@@ -446,6 +452,7 @@ static const u32 precode_decode_results[] = {
  *		Bit 15:     0 (!HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     0 (!HUFFDEC_SUBTABLE_POINTER)
  *		Bit 13:     0 (!HUFFDEC_END_OF_BLOCK)
+ *		Bit 12:     0 (!HUFFDEC_INVALID_LITLEN)
  *		Bit 11-8:   remaining codeword length [not used]
  *		Bit 3-0:    remaining codeword length
  *	Lengths:
@@ -454,6 +461,7 @@ static const u32 precode_decode_results[] = {
  *		Bit 15:     0 (!HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     0 (!HUFFDEC_SUBTABLE_POINTER)
  *		Bit 13:     0 (!HUFFDEC_END_OF_BLOCK)
+ *		Bit 12:     0 (!HUFFDEC_INVALID_LITLEN)
  *		Bit 11-8:   remaining codeword length
  *		Bit 4-0:    remaining codeword length + number of extra bits
  *	End of block:
@@ -461,6 +469,15 @@ static const u32 precode_decode_results[] = {
  *		Bit 15:     1 (HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     0 (!HUFFDEC_SUBTABLE_POINTER)
  *		Bit 13:     1 (HUFFDEC_END_OF_BLOCK)
+ *		Bit 12:     0 (!HUFFDEC_INVALID_LITLEN)
+ *		Bit 11-8:   remaining codeword length [not used]
+ *		Bit 3-0:    remaining codeword length
+ *	Invalid litlen symbol:
+ *		Bit 31:     0 (!HUFFDEC_LITERAL)
+ *		Bit 15:     1 (HUFFDEC_EXCEPTIONAL)
+ *		Bit 14:     0 (!HUFFDEC_SUBTABLE_POINTER)
+ *		Bit 13:     1 (HUFFDEC_END_OF_BLOCK)
+ *		Bit 12:     1 (HUFFDEC_INVALID_LITLEN)
  *		Bit 11-8:   remaining codeword length [not used]
  *		Bit 3-0:    remaining codeword length
  *	Subtable pointer:
@@ -469,6 +486,7 @@ static const u32 precode_decode_results[] = {
  *		Bit 15:     1 (HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     1 (HUFFDEC_SUBTABLE_POINTER)
  *		Bit 13:     0 (!HUFFDEC_END_OF_BLOCK)
+ *		Bit 12:     0 (!HUFFDEC_INVALID_LITLEN)
  *		Bit 11-8:   number of subtable bits
  *		Bit 3-0:    number of main table bits
  *
@@ -586,8 +604,15 @@ static const u32 litlen_decode_results[] = {
 	ENTRY(35 , 3) , ENTRY(43 , 3) , ENTRY(51 , 3) , ENTRY(59 , 3),
 	ENTRY(67 , 4) , ENTRY(83 , 4) , ENTRY(99 , 4) , ENTRY(115, 4),
 	ENTRY(131, 5) , ENTRY(163, 5) , ENTRY(195, 5) , ENTRY(227, 5),
-	ENTRY(258, 0) , ENTRY(258, 0) , ENTRY(258, 0) ,
+	ENTRY(258, 0) ,
 #undef ENTRY
+
+	/* Litlen symbols 286-287 are invalid. */
+#define HUFFDEC_INVALID_LITLEN_ENTRY	(HUFFDEC_EXCEPTIONAL | \
+					 HUFFDEC_END_OF_BLOCK | \
+					 HUFFDEC_INVALID_LITLEN)
+	HUFFDEC_INVALID_LITLEN_ENTRY,
+	HUFFDEC_INVALID_LITLEN_ENTRY,
 };
 
 /* Maximum number of bits that can be consumed by decoding a match offset */
@@ -601,11 +626,13 @@ static const u32 litlen_decode_results[] = {
  * described contain zeroes:
  *
  *	Offsets:
- *		Bit 31-16:  offset base value
+ *		Bit 31-16:  offset base value (65535 if invalid offset symbol)
  *		Bit 15:     0 (!HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     0 (!HUFFDEC_SUBTABLE_POINTER)
  *		Bit 11-8:   remaining codeword length
+ *			    (0 if invalid offset symbol)
  *		Bit 4-0:    remaining codeword length + number of extra bits
+ *			    (0 if invalid offset symbol)
  *	Subtable pointer:
  *		Bit 31-16:  index of start of subtable
  *		Bit 15:     1 (HUFFDEC_EXCEPTIONAL)
@@ -626,8 +653,13 @@ static const u32 offset_decode_results[] = {
 	ENTRY(257   , 7)  , ENTRY(385   , 7)  , ENTRY(513   , 8)  , ENTRY(769   , 8)  ,
 	ENTRY(1025  , 9)  , ENTRY(1537  , 9)  , ENTRY(2049  , 10) , ENTRY(3073  , 10) ,
 	ENTRY(4097  , 11) , ENTRY(6145  , 11) , ENTRY(8193  , 12) , ENTRY(12289 , 12) ,
-	ENTRY(16385 , 13) , ENTRY(24577 , 13) , ENTRY(24577 , 13) , ENTRY(24577 , 13) ,
+	ENTRY(16385 , 13) , ENTRY(24577 , 13) ,
 #undef ENTRY
+
+	/* Offset symbols 30-31 are invalid. */
+#define HUFFDEC_INVALID_OFFSET_ENTRY	((u32)65535 << 16)
+	HUFFDEC_INVALID_OFFSET_ENTRY,
+	HUFFDEC_INVALID_OFFSET_ENTRY,
 };
 
 /*
@@ -710,6 +742,9 @@ struct libdeflate_decompressor {
  *	Must be <= DEFLATE_MAX_CODEWORD_LEN.
  * @sorted_syms
  *	A temporary array of length @num_syms.
+ * @invalid_entry
+ *	The entry that should be used for invalid symbols, or 0 if invalid
+ *	symbols are forbidden.
  * @table_bits_ret
  *	If non-NULL, then the dynamic table_bits is enabled, and the actual
  *	table_bits value will be returned here.
@@ -725,6 +760,7 @@ build_decode_table(u32 decode_table[],
 		   unsigned table_bits,
 		   unsigned max_codeword_len,
 		   u16 *sorted_syms,
+		   u32 invalid_entry,
 		   unsigned *table_bits_ret)
 {
 	unsigned len_counts[DEFLATE_MAX_CODEWORD_LEN + 1];
@@ -811,33 +847,28 @@ build_decode_table(u32 decode_table[],
 			 * need not contain any matches.
 			 */
 
-			/* sym=0, len=1 (arbitrary) */
-			entry = make_decode_table_entry(decode_results, 0, 1);
+			for (i = 0; i < (1U << table_bits); i++)
+				decode_table[i] = invalid_entry;
 		} else {
 			/*
 			 * Allow codes with a single used symbol, with codeword
 			 * length 1.  The DEFLATE RFC is unclear regarding this
 			 * case.  What zlib's decompressor does is permit this
-			 * for the litlen and offset codes and assume the
-			 * codeword is '0' rather than '1'.  We do the same
-			 * except we allow this for precodes too, since there's
-			 * no convincing reason to treat the codes differently.
-			 * We also assign both codewords '0' and '1' to the
-			 * symbol to avoid having to handle '1' specially.
+			 * for the litlen and offset codes, but not the precode.
+			 * It also assumes the codeword is '0' rather than '1'.
+			 * We do the same.
 			 */
 			if (codespace_used != (1U << (max_codeword_len - 1)) ||
-			    len_counts[1] != 1)
+			    len_counts[1] != 1 ||
+			    invalid_entry == 0 /* precode */)
 				return false;
 			entry = make_decode_table_entry(decode_results,
 							*sorted_syms, 1);
+			for (i = 0; i < (1U << table_bits); i += 2) {
+				decode_table[i] = entry;
+				decode_table[i + 1] = invalid_entry;
+			}
 		}
-		/*
-		 * Note: the decode table still must be fully initialized, in
-		 * case the stream is malformed and contains bits from the part
-		 * of the codespace the incomplete code doesn't use.
-		 */
-		for (i = 0; i < (1U << table_bits); i++)
-			decode_table[i] = entry;
 		return true;
 	}
 
@@ -1009,6 +1040,7 @@ build_precode_decode_table(struct libdeflate_decompressor *d)
 				  PRECODE_TABLEBITS,
 				  DEFLATE_MAX_PRE_CODEWORD_LEN,
 				  d->sorted_syms,
+				  0,
 				  NULL);
 }
 
@@ -1030,6 +1062,7 @@ build_litlen_decode_table(struct libdeflate_decompressor *d,
 				  LITLEN_TABLEBITS,
 				  DEFLATE_MAX_LITLEN_CODEWORD_LEN,
 				  d->sorted_syms,
+				  HUFFDEC_INVALID_LITLEN_ENTRY,
 				  &d->litlen_tablebits);
 }
 
@@ -1051,6 +1084,7 @@ build_offset_decode_table(struct libdeflate_decompressor *d,
 				  OFFSET_TABLEBITS,
 				  DEFLATE_MAX_OFFSET_CODEWORD_LEN,
 				  d->sorted_syms,
+				  HUFFDEC_INVALID_OFFSET_ENTRY,
 				  NULL);
 }
 

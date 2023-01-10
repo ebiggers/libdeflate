@@ -442,8 +442,10 @@ have_decode_tables:
 		if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
 			/* Subtable pointer or end-of-block entry */
 
-			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
+			if (unlikely(entry & HUFFDEC_END_OF_BLOCK)) {
+				SAFETY_CHECK(!(entry & HUFFDEC_INVALID_LITLEN));
 				goto block_done;
+			}
 
 			/*
 			 * A subtable is required.  Load and consume the
@@ -477,8 +479,10 @@ have_decode_tables:
 				*out_next++ = lit;
 				continue;
 			}
-			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
+			if (unlikely(entry & HUFFDEC_END_OF_BLOCK)) {
+				SAFETY_CHECK(!(entry & HUFFDEC_INVALID_LITLEN));
 				goto block_done;
+			}
 			/* Else, it's a length that required a subtable. */
 		}
 
@@ -543,7 +547,24 @@ have_decode_tables:
 		saved_bitbuf = bitbuf;
 		bitbuf >>= (u8)entry;
 		bitsleft -= entry; /* optimization: subtract full entry */
-		offset = entry >> 16;
+
+		/*
+		 * Extract the offset base value from the decode table entry,
+		 * then add the appropriate number of extra bits to it.
+		 *
+		 * The DEFLATE format is defective in that invalid offset
+		 * symbols may be present.  In practice it is fine to just remap
+		 * them to valid symbols; detecting data corruption is the job
+		 * of a checksum.  But rarely, someone will be comparing DEFLATE
+		 * implementations and expect an error to be returned for these
+		 * weird edge cases where DEFLATE streams can be invalid.  To
+		 * match zlib's strict behavior with near-zero overhead, we
+		 * store an offset base of 65535 for these invalid symbols, and
+		 * extract it using a signed shift, turning it into UINT32_MAX.
+		 * That will fail the offset validation below (which we have to
+		 * do anyway) unless we're more than 4 GiB into the data buffer.
+		 */
+		offset = (s32)entry >> 16;
 		offset += EXTRACT_VARBITS8(saved_bitbuf, entry) >> (u8)(entry >> 8);
 
 		/* Validate the match offset; needed even in the fastloop. */
@@ -702,8 +723,10 @@ generic_loop:
 			*out_next++ = length;
 			continue;
 		}
-		if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
+		if (unlikely(entry & HUFFDEC_END_OF_BLOCK)) {
+			SAFETY_CHECK(!(entry & HUFFDEC_INVALID_LITLEN));
 			goto block_done;
+		}
 		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >> (u8)(entry >> 8);
 		if (unlikely(length > out_end - out_next))
 			return LIBDEFLATE_INSUFFICIENT_SPACE;
@@ -719,7 +742,7 @@ generic_loop:
 			if (!CAN_CONSUME(OFFSET_MAXBITS))
 				REFILL_BITS();
 		}
-		offset = entry >> 16;
+		offset = (s32)entry >> 16;
 		offset += EXTRACT_VARBITS8(bitbuf, entry) >> (u8)(entry >> 8);
 		bitbuf >>= (u8)entry;
 		bitsleft -= entry;
