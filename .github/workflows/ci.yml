@@ -6,7 +6,7 @@ jobs:
     name: Build and test (x86_64, ${{ matrix.os }}, ${{ matrix.compiler }})
     strategy:
       matrix:
-        os: [ubuntu-20.04, ubuntu-18.04]
+        os: [ubuntu-22.04, ubuntu-20.04]
         compiler: [gcc, clang]
     runs-on: ${{ matrix.os }}
     env:
@@ -187,7 +187,7 @@ jobs:
     name: Cross compile for ${{matrix.abi}} Android on ${{matrix.os}}
     strategy:
       matrix:
-        os: [ubuntu-18.04, ubuntu-20.04, macos-latest]
+        os: [ubuntu-latest, macos-latest]
         abi: [armeabi-v7a, arm64-v8a, x86, x86_64]
     runs-on: ${{matrix.os}}
     env:
