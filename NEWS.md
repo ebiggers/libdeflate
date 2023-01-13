@@ -1,5 +1,24 @@
 # libdeflate release notes
 
+## Version 1.16
+
+* Improved the compression ratio at levels 10-12 slightly, mainly levels 11-12.
+  Some inputs (such as certain PNG files) see much improved compression ratios.
+  As a trade-off, compressing at levels 11-12 is now about 5-20% slower.
+
+* For consistency with zlib, the decompressor now returns an error on some
+  invalid inputs that were accepted before.
+
+* Fixed a build error on arm64 with gcc with certain target CPUs.  (Fixes v1.12)
+
+* Fixed a build error on arm32 with gcc 10.1-10.3 and 11.1-11.2.  (Fixes v1.15)
+
+* Fixed a build error on arm32 with gcc in soft float mode.  (Fixes v1.15)
+
+* Fixed a build error in programs/gzip.c with uClibc.  (Fixes v1.15)
+
+* Fixed the install target on Windows.  (Fixes v1.15)
+
 ## Version 1.15
 
 * libdeflate now uses CMake instead of a plain Makefile.
