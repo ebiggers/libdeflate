@@ -1689,11 +1689,8 @@ do {									\
 /*
  * Choose the best type of block to use (dynamic Huffman, static Huffman, or
  * uncompressed), then output it.
- *
- * Returns the number of bits the block header used (or would have used, if the
- * block was output as a dynamic Huffman block).
  */
-static u32
+static void
 deflate_flush_block(struct libdeflate_compressor *c,
 		    struct deflate_output_bitstream *os,
 		    const u8 *block_begin, u32 block_length,
@@ -1714,7 +1711,6 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	unsigned bitcount = os->bitcount;
 	u8 *out_next = os->next;
 	u8 * const out_end = os->end;
-	u32 hdr_bits;
 	/* The cost for each block type, in bits */
 	u32 dynamic_cost = 0;
 	u32 static_cost = 0;
@@ -1733,14 +1729,13 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	deflate_precompute_huffman_header(c);
 
 	/* Account for the cost of encoding dynamic Huffman codes. */
-	hdr_bits = 5 + 5 + 4 + (3 * c->o.precode.num_explicit_lens);
+	dynamic_cost += 5 + 5 + 4 + (3 * c->o.precode.num_explicit_lens);
 	for (sym = 0; sym < DEFLATE_NUM_PRECODE_SYMS; sym++) {
 		u32 extra = deflate_extra_precode_bits[sym];
 
-		hdr_bits += c->o.precode.freqs[sym] *
-			    (extra + c->o.precode.lens[sym]);
+		dynamic_cost += c->o.precode.freqs[sym] *
+				(extra + c->o.precode.lens[sym]);
 	}
-	dynamic_cost = hdr_bits;
 
 	/* Account for the cost of encoding literals. */
 	for (sym = 0; sym < 144; sym++) {
@@ -2009,7 +2004,6 @@ out:
 	os->bitbuf = bitbuf;
 	os->bitcount = bitcount;
 	os->next = out_next;
-	return hdr_bits;
 }
 
 static void
@@ -2113,11 +2107,8 @@ merge_new_observations(struct block_split_stats *stats)
 	stats->num_new_observations = 0;
 }
 
-#define DEFAULT_PREV_HDR_BITS	512
-
 static bool
-do_end_block_check(struct block_split_stats *stats, u32 block_length,
-		   u32 prev_hdr_bits)
+do_end_block_check(struct block_split_stats *stats, u32 block_length)
 {
 	if (stats->num_observations > 0) {
 		/*
@@ -2148,23 +2139,14 @@ do_end_block_check(struct block_split_stats *stats, u32 block_length,
 
 		num_items = stats->num_observations +
 			    stats->num_new_observations;
-
 		/*
-		 * Heuristic: end the block when the sum of absolute differences
-		 * of probabilities becomes at least x/512, where x is roughly
-		 * 184-220, increasing as the estimated cost of the block header
-		 * increases (so that slightly longer blocks are used when block
-		 * headers are expensive).  To estimate the cost of the block
-		 * header, we just use the cost of the previous block's header.
-		 *
-		 * As above, the probability is multiplied by both
-		 * num_new_observations and num_observations.  Be careful to
-		 * avoid integer overflow.
+		 * Heuristic: the cutoff is when the sum of absolute differences
+		 * of probabilities becomes at least 200/512.  As above, the
+		 * probability is multiplied by both num_new_observations and
+		 * num_observations.  Be careful to avoid integer overflow.
 		 */
-		cutoff = stats->num_new_observations *
-			 (184 + (prev_hdr_bits / 32)) / 512 *
+		cutoff = stats->num_new_observations * 200 / 512 *
 			 stats->num_observations;
-
 		/*
 		 * Very short blocks have a lot of overhead for the Huffman
 		 * codes, so only use them if it clearly seems worthwhile.
@@ -2201,8 +2183,7 @@ should_end_block(struct block_split_stats *stats,
 	if (!ready_to_check_block(stats, in_block_begin, in_next, in_end))
 		return false;
 
-	return do_end_block_check(stats, in_next - in_block_begin,
-				  DEFAULT_PREV_HDR_BITS);
+	return do_end_block_check(stats, in_next - in_block_begin);
 }
 
 /******************************************************************************/
@@ -3380,9 +3361,6 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
  *
  * As an alternate strategy, also consider using only literals.  The boolean
  * returned in *used_only_literals indicates whether that strategy was best.
- *
- * *hdr_bits is set to the number of bits the block header used (or would have
- * used, if the block was output as a dynamic Huffman block).
  */
 static void
 deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
@@ -3390,7 +3368,7 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 				 const u8 *block_begin, u32 block_length,
 				 const struct lz_match *cache_ptr,
 				 bool is_first_block, bool is_final_block,
-				 bool *used_only_literals, u32 *hdr_bits)
+				 bool *used_only_literals)
 {
 	unsigned num_passes_remaining = c->p.n.max_optim_passes;
 	u32 best_true_cost = UINT32_MAX;
@@ -3474,8 +3452,8 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 		deflate_find_min_cost_path(c, block_length, cache_ptr);
 		deflate_set_costs_from_codes(c, &c->codes.lens);
 	}
-	*hdr_bits = deflate_flush_block(c, os, block_begin, block_length, seq,
-					is_final_block);
+	deflate_flush_block(c, os, block_begin, block_length, seq,
+			    is_final_block);
 }
 
 static void
@@ -3554,7 +3532,6 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 	struct lz_match *cache_ptr = c->p.n.match_cache;
 	u32 next_hashes[2] = {0, 0};
 	bool prev_block_used_only_literals = false;
-	u32 prev_hdr_bits = DEFAULT_PREV_HDR_BITS;
 
 	bt_matchfinder_init(&c->p.n.bt_mf);
 	deflate_near_optimal_init_stats(c);
@@ -3716,8 +3693,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 				continue;
 			/* Check if it would be worthwhile to end the block. */
 			if (do_end_block_check(&c->split_stats,
-					       in_next - in_block_begin,
-					       prev_hdr_bits)) {
+					       in_next - in_block_begin)) {
 				change_detected = true;
 				break;
 			}
@@ -3764,8 +3740,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						c, os, in_block_begin,
 						block_length, cache_ptr,
 						is_first, is_final,
-						&prev_block_used_only_literals,
-						&prev_hdr_bits);
+						&prev_block_used_only_literals);
 			memmove(c->p.n.match_cache, cache_ptr,
 				cache_len_rewound * sizeof(*cache_ptr));
 			cache_ptr = &c->p.n.match_cache[cache_len_rewound];
@@ -3791,8 +3766,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						c, os, in_block_begin,
 						block_length, cache_ptr,
 						is_first, is_final,
-						&prev_block_used_only_literals,
-						&prev_hdr_bits);
+						&prev_block_used_only_literals);
 			cache_ptr = &c->p.n.match_cache[0];
 			deflate_near_optimal_save_stats(c);
 			deflate_near_optimal_init_stats(c);
