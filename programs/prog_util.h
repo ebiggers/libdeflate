@@ -1,5 +1,5 @@
 /*
- * prog_util.h - utility functions for programs
+ * prog_util.h - common header for the programs; must be included first
  *
  * Copyright 2016 Eric Biggers
  *
@@ -29,18 +29,68 @@
 #define PROGRAMS_PROG_UTIL_H
 
 /*
- * To keep the code similar on all platforms, sometimes we intentionally use the
- * "deprecated" non-underscore-prefixed variants of functions in msvcrt.
+ * This header provides some utility functions and macros for the programs.  It
+ * also defines some macros that control the behavior of system headers, and for
+ * that reason it must be included before any system header.
+ *
+ * The latter part could be handled in this directory's CMakeLists.txt instead.
+ * We put as much as possible here, directly in the source, to make it easier to
+ * build the programs using other build systems (or "no build system").
+ *
+ * Note: CMakeLists.txt does do some dynamic feature detection, which can't be
+ * done in the source code.  For that reason, it duplicates some of the logic
+ * that defines macros like _GNU_SOURCE.  Keep this logic in sync.
  */
-#if defined(_WIN32) && !defined(_CRT_NONSTDC_NO_DEPRECATE)
-#  define _CRT_NONSTDC_NO_DEPRECATE 1
-#endif
-/*
- * Similarly, to match other platforms we intentionally use the "non-secure"
- * variants, which aren't actually any less secure when used properly.
- */
-#if defined(_WIN32) && !defined(_CRT_SECURE_NO_WARNINGS)
-#  define _CRT_SECURE_NO_WARNINGS 1
+
+#ifdef _WIN32
+
+  /*
+   * To keep the code similar on all platforms, sometimes we intentionally use
+   * the "deprecated" non-underscore-prefixed variants of functions in msvcrt.
+   */
+#  undef _CRT_NONSTDC_NO_DEPRECATE
+#  define _CRT_NONSTDC_NO_DEPRECATE	1
+
+  /*
+   * Similarly, to match other platforms we intentionally use the "non-secure"
+   * variants, which aren't actually any less secure when used properly.
+   */
+#  undef _CRT_SECURE_NO_WARNINGS
+#  define _CRT_SECURE_NO_WARNINGS	1
+
+#else
+
+   /* Needed to work with files >= 2 GiB on 32-bit systems */
+#  undef _FILE_OFFSET_BITS
+#  define _FILE_OFFSET_BITS	64
+
+   /* Note: when making changes here, update programs/CMakeLists.txt too. */
+#  if defined(__linux__)
+     /*
+      * May be needed for clock_gettime(), posix_fadvise(), posix_madvise(),
+      * futimens(), and MAP_ANONYMOUS, depending on the C library version.
+      */
+#    undef _GNU_SOURCE
+#    define _GNU_SOURCE
+#    undef _POSIX_C_SOURCE
+#    define _POSIX_C_SOURCE	200809L
+#  elif defined(__APPLE__)
+     /* Needed for O_NOFOLLOW and MAP_ANON */
+#    undef _DARWIN_C_SOURCE
+#    define _DARWIN_C_SOURCE
+#    undef _POSIX_C_SOURCE
+#  elif defined(__sun)
+     /* Needed for futimens() */
+#    undef __EXTENSIONS__
+#    define __EXTENSIONS__
+#    undef _POSIX_C_SOURCE
+#  else
+     /*
+      * Else assume that nothing else is needed.  Don't use _POSIX_C_SOURCE on
+      * BSD, since it causes anything non-POSIX, such as MAP_ANON, to be hidden.
+      */
+#    undef _POSIX_C_SOURCE
+#  endif
 #endif
 
 #ifdef HAVE_CONFIG_H

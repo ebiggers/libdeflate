@@ -25,12 +25,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifdef __APPLE__
-/* for O_NOFOLLOW */
-#  undef _POSIX_C_SOURCE
-#  define _DARWIN_C_SOURCE
-#endif
-
 #include "prog_util.h"
 
 #include <errno.h>

@@ -5,10 +5,10 @@
  * results as their zlib equivalents.
  */
 
+#include "test_util.h"
+
 #include <stdlib.h>
 #include <time.h>
-
-#include "test_util.h"
 
 static unsigned int rng_seed;
 

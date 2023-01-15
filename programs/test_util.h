@@ -28,7 +28,7 @@
 #ifndef PROGRAMS_TEST_UTIL_H
 #define PROGRAMS_TEST_UTIL_H
 
-#include "prog_util.h"
+#include "prog_util.h" /* must be included first */
 
 #include <zlib.h> /* for comparison purposes */
 
