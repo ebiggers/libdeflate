@@ -202,7 +202,10 @@ xopen_for_read(const tchar *path, bool symlink_ok, struct file_stream *strm)
 		return -1;
 	}
 
-#if defined(HAVE_POSIX_FADVISE) && (O_SEQUENTIAL == 0)
+#if O_SEQUENTIAL == 0 && \
+	(defined(HAVE_POSIX_FADVISE) || \
+	 /* fallback detection method for direct compilation */ \
+	 (!defined(HAVE_CONFIG_H) && defined(POSIX_FADV_SEQUENTIAL)))
 	(void)posix_fadvise(strm->fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 #endif
 
@@ -366,7 +369,9 @@ map_file_contents(struct file_stream *strm, u64 size)
 		return -1;
 	}
 
-#ifdef HAVE_POSIX_MADVISE
+#if defined(HAVE_POSIX_MADVISE) || \
+	/* fallback detection method for direct compilation */ \
+	(!defined(HAVE_CONFIG_H) && defined(POSIX_MADV_SEQUENTIAL))
 	(void)posix_madvise(strm->mmap_mem, size, POSIX_MADV_SEQUENTIAL);
 #endif
 	strm->mmap_token = strm; /* anything that's not NULL */

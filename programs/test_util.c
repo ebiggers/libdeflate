@@ -148,7 +148,9 @@ timer_ticks(void)
 
 	QueryPerformanceCounter(&count);
 	return count.QuadPart;
-#elif defined(HAVE_CLOCK_GETTIME)
+#elif defined(HAVE_CLOCK_GETTIME) || \
+	/* fallback detection method for direct compilation */ \
+	(!defined(HAVE_CONFIG_H) && defined(CLOCK_MONOTONIC))
 	struct timespec ts;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);

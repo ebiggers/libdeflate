@@ -355,7 +355,9 @@ restore_timestamps(struct file_stream *out, const tchar *newpath,
 	struct timespec times[2] = { stbuf->st_atimespec, stbuf->st_mtimespec };
 
 	ret = futimens(out->fd, times);
-#elif defined(HAVE_FUTIMENS) && defined(HAVE_STAT_NANOSECOND_PRECISION)
+#elif (defined(HAVE_FUTIMENS) && defined(HAVE_STAT_NANOSECOND_PRECISION)) || \
+	/* fallback detection method for direct compilation */ \
+	(!defined(HAVE_CONFIG_H) && defined(UTIME_NOW))
 	struct timespec times[2] = { stbuf->st_atim, stbuf->st_mtim };
 
 	ret = futimens(out->fd, times);
