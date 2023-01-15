@@ -18,6 +18,8 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y clang llvm libz-dev valgrind
     - run: scripts/run_tests.sh
+    - name: Direct compilation without official build system
+      run: $CC -O2 -Wall -Werror lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip
 
   other-arch-build-and-test:
     name: Build and test (${{ matrix.arch }}, Debian Bullseye, ${{ matrix.compiler }})
@@ -54,6 +56,8 @@ jobs:
     - run: cmake --build build --verbose
     - run: DESTDIR=build/install cmake --install build --verbose
     - run: ctest --test-dir build
+    - name: Direct compilation without official build system
+      run: cc -O2 -Wall -Werror lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip
 
   windows-msys2-build-and-test:
     name: Build and test (Windows, MSYS2, ${{matrix.sys}})
@@ -85,6 +89,8 @@ jobs:
     - run: cmake --build build --verbose
     - run: cmake --install build --verbose
     - run: ctest --test-dir build
+    - name: Direct compilation without official build system
+      run: cc -O2 -Wall -Werror -municode lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip.exe
 
   windows-visualstudio-build-and-test:
     name: Build and test (Windows, Visual Studio ${{matrix.toolset}}, ${{matrix.platform.vs}})
