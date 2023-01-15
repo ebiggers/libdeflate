@@ -208,3 +208,40 @@ jobs:
             -DLIBDEFLATE_BUILD_TESTS=1
         cmake --build build --verbose
         DESTDIR=build/install cmake --install build --verbose
+
+  fuzz-with-libFuzzer:
+    name: Fuzz with libFuzzer (${{matrix.target}} ${{matrix.sanitizer}})
+    strategy:
+      matrix:
+        include:
+        - target: deflate_compress
+          sanitizer:
+        - target: deflate_compress
+          sanitizer: --asan
+        - target: deflate_compress
+          sanitizer: --msan
+        - target: deflate_compress
+          sanitizer: --ubsan
+        - target: deflate_decompress
+          sanitizer:
+        - target: deflate_decompress
+          sanitizer: --asan
+        - target: deflate_decompress
+          sanitizer: --msan
+        - target: deflate_decompress
+          sanitizer: --ubsan
+        - target: zlib_decompress
+          sanitizer:
+        - target: gzip_decompress
+          sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang llvm
+    - name: Fuzz
+      run: |
+        scripts/libFuzzer/fuzz.sh --time=120 ${{matrix.sanitizer}} \
+            ${{matrix.target}}
