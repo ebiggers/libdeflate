@@ -5,8 +5,6 @@
 #ifndef LIB_LIB_COMMON_H
 #define LIB_LIB_COMMON_H
 
-#include "../common_defs.h"
-
 #ifdef LIBDEFLATE_H
  /*
   * When building the library, LIBDEFLATEAPI needs to be defined properly before
@@ -39,7 +37,7 @@
 
 #define LIBDEFLATEAPI	LIBDEFLATE_EXPORT_SYM LIBDEFLATE_ALIGN_STACK
 
-#include "../libdeflate.h"
+#include "../common_defs.h"
 
 void *libdeflate_malloc(size_t size);
 void libdeflate_free(void *ptr);

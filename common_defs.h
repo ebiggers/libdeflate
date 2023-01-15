@@ -28,6 +28,8 @@
 #ifndef COMMON_DEFS_H
 #define COMMON_DEFS_H
 
+#include "libdeflate.h"
+
 #include <stdbool.h>
 #include <stddef.h>	/* for size_t */
 #include <stdint.h>

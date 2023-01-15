@@ -97,7 +97,7 @@
 #  include "config.h"
 #endif
 
-#include "../libdeflate.h"
+#include "../common_defs.h"
 
 #include <inttypes.h>
 #include <limits.h>
@@ -107,8 +107,6 @@
 #ifndef _WIN32
 #  include <sys/types.h>
 #endif
-
-#include "../common_defs.h"
 
 #if defined(__GNUC__) || __has_attribute(format)
 # define _printf(str_idx, args_idx)	\
