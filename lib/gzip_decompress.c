@@ -28,8 +28,6 @@
 #include "lib_common.h"
 #include "gzip_constants.h"
 
-#include "libdeflate.h"
-
 LIBDEFLATEAPI enum libdeflate_result
 libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *d,
 			      const void *in, size_t in_nbytes,

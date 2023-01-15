@@ -45,8 +45,6 @@
 #include "lib_common.h"
 #include "deflate_constants.h"
 
-#include "libdeflate.h"
-
 /*
  * If the expression passed to SAFETY_CHECK() evaluates to false, then the
  * decompression routine immediately returns LIBDEFLATE_BAD_DATA, indicating the

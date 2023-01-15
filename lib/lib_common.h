@@ -39,6 +39,8 @@
 
 #define LIBDEFLATEAPI	LIBDEFLATE_EXPORT_SYM LIBDEFLATE_ALIGN_STACK
 
+#include "../libdeflate.h"
+
 void *libdeflate_malloc(size_t size);
 void libdeflate_free(void *ptr);
 

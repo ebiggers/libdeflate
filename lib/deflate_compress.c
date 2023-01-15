@@ -28,8 +28,6 @@
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 
-#include "libdeflate.h"
-
 /******************************************************************************/
 
 /*

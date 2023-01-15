@@ -169,7 +169,6 @@
  */
 
 #include "lib_common.h"
-#include "libdeflate.h"
 #include "crc32_multipliers.h"
 #include "crc32_tables.h"
 

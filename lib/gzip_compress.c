@@ -28,8 +28,6 @@
 #include "deflate_compress.h"
 #include "gzip_constants.h"
 
-#include "libdeflate.h"
-
 LIBDEFLATEAPI size_t
 libdeflate_gzip_compress(struct libdeflate_compressor *c,
 			 const void *in, size_t in_nbytes,

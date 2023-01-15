@@ -27,8 +27,6 @@
 
 #include "lib_common.h"
 
-#include "libdeflate.h"
-
 #ifdef FREESTANDING
 #  define malloc NULL
 #  define free NULL
