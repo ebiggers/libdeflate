@@ -29,9 +29,11 @@
 #define LIB_CPU_FEATURES_COMMON_H
 
 #if defined(TEST_SUPPORT__DO_NOT_USE) && !defined(FREESTANDING)
-#  undef _ANSI_SOURCE	/* for strdup() and strtok_r() */
+   /* for strdup() and strtok_r() */
+#  undef _ANSI_SOURCE
 #  ifndef __APPLE__
-#    define _GNU_SOURCE 1
+#    undef _GNU_SOURCE
+#    define _GNU_SOURCE
 #  endif
 #  include <stdio.h>
 #  include <stdlib.h>

@@ -800,8 +800,7 @@ heapify_array(u32 A[], unsigned length)
  * Sort the array 'A', which contains 'length' unsigned 32-bit integers.
  *
  * Note: name this function heap_sort() instead of heapsort() to avoid colliding
- * with heapsort() from stdlib.h on BSD-derived systems --- though this isn't
- * necessary when compiling with -D_ANSI_SOURCE, which is the better solution.
+ * with heapsort() from stdlib.h on BSD-derived systems.
  */
 static void
 heap_sort(u32 A[], unsigned length)

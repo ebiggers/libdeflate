@@ -31,8 +31,9 @@
  */
 
 #ifdef __APPLE__
-#undef _ANSI_SOURCE
-#define _DARWIN_C_SOURCE /* for sysctlbyname() */
+#  undef _ANSI_SOURCE
+#  undef _DARWIN_C_SOURCE
+#  define _DARWIN_C_SOURCE /* for sysctlbyname() */
 #endif
 
 #include "../cpu_features_common.h" /* must be included first */

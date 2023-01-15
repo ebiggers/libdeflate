@@ -159,10 +159,6 @@ if(LIBDEFLATE_GZIP_SUPPORT)
     endif()
 endif()
 
-if(NOT MSVC)
-    list(APPEND LIB_COMPILE_DEFINITIONS _ANSI_SOURCE)
-endif()
-
 if(LIBDEFLATE_FREESTANDING)
     list(APPEND LIB_COMPILE_OPTIONS -ffreestanding -nostdlib)
     list(APPEND LIB_LINK_LIBRARIES -ffreestanding -nostdlib)
