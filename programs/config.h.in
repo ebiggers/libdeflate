@@ -7,9 +7,6 @@
 /* Is the futimens() function available? */
 #cmakedefine HAVE_FUTIMENS
 
-/* Is the futimes() function available? */
-#cmakedefine HAVE_FUTIMES
-
 /* Is the posix_fadvise() function available? */
 #cmakedefine HAVE_POSIX_FADVISE
 

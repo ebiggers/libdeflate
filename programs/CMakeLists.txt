@@ -7,7 +7,6 @@ if(NOT MSVC)
 endif()
 check_symbol_exists(clock_gettime "time.h" HAVE_CLOCK_GETTIME)
 check_symbol_exists(futimens "fcntl.h;sys/stat.h" HAVE_FUTIMENS)
-check_symbol_exists(futimes "sys/time.h" HAVE_FUTIMES)
 check_symbol_exists(posix_fadvise "fcntl.h" HAVE_POSIX_FADVISE)
 check_symbol_exists(posix_madvise "sys/mman.h" HAVE_POSIX_MADVISE)
 check_c_source_compiles("#include <sys/types.h>

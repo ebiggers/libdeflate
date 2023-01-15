@@ -366,12 +366,6 @@ restore_timestamps(struct file_stream *out, const tchar *newpath,
 		stbuf->st_atim, stbuf->st_mtim,
 	};
 	ret = futimens(out->fd, times);
-#elif defined(HAVE_FUTIMES) && defined(HAVE_STAT_NANOSECOND_PRECISION)
-	struct timeval times[2] = {
-		{ stbuf->st_atim.tv_sec, stbuf->st_atim.tv_nsec / 1000, },
-		{ stbuf->st_mtim.tv_sec, stbuf->st_mtim.tv_nsec / 1000, },
-	};
-	ret = futimes(out->fd, times);
 #else
 	struct tutimbuf times = {
 		stbuf->st_atime, stbuf->st_mtime,
