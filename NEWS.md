@@ -1,5 +1,22 @@
 # libdeflate release notes
 
+## Version 1.17
+
+(Apologies for another release so soon after v1.16, but the bug fix listed below
+needed to go out.)
+
+* Fixed a bug introduced in v1.16 where compression at levels 10-12 would
+  sometimes produce an output larger than the size that was returned by the
+  corresponding `libdeflate_*_compress_bound()` function.
+
+* Converted the fuzzing scripts to use LLVM's libFuzzer and added them to the
+  GitHub Actions workflow.  (This would have detected the above bug.)
+
+* Further improved the support for direct compilation without using the official
+  build system.  The top-level source directory no longer needs to be added to
+  the include path, and building the programs no longer requires that
+  `_FILE_OFFSET_BITS` and `_POSIX_C_SOURCE` be defined on the command line.
+
 ## Version 1.16
 
 * Improved the compression ratio at levels 10-12 slightly, mainly levels 11-12.
