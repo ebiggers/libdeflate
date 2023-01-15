@@ -97,7 +97,7 @@
 #  include "config.h"
 #endif
 
-#include "libdeflate.h"
+#include "../libdeflate.h"
 
 #include <inttypes.h>
 #include <limits.h>
