@@ -164,10 +164,19 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
      * https://gcc.gnu.org/bugzilla/show_bug.cgi?id=104439.  We use the second
      * set of prerequisites, as they are stricter and we have no way to detect
      * the binutils version directly from a C source file.
+     *
+     * Also exclude the cases where the main target arch is armv6kz or armv7e-m.
+     * In those cases, gcc doesn't let functions that use the main arch be
+     * inlined into functions that are targeted to armv8-a+crc.  (armv8-a is
+     * necessary for crc to be accepted at all.)  That causes build errors.
+     * This issue happens for these specific sub-archs because they are not a
+     * subset of armv8-a.  Note: clang does not have this limitation.
      */
 #    if (GCC_PREREQ(11, 3) || \
 	 (GCC_PREREQ(10, 4) && !GCC_PREREQ(11, 0)) || \
-	 (GCC_PREREQ(9, 5) && !GCC_PREREQ(10, 0)))
+	 (GCC_PREREQ(9, 5) && !GCC_PREREQ(10, 0))) && \
+	!defined(__ARM_ARCH_6KZ__) && \
+	!defined(__ARM_ARCH_7EM__)
 #      define HAVE_CRC32_INTRIN	1
 #    endif
 #  elif __has_builtin(__builtin_arm_crc32b)
