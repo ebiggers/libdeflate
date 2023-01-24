@@ -51,6 +51,13 @@
 #    ifdef ARCH_ARM32
 #      ifdef __clang__
 #        define ATTRIBUTES	_target_attribute("armv8-a,crc")
+#      elif defined(__ARM_PCS_VFP)
+	 /*
+	  * +simd is needed to avoid a "selected architecture lacks an FPU"
+	  * error with Debian arm-linux-gnueabihf-gcc when -mfpu is not
+	  * explicitly specified on the command line.
+	  */
+#        define ATTRIBUTES	_target_attribute("arch=armv8-a+crc+simd")
 #      else
 #        define ATTRIBUTES	_target_attribute("arch=armv8-a+crc")
 #      endif
