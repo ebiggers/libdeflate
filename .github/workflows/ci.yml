@@ -209,6 +209,33 @@ jobs:
         cmake --build build --verbose
         DESTDIR=build/install cmake --install build --verbose
 
+  cpu-features-regression-tests:
+    name: Test building adler32.c and crc32.c with various flags
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
+    - name: Compile tests
+      run: |
+        for file in lib/adler32.c lib/crc32.c; do
+          for arch in armv4 armv4t armv5t armv5te armv5tej armv6 armv6j armv6k \
+                      armv6z armv6kz armv6zk armv6t2; do
+            echo "arm32, -march=$arch, file=$file"
+            arm-linux-gnueabihf-gcc -c -march=$arch -mfpu=vfp -marm \
+                -O0 -Wall -Werror $file
+          done
+          for arch in armv7 armv7-a armv7ve armv7-r armv7-m armv7e-m; do
+            echo "arm32, -march=$arch, file=$file"
+            arm-linux-gnueabihf-gcc -c -march=$arch -mfpu=vfp \
+                -O0 -Wall -Werror $file
+          done
+          echo "arm64, -mcpu=emag"
+          aarch64-linux-gnu-gcc -c -mcpu=emag -O0 -Wall -Werror $file
+        done
+
   fuzz-with-libFuzzer:
     name: Fuzz with libFuzzer (${{matrix.target}} ${{matrix.sanitizer}})
     strategy:
