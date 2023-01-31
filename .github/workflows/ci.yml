@@ -12,7 +12,7 @@ jobs:
     env:
       CC: ${{ matrix.compiler }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -29,7 +29,7 @@ jobs:
         compiler: [gcc, clang]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: uraimo/run-on-arch-action@v2.2.0
         with:
           arch: ${{ matrix.arch }}
@@ -51,7 +51,7 @@ jobs:
     env:
       CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: cmake -B build -DLIBDEFLATE_BUILD_TESTS=1
     - run: cmake --build build --verbose
     - run: DESTDIR=build/install cmake --install build --verbose
@@ -73,7 +73,7 @@ jobs:
     env:
       CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - uses: msys2/setup-msys2@v2
       with:
         msystem: ${{matrix.sys}}
@@ -101,7 +101,7 @@ jobs:
         toolset: [v143, ClangCL]
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - uses: microsoft/setup-msbuild@v1.1
     - run: vcpkg install zlib:${{matrix.platform.vcpkg}}
     - run: >
@@ -129,7 +129,7 @@ jobs:
           toolset: ClangCL
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - uses: microsoft/setup-msbuild@v1.1
     # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
     - run: >
@@ -143,7 +143,7 @@ jobs:
     name: Run clang static analyzer
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -155,7 +155,7 @@ jobs:
     name: Run shellcheck
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -169,7 +169,7 @@ jobs:
     env:
       CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -199,7 +199,7 @@ jobs:
     env:
       CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: |
         scripts/cmake-helper.sh \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME"/build/cmake/android.toolchain.cmake \
@@ -213,7 +213,7 @@ jobs:
     name: Test building adler32.c and crc32.c with various flags
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -264,7 +264,7 @@ jobs:
           sanitizer:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install dependencies
       run: |
         sudo apt-get update
