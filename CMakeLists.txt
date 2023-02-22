@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.7)
 
 # Default to a release build.
-if(NOT CMAKE_BUILD_TYPE)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "No build type selected; defaulting to Release")
-    set(CMAKE_BUILD_TYPE Release)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build" FORCE)
 endif()
 
 # With MSVC, don't automatically append /W3 to the compiler flags.
