@@ -72,13 +72,15 @@ if(LIBDEFLATE_BUILD_TESTS)
 
     # The test programs depend on zlib for comparison tests.
     find_package(ZLIB REQUIRED)
+    find_library(ISA_L isal REQUIRED)
 
     # Build a utility library for the test programs.
     add_library(libdeflate_test_utils STATIC test_util.c)
     set_target_properties(libdeflate_test_utils PROPERTIES
                           OUTPUT_NAME deflate_test_utils)
     target_link_libraries(libdeflate_test_utils PUBLIC
-                          libdeflate_prog_utils ZLIB::ZLIB)
+                          libdeflate_prog_utils ZLIB::ZLIB
+                          isal)
 
     # Build the benchmark and checksum programs.
     add_executable(benchmark benchmark.c)

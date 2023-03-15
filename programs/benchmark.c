@@ -27,6 +27,8 @@
 
 #include "test_util.h"
 
+#include <isa-l.h> /* for comparison purposes */
+
 static const tchar *const optstring = T("0::1::2::3::4::5::6::7::8::9::C:D:eghs:VYZz");
 
 enum format {
@@ -297,9 +299,133 @@ static const struct engine libz_engine = {
 
 /******************************************************************************/
 
+static size_t
+isal_compressor_size(struct compressor *c)
+{
+	switch (c->level) {
+	case 0:
+		return ISAL_DEF_LVL0_DEFAULT;
+	case 1:
+		return ISAL_DEF_LVL1_DEFAULT;
+	case 2:
+		return ISAL_DEF_LVL2_DEFAULT;
+	case 3:
+		return ISAL_DEF_LVL3_DEFAULT;
+	}
+	msg("unhandled compression level: %d", c->level);
+	abort();
+}
+
+static bool
+isal_engine_init_compressor(struct compressor *c)
+{
+	if (c->level < 0 || c->level > 3) {
+		msg("isa-l only supports levels 0 through 3");
+		return false;
+	}
+
+	if (c->format != DEFLATE_FORMAT) {
+		msg("isa-l only supports raw DEFLATE, not zlib or gzip");
+		return false;
+	}
+
+	c->private = xmalloc(sizeof(struct isal_zstream) +
+			     isal_compressor_size(c));
+	return c->private != NULL;
+}
+
+static size_t
+isal_engine_compress_bound(struct compressor *c, size_t in_nbytes)
+{
+	return (in_nbytes * 101 / 100) + 100;
+}
+
+static size_t
+isal_engine_compress(struct compressor *c, const void *in, size_t in_nbytes,
+		     void *out, size_t out_nbytes_avail)
+{
+	struct isal_zstream *z = c->private;
+
+	isal_deflate_stateless_init(z);
+
+	z->level = c->level;
+	z->level_buf = (void *)(z + 1);
+	z->level_buf_size = isal_compressor_size(c);
+
+	z->next_in = (void *)in;
+	z->avail_in = in_nbytes;
+	z->next_out = out;
+	z->avail_out = out_nbytes_avail;
+
+	z->flush = FULL_FLUSH;
+	z->end_of_stream = 1;
+
+	if (isal_deflate_stateless(z) != COMP_OK || z->avail_in != 0)
+		return 0;
+
+	return out_nbytes_avail - z->avail_out;
+}
+
+static void
+isal_engine_destroy_compressor(struct compressor *c)
+{
+	free(c->private);
+}
+
+static bool
+isal_engine_init_decompressor(struct decompressor *d)
+{
+	if (d->format != DEFLATE_FORMAT) {
+		msg("isa-l only supports raw DEFLATE, not zlib or gzip");
+		return false;
+	}
+
+	d->private = xmalloc(sizeof(struct inflate_state));
+	return d->private != NULL;
+}
+
+static bool
+isal_engine_decompress(struct decompressor *d, const void *in, size_t in_nbytes,
+		       void *out, size_t out_nbytes)
+{
+	struct inflate_state *z = d->private;
+
+	isal_inflate_init(z);
+
+	z->next_in = (void *)in;
+	z->avail_in = in_nbytes;
+	z->next_out = out;
+	z->avail_out = out_nbytes;
+
+	return isal_inflate_stateless(z)== ISAL_DECOMP_OK &&
+		z->avail_in == 0 && z->avail_out == 0;
+}
+
+static void
+isal_engine_destroy_decompressor(struct decompressor *d)
+{
+	free(d->private);
+}
+
+static const struct engine isal_engine = {
+	.name			= T("isa-l"),
+
+	.init_compressor	= isal_engine_init_compressor,
+	.compress_bound		= isal_engine_compress_bound,
+	.compress		= isal_engine_compress,
+	.destroy_compressor	= isal_engine_destroy_compressor,
+
+	.init_decompressor	= isal_engine_init_decompressor,
+	.decompress		= isal_engine_decompress,
+	.destroy_decompressor	= isal_engine_destroy_decompressor,
+};
+
+/******************************************************************************/
+
 static const struct engine * const all_engines[] = {
 	&libdeflate_engine,
 	&libz_engine,
+	&isal_engine,
 };
 
 #define DEFAULT_ENGINE libdeflate_engine
