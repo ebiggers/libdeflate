@@ -97,8 +97,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_PCLMUL_NATIVE	0
 #endif
 #if HAVE_PCLMUL_NATIVE || (HAVE_TARGET_INTRINSICS && \
-			   (GCC_PREREQ(4, 4) || \
-			    __has_builtin(__builtin_ia32_pclmulqdq128) || \
+			   (GCC_PREREQ(4, 4) || CLANG_PREREQ(3, 2, 0) || \
 			    defined(_MSC_VER)))
 #  define HAVE_PCLMUL_INTRIN	1
 #else
@@ -112,8 +111,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_AVX_NATIVE	0
 #endif
 #if HAVE_AVX_NATIVE || (HAVE_TARGET_INTRINSICS && \
-			(GCC_PREREQ(4, 6) || \
-			 __has_builtin(__builtin_ia32_maxps256) || \
+			(GCC_PREREQ(4, 6) || CLANG_PREREQ(3, 0, 0) || \
 			 defined(_MSC_VER)))
 #  define HAVE_AVX_INTRIN	1
 #else
@@ -127,8 +125,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_AVX2_NATIVE	0
 #endif
 #if HAVE_AVX2_NATIVE || (HAVE_TARGET_INTRINSICS && \
-			 (GCC_PREREQ(4, 7) || \
-			  __has_builtin(__builtin_ia32_psadbw256) || \
+			 (GCC_PREREQ(4, 7) || CLANG_PREREQ(3, 1, 0) || \
 			  defined(_MSC_VER)))
 #  define HAVE_AVX2_INTRIN	1
 #else
@@ -142,8 +139,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_BMI2_NATIVE	0
 #endif
 #if HAVE_BMI2_NATIVE || (HAVE_TARGET_INTRINSICS && \
-			 (GCC_PREREQ(4, 7) || \
-			  __has_builtin(__builtin_ia32_pdep_di) || \
+			 (GCC_PREREQ(4, 7) || CLANG_PREREQ(3, 1, 0) || \
 			  defined(_MSC_VER)))
 #  define HAVE_BMI2_INTRIN	1
 #else
