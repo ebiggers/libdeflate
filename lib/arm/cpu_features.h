@@ -98,7 +98,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #if HAVE_PMULL_NATIVE || \
 	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
 	 HAVE_NEON_INTRIN /* needed to exclude soft float arm32 case */ && \
-	 (GCC_PREREQ(6, 1) || __has_builtin(__builtin_neon_vmull_p64) || \
+	 (GCC_PREREQ(6, 1) || CLANG_PREREQ(3, 5, 6010000) || \
 	  defined(_MSC_VER)) && \
 	  /*
 	   * On arm32 with clang, the crypto intrinsics (which include pmull)
@@ -179,7 +179,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 	!defined(__ARM_ARCH_7EM__)
 #      define HAVE_CRC32_INTRIN	1
 #    endif
-#  elif __has_builtin(__builtin_arm_crc32b)
+#  elif CLANG_PREREQ(3, 4, 6000000)
 #    define HAVE_CRC32_INTRIN	1
 #  elif defined(_MSC_VER)
 #    define HAVE_CRC32_INTRIN	1
@@ -202,7 +202,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #  define HAVE_SHA3_INTRIN	(HAVE_NEON_INTRIN && \
 				 (HAVE_SHA3_NATIVE || HAVE_SHA3_TARGET) && \
 				 (GCC_PREREQ(9, 1) /* r268049 */ || \
-				  __has_builtin(__builtin_neon_veor3q_v)))
+				  CLANG_PREREQ(13, 0, 13160000)))
 #else
 #  define HAVE_SHA3_NATIVE	0
 #  define HAVE_SHA3_TARGET	0
@@ -218,7 +218,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #  endif
 #  if HAVE_DOTPROD_NATIVE || \
 	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	 (GCC_PREREQ(8, 1) || __has_builtin(__builtin_neon_vdotq_v) || \
+	 (GCC_PREREQ(8, 1) || CLANG_PREREQ(7, 0, 10010000) || \
 	  defined(_MSC_VER)))
 #    define HAVE_DOTPROD_INTRIN	1
 #  else
