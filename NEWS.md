@@ -1,5 +1,18 @@
 # libdeflate release notes
 
+## Version 1.18
+
+* Fixed a bug where the build type didn't default to "Release" when using
+  CMake 3.10 or earlier.
+
+* Fixed a bug where some optimized code wasn't used when building with
+  Clang 15 or later (x86), or with Clang 16 or later (aarch64).
+
+* Fixed build errors with some architecture and compiler combos:
+  * aarch64 with Clang 16
+  * armv6kz or armv7e-m with gcc
+  * armhf with gcc (on Debian only)
+
 ## Version 1.17
 
 (Apologies for another release so soon after v1.16, but the bug fix listed below
