@@ -93,26 +93,30 @@ jobs:
       run: cc -O2 -Wall -Werror -municode lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip.exe
 
   windows-visualstudio-build-and-test:
-    name: Build and test (Windows, Visual Studio ${{matrix.toolset}}, ${{matrix.platform.vs}})
+    name: Build and test (Windows, ${{matrix.gen}}, ${{matrix.toolset}}, ${{matrix.vs}})
     strategy:
       matrix:
-        platform: [ {vs: x64, vcpkg: x64-windows},
-                    {vs: Win32, vcpkg: x86-windows} ]
-        toolset: [v143, ClangCL]
-    runs-on: windows-latest
+        include:
+        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: v143,    vs: x64,   vcpkg: x64-windows}
+        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: ClangCL, vs: x64,   vcpkg: x64-windows}
+        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: v143,    vs: Win32, vcpkg: x86-windows}
+        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: ClangCL, vs: Win32, vcpkg: x86-windows}
+        - {os: windows-2019, gen: "Visual Studio 16 2019", toolset: v142,    vs: x64,   vcpkg: x64-windows}
+        - {os: windows-2019, gen: "Visual Studio 16 2019", toolset: v142,    vs: Win32, vcpkg: x86-windows}
+    runs-on: ${{matrix.os}}
     steps:
     - uses: actions/checkout@v3
     - uses: microsoft/setup-msbuild@v1.1
-    - run: vcpkg install zlib:${{matrix.platform.vcpkg}}
+    - run: vcpkg install zlib:${{matrix.vcpkg}}
     - run: >
-        echo C:\vcpkg\packages\zlib_${{matrix.platform.vcpkg}}\bin
+        echo C:\vcpkg\packages\zlib_${{matrix.vcpkg}}\bin
         | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
     - run: >
-        cmake -B build -G "Visual Studio 17 2022" -T ${{matrix.toolset}}
-        -A ${{matrix.platform.vs}} -DLIBDEFLATE_BUILD_TESTS=1
-        -DCMAKE_C_FLAGS="/W4 /WX /DLIBDEFLATE_ENABLE_ASSERTIONS /IC:\vcpkg\packages\zlib_${{matrix.platform.vcpkg}}\include"
-        -DZLIB_LIBRARY=C:\vcpkg\packages\zlib_${{matrix.platform.vcpkg}}\lib\zlib.lib
+        cmake -B build -G "${{matrix.gen}}" -T ${{matrix.toolset}}
+        -A ${{matrix.vs}} -DLIBDEFLATE_BUILD_TESTS=1
+        -DCMAKE_C_FLAGS="/W4 /WX /DLIBDEFLATE_ENABLE_ASSERTIONS /IC:\vcpkg\packages\zlib_${{matrix.vcpkg}}\include"
+        -DZLIB_LIBRARY=C:\vcpkg\packages\zlib_${{matrix.vcpkg}}\lib\zlib.lib
         -DCMAKE_INSTALL_PREFIX=build\install
     - run: cmake --build build --verbose --config Debug
     - run: cmake --install build --verbose --config Debug
