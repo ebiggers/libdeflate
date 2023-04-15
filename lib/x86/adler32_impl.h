@@ -83,8 +83,18 @@
 	(void)a, (void)b, (void)c, (void)d, (void)e, (void)f
 #endif
 
+/*
+ * MSVC in Visual Studio 2017 and earlier miscompiles this code for some unknown
+ * reason.  See https://github.com/ebiggers/libdeflate/issues/308
+ */
+#if defined(_MSC_VER) && _MSC_VER < 1920 && !defined(__clang__)
+#  define IS_BAD_MSVC_VERSION	1
+#else
+#  define IS_BAD_MSVC_VERSION	0
+#endif
+
 /* SSE2 implementation */
-#if HAVE_SSE2_INTRIN
+#if HAVE_SSE2_INTRIN && !IS_BAD_MSVC_VERSION
 #  define adler32_sse2		adler32_sse2
 #  define FUNCNAME		adler32_sse2
 #  define FUNCNAME_CHUNK	adler32_sse2_chunk
@@ -185,7 +195,7 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
  * AVX2 implementation.  Basically the same as the SSE2 one, but with the vector
  * width doubled.
  */
-#if HAVE_AVX2_INTRIN
+#if HAVE_AVX2_INTRIN && !IS_BAD_MSVC_VERSION
 #  define adler32_avx2		adler32_avx2
 #  define FUNCNAME		adler32_avx2
 #  define FUNCNAME_CHUNK	adler32_avx2_chunk
