@@ -51,11 +51,11 @@ cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c, u32 *d)
 	*c = result[2];
 	*d = result[3];
 #else
-	__asm__(".ifnc %%ebx, %1; mov  %%ebx, %1; .endif\n"
-		"cpuid                                  \n"
-		".ifnc %%ebx, %1; xchg %%ebx, %1; .endif\n"
-		: "=a" (*a), EBX_CONSTRAINT (*b), "=c" (*c), "=d" (*d)
-		: "a" (leaf), "c" (subleaf));
+	__asm__ volatile(".ifnc %%ebx, %1; mov  %%ebx, %1; .endif\n"
+			 "cpuid                                  \n"
+			 ".ifnc %%ebx, %1; xchg %%ebx, %1; .endif\n"
+			 : "=a" (*a), EBX_CONSTRAINT (*b), "=c" (*c), "=d" (*d)
+			 : "a" (leaf), "c" (subleaf));
 #endif
 }
 
@@ -68,9 +68,15 @@ read_xcr(u32 index)
 #else
 	u32 edx, eax;
 
-	/* Execute the "xgetbv" instruction.  Old versions of binutils do not
-	 * recognize this instruction, so list the raw bytes instead.  */
-	__asm__ (".byte 0x0f, 0x01, 0xd0" : "=d" (edx), "=a" (eax) : "c" (index));
+	/*
+	 * Execute the "xgetbv" instruction.  Old versions of binutils do not
+	 * recognize this instruction, so list the raw bytes instead.
+	 *
+	 * This must be 'volatile' to prevent this code from being moved out
+	 * from under the check for OSXSAVE.
+	 */
+	__asm__ volatile(".byte 0x0f, 0x01, 0xd0" :
+			 "=d" (edx), "=a" (eax) : "c" (index));
 
 	return ((u64)edx << 32) | eax;
 #endif
