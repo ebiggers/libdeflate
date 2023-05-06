@@ -126,6 +126,11 @@ Note: these are third-party projects which haven't necessarily been vetted by
 the authors of libdeflate.  Please direct all questions, bugs, and improvements
 for these bindings to their authors.
 
+Also, unfortunately many of these bindings bundle or pin an old version of
+libdeflate.  To avoid known issues in old versions and to improve performance,
+before using any of these bindings please ensure that the bundled or pinned
+version of libdeflate has been upgraded to the latest release.
+
 # DEFLATE vs. zlib vs. gzip
 
 The DEFLATE format ([rfc1951](https://www.ietf.org/rfc/rfc1951.txt)), the zlib
