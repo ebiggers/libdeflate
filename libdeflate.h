@@ -58,6 +58,20 @@ LIBDEFLATEAPI struct libdeflate_compressor *
 libdeflate_alloc_compressor(int compression_level);
 
 /*
+ * libdeflate_alloc_compressor_custom() allocates a new compressor
+ * using the provided custom allocator. This enables use of the
+ * library in contexts where changing the global allocator may change
+ * results for other threads using libdeflate concurrently.
+ *
+ * Otherwise, it behaves the same as libdeflate_alloc_compressor. See
+ * the description of that function to understand the treatment of the
+ * compression_level and return values.
+ */
+LIBDEFLATEAPI struct libdeflate_compressor *
+libdeflate_alloc_compressor_custom(int compression_level,
+					   void *(*malloc_func)(size_t));
+
+/*
  * libdeflate_deflate_compress() performs raw DEFLATE compression on a buffer of
  * data.  It attempts to compress 'in_nbytes' bytes of data located at 'in' and
  * write the result to 'out', which has space for 'out_nbytes_avail' bytes.  The
@@ -166,6 +180,16 @@ libdeflate_gzip_compress_bound(struct libdeflate_compressor *compressor,
 LIBDEFLATEAPI void
 libdeflate_free_compressor(struct libdeflate_compressor *compressor);
 
+/*
+ * libdeflate_free_compressor_custom() frees a compressor that was
+ * allocated with libdeflate_alloc_compressor_custom(). If a NULL
+ * pointer is passed in, no action is taken.
+ */
+LIBDEFLATEAPI void
+libdeflate_free_compressor_custom(struct libdeflate_compressor *compressor,
+							  void (*free_func)(void *));
+
+
 /* ========================================================================== */
 /*                             Decompression                                  */
 /* ========================================================================== */
@@ -186,6 +210,19 @@ struct libdeflate_decompressor;
  */
 LIBDEFLATEAPI struct libdeflate_decompressor *
 libdeflate_alloc_decompressor(void);
+
+/*
+ * libdeflate_alloc_decompressor_custom() allocates a new decompressor
+ * using the provided custom allocator. This enables use of the
+ * library in contexts where changing the global allocator may change
+ * results for other threads using libdeflate concurrently.
+ *
+ * Otherwise, it behaves the same as
+ * libdeflate_alloc_decompressor(). See the description of that
+ * function to understand the behavior and return values.
+ */
+LIBDEFLATEAPI struct libdeflate_decompressor *
+libdeflate_alloc_decompressor_custom(void *(*malloc_func)(size_t));
 
 /*
  * Result of a call to libdeflate_deflate_decompress(),
@@ -321,6 +358,16 @@ libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *decompressor,
  */
 LIBDEFLATEAPI void
 libdeflate_free_decompressor(struct libdeflate_decompressor *decompressor);
+
+/*
+ * libdeflate_free_decompressor_custom() frees a decompressor
+ * that was allocated with
+ * libdeflate_alloc_decompressor_custom(). If a NULL pointer is
+ * passed in, no action is taken.
+ */
+LIBDEFLATEAPI void
+libdeflate_free_decompressor_custom(struct libdeflate_decompressor *decompressor,
+							  void (*free_func)(void *));
 
 /* ========================================================================== */
 /*                                Checksums                                   */

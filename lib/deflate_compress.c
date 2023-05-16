@@ -3809,6 +3809,13 @@ deflate_init_offset_slot_full(struct libdeflate_compressor *c)
 LIBDEFLATEAPI struct libdeflate_compressor *
 libdeflate_alloc_compressor(int compression_level)
 {
+	return libdeflate_alloc_compressor_custom(compression_level, libdeflate_malloc);
+}
+
+LIBDEFLATEAPI struct libdeflate_compressor *
+libdeflate_alloc_compressor_custom(int compression_level,
+					   void *(*alloc_func)(size_t))
+{
 	struct libdeflate_compressor *c;
 	size_t size = offsetof(struct libdeflate_compressor, p);
 
@@ -3829,7 +3836,7 @@ libdeflate_alloc_compressor(int compression_level)
 			size += sizeof(c->p.f);
 	}
 
-	c = libdeflate_aligned_malloc(MATCHFINDER_MEM_ALIGNMENT, size);
+	c = libdeflate_aligned_malloc(alloc_func, MATCHFINDER_MEM_ALIGNMENT, size);
 	if (!c)
 		return NULL;
 
@@ -3977,7 +3984,14 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 LIBDEFLATEAPI void
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
-	libdeflate_aligned_free(c);
+	libdeflate_aligned_free(libdeflate_free, c);
+}
+
+LIBDEFLATEAPI void
+libdeflate_free_compressor_custom(struct libdeflate_compressor *c,
+					  void (*free_func)(void *))
+{
+	libdeflate_aligned_free(free_func, c);
 }
 
 unsigned int

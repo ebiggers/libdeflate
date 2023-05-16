@@ -42,8 +42,9 @@
 void *libdeflate_malloc(size_t size);
 void libdeflate_free(void *ptr);
 
-void *libdeflate_aligned_malloc(size_t alignment, size_t size);
-void libdeflate_aligned_free(void *ptr);
+void *libdeflate_aligned_malloc(void *(*malloc_func)(size_t),
+                           size_t alignment, size_t size);
+void libdeflate_aligned_free(void (*free_func)(void *), void *ptr);
 
 #ifdef FREESTANDING
 /*

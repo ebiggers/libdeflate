@@ -1142,6 +1142,12 @@ libdeflate_deflate_decompress(struct libdeflate_decompressor *d,
 LIBDEFLATEAPI struct libdeflate_decompressor *
 libdeflate_alloc_decompressor(void)
 {
+	return libdeflate_alloc_decompressor_custom(libdeflate_malloc);
+}
+
+LIBDEFLATEAPI struct libdeflate_decompressor *
+libdeflate_alloc_decompressor_custom(void *(malloc_func)(size_t))
+{
 	/*
 	 * Note that only certain parts of the decompressor actually must be
 	 * initialized here:
@@ -1157,7 +1163,7 @@ libdeflate_alloc_decompressor(void)
 	 *
 	 * But for simplicity, we currently just zero the whole decompressor.
 	 */
-	struct libdeflate_decompressor *d = libdeflate_malloc(sizeof(*d));
+	struct libdeflate_decompressor *d = malloc_func(sizeof(*d));
 
 	if (d == NULL)
 		return NULL;
@@ -1169,4 +1175,11 @@ LIBDEFLATEAPI void
 libdeflate_free_decompressor(struct libdeflate_decompressor *d)
 {
 	libdeflate_free(d);
+}
+
+LIBDEFLATEAPI void
+libdeflate_free_decompressor_custom(struct libdeflate_decompressor *d,
+						void (*free_func)(void *))
+{
+	free_func(d);
 }

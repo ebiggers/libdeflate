@@ -81,5 +81,29 @@ tmain(int argc, tchar *argv[])
 	ASSERT(malloc_count == 1);
 	ASSERT(free_count == 0);
 
+	/* Further, test allocations without global function pointers. */
+
+	libdeflate_set_memory_allocator(NULL, NULL);
+
+	for (level = 0; level <= 12; level++) {
+		malloc_count = free_count = 0;
+		c = libdeflate_alloc_compressor_custom(level, do_malloc);
+		ASSERT(c != NULL);
+		ASSERT(malloc_count == 1);
+		ASSERT(free_count == 0);
+		libdeflate_free_compressor_custom(c, do_free);
+		ASSERT(malloc_count == 1);
+		ASSERT(free_count == 1);
+	}
+
+	malloc_count = free_count = 0;
+	d = libdeflate_alloc_decompressor_custom(do_malloc);
+	ASSERT(d != NULL);
+	ASSERT(malloc_count == 1);
+	ASSERT(free_count == 0);
+	libdeflate_free_decompressor_custom(d, do_free);
+	ASSERT(malloc_count == 1);
+	ASSERT(free_count == 1);
+
 	return 0;
 }
