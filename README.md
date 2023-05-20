@@ -118,6 +118,7 @@ following bindings:
 * Julia: [LibDeflate.jl](https://github.com/jakobnissen/LibDeflate.jl)
 * Nim: [libdeflate-nim](https://github.com/gemesa/libdeflate-nim)
 * Perl: [Gzip::Libdeflate](https://github.com/benkasminbullock/gzip-libdeflate)
+* PHP: [ext-libdeflate](https://github.com/pmmp/ext-libdeflate)
 * Python: [deflate](https://github.com/dcwatson/deflate)
 * Ruby: [libdeflate-ruby](https://github.com/kaorimatz/libdeflate-ruby)
 * Rust: [libdeflater](https://github.com/adamkewley/libdeflater)
