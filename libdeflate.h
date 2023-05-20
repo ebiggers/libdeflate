@@ -35,6 +35,7 @@ extern "C" {
 /* ========================================================================== */
 
 struct libdeflate_compressor;
+struct libdeflate_options;
 
 /*
  * libdeflate_alloc_compressor() allocates a new compressor that supports
@@ -56,6 +57,13 @@ struct libdeflate_compressor;
  */
 LIBDEFLATEAPI struct libdeflate_compressor *
 libdeflate_alloc_compressor(int compression_level);
+
+/*
+ * Like libdeflate_alloc_compressor(), but adds the 'options' argument.
+ */
+LIBDEFLATEAPI struct libdeflate_compressor *
+libdeflate_alloc_compressor_ex(int compression_level,
+			       const struct libdeflate_options *options);
 
 /*
  * libdeflate_deflate_compress() performs raw DEFLATE compression on a buffer of
@@ -171,6 +179,7 @@ libdeflate_free_compressor(struct libdeflate_compressor *compressor);
 /* ========================================================================== */
 
 struct libdeflate_decompressor;
+struct libdeflate_options;
 
 /*
  * libdeflate_alloc_decompressor() allocates a new decompressor that can be used
@@ -186,6 +195,12 @@ struct libdeflate_decompressor;
  */
 LIBDEFLATEAPI struct libdeflate_decompressor *
 libdeflate_alloc_decompressor(void);
+
+/*
+ * Like libdeflate_alloc_decompressor(), but adds the 'options' argument.
+ */
+LIBDEFLATEAPI struct libdeflate_decompressor *
+libdeflate_alloc_decompressor_ex(const struct libdeflate_options *options);
 
 /*
  * Result of a call to libdeflate_deflate_decompress(),
@@ -351,15 +366,59 @@ libdeflate_crc32(uint32_t crc, const void *buffer, size_t len);
 
 /*
  * Install a custom memory allocator which libdeflate will use for all memory
- * allocations.  'malloc_func' is a function that must behave like malloc(), and
- * 'free_func' is a function that must behave like free().
+ * allocations by default.  'malloc_func' is a function that must behave like
+ * malloc(), and 'free_func' is a function that must behave like free().
  *
- * There must not be any libdeflate_compressor or libdeflate_decompressor
- * structures in existence when calling this function.
+ * The per-(de)compressor custom memory allocator that can be specified in
+ * 'struct libdeflate_options' takes priority over this.
+ *
+ * This doesn't affect the free() function that will be used to free
+ * (de)compressors that were already in existence when this is called.
  */
 LIBDEFLATEAPI void
 libdeflate_set_memory_allocator(void *(*malloc_func)(size_t),
 				void (*free_func)(void *));
+
+/*
+ * Advanced options.  This is the options structure that
+ * libdeflate_alloc_compressor_ex() and libdeflate_alloc_decompressor_ex()
+ * require.  Most users won't need this and should just use the non-"_ex"
+ * functions instead.  If you do need this, it should be initialized like this:
+ *
+ *	struct libdeflate_options options;
+ *
+ *	memset(&options, 0, sizeof(options));
+ *	options.sizeof_options = sizeof(options);
+ *	// Then set the fields that you need to override the defaults for.
+ */
+struct libdeflate_options {
+
+	/*
+	 * This field must be set to the struct size.  This field exists for
+	 * extensibility, so that fields can be appended to this struct in
+	 * future versions of libdeflate while still supporting old binaries.
+	 */
+	size_t sizeof_options;
+
+	/*
+	 * An optional custom memory allocator to use for this (de)compressor.
+	 * 'malloc_func' must be a function that behaves like malloc(), and
+	 * 'free_func' must be a function that behaves like free().
+	 *
+	 * This is useful in cases where a process might have multiple users of
+	 * libdeflate who want to use different memory allocators.  For example,
+	 * a library might want to use libdeflate with a custom memory allocator
+	 * without interfering with user code that might use libdeflate too.
+	 *
+	 * This takes priority over the "global" memory allocator (which by
+	 * default is malloc() and free(), but can be changed by
+	 * libdeflate_set_memory_allocator()).  Moreover, libdeflate will never
+	 * call the "global" memory allocator if a per-(de)compressor custom
+	 * allocator is always given.
+	 */
+	void *(*malloc_func)(size_t);
+	void (*free_func)(void *);
+};
 
 #ifdef __cplusplus
 }

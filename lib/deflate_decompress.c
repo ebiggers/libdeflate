@@ -671,6 +671,9 @@ struct libdeflate_decompressor {
 
 	bool static_codes_loaded;
 	unsigned litlen_tablebits;
+
+	/* The free() function for this struct, chosen at allocation time */
+	free_func_t free_func;
 };
 
 /*
@@ -1140,8 +1143,21 @@ libdeflate_deflate_decompress(struct libdeflate_decompressor *d,
 }
 
 LIBDEFLATEAPI struct libdeflate_decompressor *
-libdeflate_alloc_decompressor(void)
+libdeflate_alloc_decompressor_ex(const struct libdeflate_options *options)
 {
+	struct libdeflate_decompressor *d;
+
+	/*
+	 * Note: if more fields are added to libdeflate_options, this code will
+	 * need to be updated to support both the old and new structs.
+	 */
+	if (options->sizeof_options != sizeof(*options))
+		return NULL;
+
+	d = (options->malloc_func ? options->malloc_func :
+	     libdeflate_default_malloc_func)(sizeof(*d));
+	if (d == NULL)
+		return NULL;
 	/*
 	 * Note that only certain parts of the decompressor actually must be
 	 * initialized here:
@@ -1155,18 +1171,28 @@ libdeflate_alloc_decompressor(void)
 	 *   valgrind, since build_decode_table() is guaranteed to initialize
 	 *   all entries eventually anyway.)
 	 *
+	 * - 'free_func' must be set.
+	 *
 	 * But for simplicity, we currently just zero the whole decompressor.
 	 */
-	struct libdeflate_decompressor *d = libdeflate_malloc(sizeof(*d));
-
-	if (d == NULL)
-		return NULL;
 	memset(d, 0, sizeof(*d));
+	d->free_func = options->free_func ?
+		       options->free_func : libdeflate_default_free_func;
 	return d;
+}
+
+LIBDEFLATEAPI struct libdeflate_decompressor *
+libdeflate_alloc_decompressor(void)
+{
+	static const struct libdeflate_options defaults = {
+		.sizeof_options = sizeof(defaults),
+	};
+	return libdeflate_alloc_decompressor_ex(&defaults);
 }
 
 LIBDEFLATEAPI void
 libdeflate_free_decompressor(struct libdeflate_decompressor *d)
 {
-	libdeflate_free(d);
+	if (d)
+		d->free_func(d);
 }

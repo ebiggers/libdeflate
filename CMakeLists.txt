@@ -38,7 +38,7 @@ option(LIBDEFLATE_GZIP_SUPPORT "Support the gzip format" ON)
 option(LIBDEFLATE_FREESTANDING
        "Build a freestanding library, i.e. a library that doesn't link to any
        libc functions like malloc(), free(), and memcpy().  Library users will
-       need to call libdeflate_set_memory_allocator()." OFF)
+       need to provide a custom memory allocator." OFF)
 option(LIBDEFLATE_BUILD_GZIP "Build the libdeflate-gzip program" ON)
 option(LIBDEFLATE_BUILD_TESTS "Build the test programs" OFF)
 option(LIBDEFLATE_USE_SHARED_LIB

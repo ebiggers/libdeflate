@@ -477,6 +477,9 @@ struct libdeflate_compressor {
 	void (*impl)(struct libdeflate_compressor *restrict c, const u8 *in,
 		     size_t in_nbytes, struct deflate_output_bitstream *os);
 
+	/* The free() function for this struct, chosen at allocation time */
+	free_func_t free_func;
+
 	/* The compression level with which this compressor was created */
 	unsigned compression_level;
 
@@ -3807,12 +3810,20 @@ deflate_init_offset_slot_full(struct libdeflate_compressor *c)
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
 LIBDEFLATEAPI struct libdeflate_compressor *
-libdeflate_alloc_compressor(int compression_level)
+libdeflate_alloc_compressor_ex(int compression_level,
+			       const struct libdeflate_options *options)
 {
 	struct libdeflate_compressor *c;
 	size_t size = offsetof(struct libdeflate_compressor, p);
 
 	check_buildtime_parameters();
+
+	/*
+	 * Note: if more fields are added to libdeflate_options, this code will
+	 * need to be updated to support both the old and new structs.
+	 */
+	if (options->sizeof_options != sizeof(*options))
+		return NULL;
 
 	if (compression_level < 0 || compression_level > 12)
 		return NULL;
@@ -3829,9 +3840,14 @@ libdeflate_alloc_compressor(int compression_level)
 			size += sizeof(c->p.f);
 	}
 
-	c = libdeflate_aligned_malloc(MATCHFINDER_MEM_ALIGNMENT, size);
+	c = libdeflate_aligned_malloc(options->malloc_func ?
+				      options->malloc_func :
+				      libdeflate_default_malloc_func,
+				      MATCHFINDER_MEM_ALIGNMENT, size);
 	if (!c)
 		return NULL;
+	c->free_func = options->free_func ?
+		       options->free_func : libdeflate_default_free_func;
 
 	c->compression_level = compression_level;
 
@@ -3931,6 +3947,16 @@ libdeflate_alloc_compressor(int compression_level)
 	return c;
 }
 
+
+LIBDEFLATEAPI struct libdeflate_compressor *
+libdeflate_alloc_compressor(int compression_level)
+{
+	static const struct libdeflate_options defaults = {
+		.sizeof_options = sizeof(defaults),
+	};
+	return libdeflate_alloc_compressor_ex(compression_level, &defaults);
+}
+
 LIBDEFLATEAPI size_t
 libdeflate_deflate_compress(struct libdeflate_compressor *c,
 			    const void *in, size_t in_nbytes,
@@ -3977,7 +4003,8 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 LIBDEFLATEAPI void
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
-	libdeflate_aligned_free(c);
+	if (c)
+		libdeflate_aligned_free(c->free_func, c);
 }
 
 unsigned int
