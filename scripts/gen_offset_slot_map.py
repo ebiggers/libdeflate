@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
-# This script generates the deflate_offset_slot[] array, which is a condensed
-# map from offsets to offset slots.
+# This script generates the deflate_offset_slot[] array, which maps
+# 'offset - 1 => offset_slot' for offset <= 256.
 
 DEFLATE_OFFSET_SLOT_BASE = [
 	1    , 2    , 3    , 4     , 5     , 7     , 9     , 13    ,
@@ -10,26 +10,14 @@ DEFLATE_OFFSET_SLOT_BASE = [
 	4097 , 6145 , 8193 , 12289 , 16385 , 24577 ,
 ]
 
-DEFLATE_EXTRA_OFFSET_BITS = [
-	0    , 0    , 0    , 0     , 1     , 1     , 2     , 2     ,
-	3    , 3    , 4    , 4     , 5     , 5     , 6     , 6     ,
-	7    , 7    , 8    , 8     , 9     , 9     , 10    , 10    ,
-	11   , 11   , 12   , 12    , 13    , 13    ,
-]
+offset_slot_map = [0] * 256
+offset_slot = -1
+for offset in range(1, len(offset_slot_map) + 1):
+    if offset >= DEFLATE_OFFSET_SLOT_BASE[offset_slot + 1]:
+        offset_slot += 1
+    offset_slot_map[offset - 1] = offset_slot
 
-offset_slot_map = [0] * 512
-
-for offset_slot, offset_base in enumerate(DEFLATE_OFFSET_SLOT_BASE):
-    num_extra_bits = DEFLATE_EXTRA_OFFSET_BITS[offset_slot]
-    offset_end = offset_base + (1 << num_extra_bits)
-    if offset_base <= 256:
-        for offset in range(offset_base, offset_end):
-            offset_slot_map[offset] = offset_slot
-    else:
-        for offset in range(offset_base, offset_end, 128):
-            offset_slot_map[256 + ((offset - 1) >> 7)] = offset_slot
-
-print('static const u8 deflate_offset_slot_map[512] = {')
+print(f'static const u8 deflate_offset_slot[{len(offset_slot_map)}] = {{')
 for i in range(0, len(offset_slot_map), 16):
     print('\t', end='')
     for j, v in enumerate(offset_slot_map[i:i+16]):
