@@ -27,7 +27,7 @@
 
 #include "test_util.h"
 
-static const tchar *const optstring = T("0::1::2::3::4::5::6::7::8::9::C:D:eghs:VYZz");
+static const tchar *const optstring = T("0::1::2::3::4::5::6::7::8::9::C:D:eFghs:VYZz");
 
 enum format {
 	DEFLATE_FORMAT,
@@ -340,6 +340,62 @@ do_compress(struct compressor *c, const void *in, size_t in_nbytes,
 	return c->engine->compress(c, in, in_nbytes, out, out_nbytes_avail);
 }
 
+/*
+ * Compresses the largest prefix of 'in', with maximum size 'in_nbytes', whose
+ * compressed output is at most 'out_nbytes_avail' bytes.  The compressed size
+ * is returned as the return value, and the uncompressed size is returned in
+ * *actual_in_nbytes_ret.  'tmpbuf' must be a buffer the same size as 'out'.
+ */
+static size_t
+do_compress_withfixedoutputsize(struct compressor *c,
+				const u8 *in, size_t in_nbytes,
+				u8 *out, size_t out_nbytes_avail,
+				size_t last_uncompressed_size,
+				u8 *tmpbuf, size_t *actual_in_nbytes_ret)
+{
+	size_t l = 0; /* largest input that fits so far */
+	size_t l_csize = 0;
+	size_t r = in_nbytes + 1; /* smallest input that doesn't fit so far */
+	size_t m;
+
+	if (last_uncompressed_size)
+		m = last_uncompressed_size * 15 / 16;
+	else
+		m = out_nbytes_avail * 4;
+	for (;;) {
+		size_t csize;
+
+		m = MAX(m, l + 1);
+		m = MIN(m, r - 1);
+
+		csize = do_compress(c, in, m, tmpbuf, out_nbytes_avail);
+		printf("Tried %zu => %zu\n", m, csize);
+		if (csize > 0) {
+			ASSERT(csize <= out_nbytes_avail);
+			/* Fits */
+			memcpy(out, tmpbuf, csize);
+			l = m;
+			l_csize = csize;
+			if (r <= l + 1)
+				break;
+			/*
+			 * Estimate needed input prefix size based on current
+			 * compression ratio.
+			 */
+			m = (out_nbytes_avail * m) / csize;
+		} else {
+			/* Doesn't fit */
+			r = m;
+			if (r <= l + 1)
+				break;
+			m = (l + r) / 2;
+		}
+	}
+	printf("Choosing %zu => %zu\n", l, l_csize);
+	*actual_in_nbytes_ret = l;
+	return l_csize;
+}
+
 static void
 compressor_destroy(struct compressor *c)
 {
@@ -401,6 +457,7 @@ show_usage(FILE *fp)
 "  -C ENGINE compression engine\n"
 "  -D ENGINE decompression engine\n"
 "  -e        allow chunks to be expanded (implied by -0)\n"
+"  -F        use \"fixed output size\" compression\n"
 "  -g        use gzip format instead of raw DEFLATE\n"
 "  -h        print this help\n"
 "  -s SIZE   chunk size\n"
@@ -427,17 +484,20 @@ show_version(void)
 
 /******************************************************************************/
 
+struct compression_stats {
+	u64 total_uncompressed_size;
+	u64 total_compressed_size;
+	u64 total_compress_time;
+	u64 total_decompress_time;
+};
+
 static int
 do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 	     void *decompressed_buf, u32 chunk_size,
 	     bool allow_expansion, size_t compressed_buf_size,
-	     struct compressor *compressor,
-	     struct decompressor *decompressor)
+	     struct compressor *compressor, struct decompressor *decompressor,
+	     struct compression_stats *stats)
 {
-	u64 total_uncompressed_size = 0;
-	u64 total_compressed_size = 0;
-	u64 total_compress_time = 0;
-	u64 total_decompress_time = 0;
 	ssize_t ret;
 
 	while ((ret = xread(in, original_buf, chunk_size)) > 0) {
@@ -447,7 +507,7 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 		u64 start_time;
 		bool ok;
 
-		total_uncompressed_size += original_size;
+		stats->total_uncompressed_size += original_size;
 
 		if (allow_expansion) {
 			out_nbytes_avail = compress_bound(compressor,
@@ -467,7 +527,7 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 					      original_size,
 					      compressed_buf,
 					      out_nbytes_avail);
-		total_compress_time += timer_ticks() - start_time;
+		stats->total_compress_time += timer_ticks() - start_time;
 
 		if (compressed_size) {
 			/* Successfully compressed the chunk of data. */
@@ -478,7 +538,8 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 			ok = do_decompress(decompressor,
 					   compressed_buf, compressed_size,
 					   decompressed_buf, original_size);
-			total_decompress_time += timer_ticks() - start_time;
+			stats->total_decompress_time +=
+				timer_ticks() - start_time;
 
 			if (!ok) {
 				msg("%"TS": failed to decompress data",
@@ -494,7 +555,7 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 				return -1;
 			}
 
-			total_compressed_size += compressed_size;
+			stats->total_compressed_size += compressed_size;
 		} else {
 			/*
 			 * The chunk would have compressed to more than
@@ -504,16 +565,104 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 				msg("%"TS": bug in compress_bound()", in->name);
 				return -1;
 			}
-			total_compressed_size += original_size;
+			stats->total_compressed_size += original_size;
 		}
 	}
+	return ret;
+}
 
-	if (ret < 0)
-		return ret;
+static int
+do_benchmark_withfixedoutputsize(struct file_stream *in,
+				 u8 *original_buf,
+				 u8 *compressed_buf,
+				 u8 *decompressed_buf,
+				 size_t original_buf_size,
+				 size_t compressed_buf_size,
+				 struct compressor *compressor,
+				 struct decompressor *decompressor,
+				 struct compression_stats *stats)
+{
+	size_t pos = 0, limit = 0;
+	ssize_t ret;
+	size_t last_uncompressed_size = 0;
+	u8 *tmpbuf = xmalloc(compressed_buf_size);
+
+	if (tmpbuf == NULL)
+		return -1;
+
+	for (;;) {
+		size_t uncompressed_size;
+		size_t compressed_size;
+		u64 start_time;
+		bool ok;
+
+		if (pos >= original_buf_size / 2) {
+			memmove(original_buf, &original_buf[pos], limit - pos);
+			limit -= pos;
+			pos = 0;
+		}
+
+		ret = xread(in, &original_buf[limit],
+			    original_buf_size - limit);
+		if (ret < 0)
+			break;
+		limit += ret;
+		if (limit - pos == 0)
+			break;
+
+		start_time = timer_ticks();
+		compressed_size = do_compress_withfixedoutputsize(
+						compressor,
+						&original_buf[pos],
+						limit - pos,
+						compressed_buf,
+						compressed_buf_size,
+						last_uncompressed_size,
+						tmpbuf,
+						&uncompressed_size);
+		stats->total_compress_time += timer_ticks() - start_time;
+		ASSERT(uncompressed_size <= limit - pos);
+		ASSERT(compressed_size > 0);
+		ASSERT(compressed_size <= compressed_buf_size);
+		stats->total_uncompressed_size += uncompressed_size;
+		stats->total_compressed_size += compressed_size;
+		last_uncompressed_size = uncompressed_size;
+
+		start_time = timer_ticks();
+		ok = do_decompress(decompressor,
+				   compressed_buf, compressed_size,
+				   decompressed_buf, uncompressed_size);
+		stats->total_decompress_time += timer_ticks() - start_time;
+		if (!ok) {
+			msg("%"TS": failed to decompress data", in->name);
+			ret = -1;
+			break;
+		}
+		if (memcmp(&original_buf[pos], decompressed_buf,
+			   uncompressed_size) != 0) {
+			msg("%"TS": data did not decompress to original",
+			    in->name);
+			ret = -1;
+			break;
+		}
+		pos += uncompressed_size;
+	}
+
+	free(tmpbuf);
+	return ret;
+}
+
+static void
+show_stats(const struct compression_stats *stats)
+{
+	u64 total_uncompressed_size = stats->total_uncompressed_size;
+	u64 total_compressed_size = stats->total_compressed_size;
+	u64 total_compress_time = stats->total_compress_time;
+	u64 total_decompress_time = stats->total_decompress_time;
 
 	if (total_uncompressed_size == 0) {
 		printf("\tFile was empty.\n");
-		return 0;
+		return;
 	}
 
 	if (total_compress_time == 0)
@@ -533,8 +682,6 @@ do_benchmark(struct file_stream *in, void *original_buf, void *compressed_buf,
 	printf("\tDecompression time: %"PRIu64" ms (%"PRIu64" MB/s)\n",
 	       timer_ticks_to_ms(total_decompress_time),
 	       timer_MB_per_s(total_uncompressed_size, total_decompress_time));
-
-	return 0;
 }
 
 int
@@ -546,8 +693,10 @@ tmain(int argc, tchar *argv[])
 	const struct engine *compress_engine = &DEFAULT_ENGINE;
 	const struct engine *decompress_engine = &DEFAULT_ENGINE;
 	bool allow_expansion = false;
+	bool fixed_output_size = false;
 	struct compressor compressor = { 0 };
 	struct decompressor decompressor = { 0 };
+	size_t original_buf_size;
 	size_t compressed_buf_size;
 	void *original_buf = NULL;
 	void *compressed_buf = NULL;
@@ -594,6 +743,9 @@ tmain(int argc, tchar *argv[])
 		case 'e':
 			allow_expansion = true;
 			break;
+		case 'F':
+			fixed_output_size = true;
+			break;
 		case 'g':
 			format = GZIP_FORMAT;
 			break;
@@ -637,14 +789,20 @@ tmain(int argc, tchar *argv[])
 	if (!decompressor_init(&decompressor, format, decompress_engine))
 		goto out;
 
-	if (allow_expansion)
-		compressed_buf_size = compress_bound(&compressor, chunk_size);
-	else
-		compressed_buf_size = chunk_size - 1;
-
-	original_buf = xmalloc(chunk_size);
+	if (fixed_output_size) {
+		original_buf_size = (size_t)chunk_size * 100;
+		compressed_buf_size = chunk_size;
+	} else {
+		original_buf_size = chunk_size;
+		if (allow_expansion)
+			compressed_buf_size = compress_bound(&compressor,
+							     chunk_size);
+		else
+			compressed_buf_size = chunk_size - 1;
+	}
+	original_buf = xmalloc(original_buf_size);
 	compressed_buf = xmalloc(compressed_buf_size);
-	decompressed_buf = xmalloc(chunk_size);
+	decompressed_buf = xmalloc(original_buf_size);
 
 	ret = -1;
 	if (original_buf == NULL || compressed_buf == NULL ||
@@ -664,12 +822,14 @@ tmain(int argc, tchar *argv[])
 	       format == DEFLATE_FORMAT ? "DEFLATE" :
 	       format == ZLIB_FORMAT ? "zlib" : "gzip");
 	printf("\tCompression level: %d\n", level);
-	printf("\tChunk size: %"PRIu32"\n", chunk_size);
+	printf("\tChunk size: %"PRIu32"%s\n", chunk_size,
+	       fixed_output_size ? " (fixed output size)" : "");
 	printf("\tCompression engine: %"TS"\n", compress_engine->name);
 	printf("\tDecompression engine: %"TS"\n", decompress_engine->name);
 
 	for (i = 0; i < argc; i++) {
 		struct file_stream in;
+		struct compression_stats stats = { 0 };
 
 		ret = xopen_for_read(argv[i], true, &in);
 		if (ret != 0)
@@ -677,13 +837,23 @@ tmain(int argc, tchar *argv[])
 
 		printf("Processing %"TS"...\n", in.name);
 
-		ret = do_benchmark(&in, original_buf, compressed_buf,
-				   decompressed_buf, chunk_size,
-				   allow_expansion, compressed_buf_size,
-				   &compressor, &decompressor);
+		if (fixed_output_size) {
+			ret = do_benchmark_withfixedoutputsize(
+					&in, original_buf, compressed_buf,
+					decompressed_buf, original_buf_size,
+					chunk_size,
+					&compressor, &decompressor, &stats);
+		} else {
+			ret = do_benchmark(&in, original_buf, compressed_buf,
+					   decompressed_buf, chunk_size,
+					   allow_expansion, compressed_buf_size,
+					   &compressor, &decompressor, &stats);
+		}
 		xclose(&in);
 		if (ret != 0)
 			goto out;
+
+		show_stats(&stats);
 	}
 	ret = 0;
 out:
