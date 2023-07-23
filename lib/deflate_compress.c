@@ -2316,6 +2316,13 @@ calculate_min_match_len(const u8 *data, size_t data_len,
 	size_t i;
 
 	/*
+	 * For very short inputs, the static Huffman code has a good chance of
+	 * being best, in which case there is no reason to avoid short matches.
+	 */
+	if (data_len < 512)
+		return DEFLATE_MIN_MATCH_LEN;
+
+	/*
 	 * For an initial approximation, scan the first 4 KiB of data.  The
 	 * caller may use recalculate_min_match_len() to update min_len later.
 	 */
