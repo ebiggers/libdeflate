@@ -586,7 +586,8 @@ struct libdeflate_compressor {
 			/* The current cost model being used */
 			struct deflate_costs costs;
 
-			struct deflate_costs costs_producing_best_true_cost;
+			/* Saved cost model */
+			struct deflate_costs costs_saved;
 
 			/*
 			 * A table that maps match offset to offset slot.  This
@@ -636,6 +637,23 @@ struct libdeflate_compressor {
 			 * Smaller values = more compression.
 			 */
 			unsigned min_bits_to_use_nonfinal_path;
+
+			/*
+			 * The maximum block length, in uncompressed bytes, at
+			 * which to find and consider the optimal match/literal
+			 * list for the static Huffman codes.  This strategy
+			 * improves the compression ratio produced by static
+			 * Huffman blocks and can discover more cases in which
+			 * static blocks are worthwhile.  This helps mostly with
+			 * small blocks, hence why this parameter is a max_len.
+			 *
+			 * Above this block length, static Huffman blocks are
+			 * only used opportunistically.  I.e. a static Huffman
+			 * block is only used if a static block using the same
+			 * match/literal list as the optimized dynamic block
+			 * happens to be cheaper than the dynamic block itself.
+			 */
+			unsigned max_len_to_optimize_static_block;
 
 		} n; /* (n)ear-optimal */
 	#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
@@ -3382,6 +3400,7 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	u32 best_true_cost = UINT32_MAX;
 	u32 true_cost;
 	u32 only_lits_cost;
+	u32 static_cost = UINT32_MAX;
 	struct deflate_sequence seq_;
 	struct deflate_sequence *seq = NULL;
 	u32 i;
@@ -3402,6 +3421,24 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	     i <= MIN(block_length - 1 + DEFLATE_MAX_MATCH_LEN,
 		      ARRAY_LEN(c->p.n.optimum_nodes) - 1); i++)
 		c->p.n.optimum_nodes[i].cost_to_end = 0x80000000;
+
+	/*
+	 * Sometimes a static Huffman block ends up being cheapest, particularly
+	 * if the block is small.  So, if the block is sufficiently small, find
+	 * the optimal static block solution and remember its cost.
+	 */
+	if (block_length <= c->p.n.max_len_to_optimize_static_block) {
+		/* Save c->p.n.costs temporarily. */
+		c->p.n.costs_saved = c->p.n.costs;
+
+		deflate_set_costs_from_codes(c, &c->static_codes.lens);
+		deflate_find_min_cost_path(c, block_length, cache_ptr);
+		static_cost = c->p.n.optimum_nodes[0].cost_to_end / BIT_COST;
+		static_cost += 7; /* for the end-of-block symbol */
+
+		/* Restore c->p.n.costs. */
+		c->p.n.costs = c->p.n.costs_saved;
+	}
 
 	/* Initialize c->p.n.costs with default costs. */
 	deflate_set_initial_costs(c, block_begin, block_length, is_first_block);
@@ -3430,7 +3467,9 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 			break;
 
 		best_true_cost = true_cost;
-		c->p.n.costs_producing_best_true_cost = c->p.n.costs;
+
+		/* Save the cost model that gave 'best_true_cost'. */
+		c->p.n.costs_saved = c->p.n.costs;
 
 		/* Update the cost model from the Huffman codes. */
 		deflate_set_costs_from_codes(c, &c->codes.lens);
@@ -3438,20 +3477,26 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	} while (--num_passes_remaining);
 
 	*used_only_literals = false;
-	if (only_lits_cost < best_true_cost) {
-		/* Using only literals ended up being best! */
-		deflate_choose_all_literals(c, block_begin, block_length);
-		deflate_set_costs_from_codes(c, &c->codes.lens);
-		seq_.litrunlen_and_length = block_length;
-		seq = &seq_;
-		*used_only_literals = true;
+	if (MIN(only_lits_cost, static_cost) < best_true_cost) {
+		if (only_lits_cost < static_cost) {
+			/* Using only literals ended up being best! */
+			deflate_choose_all_literals(c, block_begin, block_length);
+			deflate_set_costs_from_codes(c, &c->codes.lens);
+			seq_.litrunlen_and_length = block_length;
+			seq = &seq_;
+			*used_only_literals = true;
+		} else {
+			/* Static block ended up being best! */
+			deflate_set_costs_from_codes(c, &c->static_codes.lens);
+			deflate_find_min_cost_path(c, block_length, cache_ptr);
+		}
 	} else if (true_cost >=
 		   best_true_cost + c->p.n.min_bits_to_use_nonfinal_path) {
 		/*
 		 * The best solution was actually from a non-final optimization
 		 * pass, so recover and use the min-cost path from that pass.
 		 */
-		c->p.n.costs = c->p.n.costs_producing_best_true_cost;
+		c->p.n.costs = c->p.n.costs_saved;
 		deflate_find_min_cost_path(c, block_length, cache_ptr);
 		deflate_set_costs_from_codes(c, &c->codes.lens);
 	}
@@ -3908,6 +3953,7 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		c->p.n.max_optim_passes = 2;
 		c->p.n.min_improvement_to_continue = 32;
 		c->p.n.min_bits_to_use_nonfinal_path = 32;
+		c->p.n.max_len_to_optimize_static_block = 0;
 		deflate_init_offset_slot_full(c);
 		break;
 	case 11:
@@ -3917,6 +3963,7 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		c->p.n.max_optim_passes = 4;
 		c->p.n.min_improvement_to_continue = 16;
 		c->p.n.min_bits_to_use_nonfinal_path = 16;
+		c->p.n.max_len_to_optimize_static_block = 1000;
 		deflate_init_offset_slot_full(c);
 		break;
 	case 12:
@@ -3927,6 +3974,7 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		c->p.n.max_optim_passes = 10;
 		c->p.n.min_improvement_to_continue = 1;
 		c->p.n.min_bits_to_use_nonfinal_path = 1;
+		c->p.n.max_len_to_optimize_static_block = 10000;
 		deflate_init_offset_slot_full(c);
 		break;
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
