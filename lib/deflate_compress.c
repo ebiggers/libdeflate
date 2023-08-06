@@ -1793,9 +1793,64 @@ deflate_flush_block(struct libdeflate_compressor *c,
 						 UINT16_MAX) - 1)) +
 			     (8 * block_length);
 
-	/* Choose and output the cheapest type of block. */
-	best_cost = MIN(static_cost, uncompressed_cost);
-	if (dynamic_cost < best_cost) {
+	/*
+	 * Choose and output the cheapest type of block.  If there is a tie,
+	 * prefer uncompressed, then static, then dynamic.
+	 */
+
+	best_cost = MIN(dynamic_cost, MIN(static_cost, uncompressed_cost));
+
+	if (best_cost == uncompressed_cost) {
+		/*
+		 * Uncompressed block(s).  DEFLATE limits the length of
+		 * uncompressed blocks to UINT16_MAX bytes, so if the length of
+		 * the "block" we're flushing is over UINT16_MAX, we actually
+		 * output multiple blocks.
+		 */
+		do {
+			u8 bfinal = 0;
+			size_t len = UINT16_MAX;
+
+			if (in_end - in_next <= UINT16_MAX) {
+				bfinal = is_final_block;
+				len = in_end - in_next;
+			}
+			if (out_end - out_next <
+			    (bitcount + 3 + 7) / 8 + 4 + len) {
+				/* Not enough output space remaining. */
+				out_next = out_end;
+				goto out;
+			}
+			/*
+			 * Output BFINAL (1 bit) and BTYPE (2 bits), then align
+			 * to a byte boundary.
+			 */
+			STATIC_ASSERT(DEFLATE_BLOCKTYPE_UNCOMPRESSED == 0);
+			*out_next++ = (bfinal << bitcount) | bitbuf;
+			if (bitcount > 5)
+				*out_next++ = 0;
+			bitbuf = 0;
+			bitcount = 0;
+			/* Output LEN and NLEN, then the data itself. */
+			put_unaligned_le16(len, out_next);
+			out_next += 2;
+			put_unaligned_le16(~len, out_next);
+			out_next += 2;
+			memcpy(out_next, in_next, len);
+			out_next += len;
+			in_next += len;
+		} while (in_next != in_end);
+		/* Done outputting uncompressed block(s) */
+		goto out;
+	}
+
+	if (best_cost == static_cost) {
+		/* Static Huffman block */
+		codes = &c->static_codes;
+		ADD_BITS(is_final_block, 1);
+		ADD_BITS(DEFLATE_BLOCKTYPE_STATIC_HUFFMAN, 2);
+		FLUSH_BITS();
+	} else {
 		const unsigned num_explicit_lens = c->o.precode.num_explicit_lens;
 		const unsigned num_precode_items = c->o.precode.num_items;
 		unsigned precode_sym, precode_item;
@@ -1803,7 +1858,6 @@ deflate_flush_block(struct libdeflate_compressor *c,
 
 		/* Dynamic Huffman block */
 
-		best_cost = dynamic_cost;
 		codes = &c->codes;
 		STATIC_ASSERT(CAN_BUFFER(1 + 2 + 5 + 5 + 4 + 3));
 		ADD_BITS(is_final_block, 1);
@@ -1855,54 +1909,6 @@ deflate_flush_block(struct libdeflate_compressor *c,
 				 deflate_extra_precode_bits[precode_sym]);
 			FLUSH_BITS();
 		} while (++i < num_precode_items);
-	} else if (static_cost < uncompressed_cost) {
-		/* Static Huffman block */
-		codes = &c->static_codes;
-		ADD_BITS(is_final_block, 1);
-		ADD_BITS(DEFLATE_BLOCKTYPE_STATIC_HUFFMAN, 2);
-		FLUSH_BITS();
-	} else {
-		/*
-		 * Uncompressed block(s).  DEFLATE limits the length of
-		 * uncompressed blocks to UINT16_MAX bytes, so if the length of
-		 * the "block" we're flushing is over UINT16_MAX, we actually
-		 * output multiple blocks.
-		 */
-		do {
-			u8 bfinal = 0;
-			size_t len = UINT16_MAX;
-
-			if (in_end - in_next <= UINT16_MAX) {
-				bfinal = is_final_block;
-				len = in_end - in_next;
-			}
-			if (out_end - out_next <
-			    (bitcount + 3 + 7) / 8 + 4 + len) {
-				/* Not enough output space remaining. */
-				out_next = out_end;
-				goto out;
-			}
-			/*
-			 * Output BFINAL (1 bit) and BTYPE (2 bits), then align
-			 * to a byte boundary.
-			 */
-			STATIC_ASSERT(DEFLATE_BLOCKTYPE_UNCOMPRESSED == 0);
-			*out_next++ = (bfinal << bitcount) | bitbuf;
-			if (bitcount > 5)
-				*out_next++ = 0;
-			bitbuf = 0;
-			bitcount = 0;
-			/* Output LEN and NLEN, then the data itself. */
-			put_unaligned_le16(len, out_next);
-			out_next += 2;
-			put_unaligned_le16(~len, out_next);
-			out_next += 2;
-			memcpy(out_next, in_next, len);
-			out_next += len;
-			in_next += len;
-		} while (in_next != in_end);
-		/* Done outputting uncompressed block(s) */
-		goto out;
 	}
 
 	/* Output the literals and matches for a dynamic or static block. */
