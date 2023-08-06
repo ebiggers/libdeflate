@@ -702,24 +702,12 @@ struct deflate_output_bitstream {
 	 */
 	u8 *next;
 
-	/*
-	 * Pointer to near the end of the output buffer.  'next' will never
-	 * exceed this.  There are OUTPUT_END_PADDING bytes reserved after this
-	 * to allow branchlessly writing a whole word at this location.
-	 */
+	/* Pointer to the end of the output buffer */
 	u8 *end;
-};
 
-/*
- * OUTPUT_END_PADDING is the size, in bytes, of the extra space that must be
- * present following os->end, in order to not overrun the buffer when generating
- * output.  When UNALIGNED_ACCESS_IS_FAST, we need at least sizeof(bitbuf_t)
- * bytes for put_unaligned_leword().  Otherwise we need only 1 byte.  However,
- * to make the compression algorithm produce the same result on all CPU
- * architectures (which is sometimes desirable), we have to unconditionally use
- * the maximum for any CPU, which is sizeof(bitbuf_t) == 8.
- */
-#define OUTPUT_END_PADDING	8
+	/* true if the output buffer ran out of space */
+	bool overflow;
+};
 
 /*
  * Add some bits to the bitbuffer variable of the output bitstream.  The caller
@@ -733,21 +721,29 @@ do {						\
 	ASSERT(bitcount <= BITBUF_NBITS);	\
 } while (0)
 
-/* Flush bits from the bitbuffer variable to the output buffer. */
+/*
+ * Flush bits from the bitbuffer variable to the output buffer.  After this, the
+ * bitbuffer will contain at most 7 bits (a partial byte).
+ *
+ * Since deflate_flush_block() verified ahead of time that there is enough space
+ * remaining before actually writing the block, it's guaranteed that out_next
+ * won't exceed os->end.  However, there might not be enough space remaining to
+ * flush a whole word, even though that's fastest.  Therefore, flush a whole
+ * word if there is space for it, otherwise flush a byte at a time.
+ */
 #define FLUSH_BITS()							\
 do {									\
-	if (UNALIGNED_ACCESS_IS_FAST) {					\
+	if (UNALIGNED_ACCESS_IS_FAST && likely(out_next < out_fast_end)) { \
 		/* Flush a whole word (branchlessly). */		\
 		put_unaligned_leword(bitbuf, out_next);			\
 		bitbuf >>= bitcount & ~7;				\
-		out_next += MIN(out_end - out_next, bitcount >> 3);	\
+		out_next += bitcount >> 3;				\
 		bitcount &= 7;						\
 	} else {							\
 		/* Flush a byte at a time. */				\
 		while (bitcount >= 8) {					\
-			*out_next = bitbuf;				\
-			if (out_next != out_end)			\
-				out_next++;				\
+			ASSERT(out_next < os->end);			\
+			*out_next++ = bitbuf;				\
 			bitcount -= 8;					\
 			bitbuf >>= 8;					\
 		}							\
@@ -1722,7 +1718,8 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	bitbuf_t bitbuf = os->bitbuf;
 	unsigned bitcount = os->bitcount;
 	u8 *out_next = os->next;
-	u8 * const out_end = os->end;
+	u8 * const out_fast_end =
+		os->end - MIN(WORDBYTES - 1, os->end - out_next);
 	/*
 	 * The cost for each block type, in bits.  Start with the cost of the
 	 * block header which is 3 bits.
@@ -1734,11 +1731,13 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	struct deflate_codes *codes;
 	unsigned sym;
 
-	ASSERT(block_length >= MIN_BLOCK_LENGTH || is_final_block);
+	ASSERT(block_length >= MIN_BLOCK_LENGTH ||
+	       (is_final_block && block_length > 0));
 	ASSERT(block_length <= MAX_BLOCK_LENGTH);
 	ASSERT(bitcount <= 7);
 	ASSERT((bitbuf & ~(((bitbuf_t)1 << bitcount) - 1)) == 0);
-	ASSERT(out_next <= out_end);
+	ASSERT(out_next <= os->end);
+	ASSERT(!os->overflow);
 
 	/* Precompute the precode items and build the precode. */
 	deflate_precompute_huffman_header(c);
@@ -1803,6 +1802,16 @@ deflate_flush_block(struct libdeflate_compressor *c,
 
 	best_cost = MIN(dynamic_cost, MIN(static_cost, uncompressed_cost));
 
+	/* If the block isn't going to fit, then stop early. */
+	if (DIV_ROUND_UP(bitcount + best_cost, 8) > os->end - out_next) {
+		os->overflow = true;
+		return;
+	}
+	/*
+	 * Else, now we know that the block fits, so no further bounds checks on
+	 * the output buffer are required until the next block.
+	 */
+
 	if (best_cost == uncompressed_cost) {
 		/*
 		 * Uncompressed block(s).  DEFLATE limits the length of
@@ -1818,12 +1827,9 @@ deflate_flush_block(struct libdeflate_compressor *c,
 				bfinal = is_final_block;
 				len = in_end - in_next;
 			}
-			if (out_end - out_next <
-			    (bitcount + 3 + 7) / 8 + 4 + len) {
-				/* Not enough output space remaining. */
-				out_next = out_end;
-				goto out;
-			}
+			/* It was already checked that there is enough space. */
+			ASSERT(os->end - out_next >=
+			       DIV_ROUND_UP(bitcount + 3, 8) + 4 + len);
 			/*
 			 * Output BFINAL (1 bit) and BTYPE (2 bits), then align
 			 * to a byte boundary.
@@ -2015,13 +2021,12 @@ deflate_flush_block(struct libdeflate_compressor *c,
 out:
 	ASSERT(bitcount <= 7);
 	/*
-	 * Assert that the block cost was computed correctly, as
+	 * Assert that the block cost was computed correctly.  This is relied on
+	 * above for the bounds check on the output buffer.  Also,
 	 * libdeflate_deflate_compress_bound() relies on this via the assumption
-	 * that uncompressed blocks will always be used when cheaper.
+	 * that uncompressed blocks will always be used when cheapest.
 	 */
-	ASSERT(8 * (out_next - os->next) + bitcount - os->bitcount ==
-	       best_cost || out_next == out_end);
-
+	ASSERT(8 * (out_next - os->next) + bitcount - os->bitcount == best_cost);
 	os->bitbuf = bitbuf;
 	os->bitcount = bitcount;
 	os->next = out_next;
@@ -2510,7 +2515,7 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
 				     c->p.f.sequences, in_next == in_end);
-	} while (in_next != in_end);
+	} while (in_next != in_end && !os->overflow);
 }
 
 /*
@@ -2589,7 +2594,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
 				     c->p.g.sequences, in_next == in_end);
-	} while (in_next != in_end);
+	} while (in_next != in_end && !os->overflow);
 }
 
 static forceinline void
@@ -2795,7 +2800,7 @@ have_cur_match:
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
 				     c->p.g.sequences, in_next == in_end);
-	} while (in_next != in_end);
+	} while (in_next != in_end && !os->overflow);
 }
 
 /*
@@ -3836,7 +3841,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			deflate_near_optimal_init_stats(c);
 			in_block_begin = in_next;
 		}
-	} while (in_next != in_end);
+	} while (in_next != in_end && !os->overflow);
 }
 
 /* Initialize c->p.n.offset_slot_full. */
@@ -4026,31 +4031,32 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 		return deflate_compress_none(in, in_nbytes,
 					     out, out_nbytes_avail);
 
-	/*
-	 * Initialize the output bitstream structure.
-	 *
-	 * The end is set to OUTPUT_END_PADDING below the true end, so that
-	 * FLUSH_BITS() can be more efficient.
-	 */
-	if (unlikely(out_nbytes_avail <= OUTPUT_END_PADDING))
-		return 0;
+	/* Initialize the output bitstream structure. */
 	os.bitbuf = 0;
 	os.bitcount = 0;
 	os.next = out;
-	os.end = os.next + out_nbytes_avail - OUTPUT_END_PADDING;
+	os.end = os.next + out_nbytes_avail;
+	os.overflow = false;
+
+	/* Call the actual compression function. */
 	(*c->impl)(c, in, in_nbytes, &os);
-	/*
-	 * If 'os.next' reached 'os.end', then either there was not enough space
-	 * in the output buffer, or the compressed size would have been within
-	 * OUTPUT_END_PADDING of the true end.  For performance reasons we don't
-	 * distinguish between these cases; we just make sure to return some
-	 * extra space from libdeflate_deflate_compress_bound().
-	 */
-	if (os.next >= os.end)
+
+	/* Return 0 if the output buffer is too small. */
+	if (os.overflow)
 		return 0;
+
+	/*
+	 * Write the final byte if needed.  This can't overflow the output
+	 * buffer because deflate_flush_block() would have set the overflow flag
+	 * if there wasn't enough space remaining for the full final block.
+	 */
 	ASSERT(os.bitcount <= 7);
-	if (os.bitcount)
+	if (os.bitcount) {
+		ASSERT(os.next < os.end);
 		*os.next++ = os.bitbuf;
+	}
+
+	/* Return the compressed size in bytes. */
 	return os.next - (u8 *)out;
 }
 
@@ -4115,15 +4121,6 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 
 	/* Account for the data itself, stored uncompressed. */
 	bound += in_nbytes;
-
-	/*
-	 * Add 1 + OUTPUT_END_PADDING because for performance reasons, the
-	 * compressor doesn't distinguish between cases where there wasn't
-	 * enough space and cases where the compressed size would have been
-	 * 'out_nbytes_avail - OUTPUT_END_PADDING' or greater.  Adding
-	 * 1 + OUTPUT_END_PADDING to the bound ensures the needed wiggle room.
-	 */
-	bound += 1 + OUTPUT_END_PADDING;
 
 	return bound;
 }

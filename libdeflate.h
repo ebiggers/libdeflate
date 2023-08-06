@@ -80,22 +80,6 @@ libdeflate_alloc_compressor_ex(int compression_level,
  * writing tests that compare compressed data to a golden output, as this can
  * break when libdeflate is updated.  (This property isn't specific to
  * libdeflate; the same is true for zlib and other compression libraries too.)
- *
- * Note: due to a performance optimization, libdeflate_deflate_compress()
- * currently needs a small amount of slack space at the end of the output
- * buffer.  As a result, it can't actually report compressed sizes very close to
- * 'out_nbytes_avail'.  This doesn't matter in real-world use cases, and
- * libdeflate_deflate_compress_bound() already includes the slack space.
- * However, it does mean that testing code that redundantly compresses data
- * using an exact-sized output buffer won't work as might be expected:
- *
- *	out_nbytes = libdeflate_deflate_compress(c, in, in_nbytes, out,
- *						 libdeflate_deflate_compress_bound(in_nbytes));
- *	// The following assertion will fail.
- *	assert(libdeflate_deflate_compress(c, in, in_nbytes, out, out_nbytes) != 0);
- *
- * To avoid this, either don't write tests like the above, or make sure to
- * include at least 9 bytes of slack space in 'out_nbytes_avail'.
  */
 LIBDEFLATEAPI size_t
 libdeflate_deflate_compress(struct libdeflate_compressor *compressor,
