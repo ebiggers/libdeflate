@@ -1723,10 +1723,13 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	unsigned bitcount = os->bitcount;
 	u8 *out_next = os->next;
 	u8 * const out_end = os->end;
-	/* The cost for each block type, in bits */
-	u32 dynamic_cost = 0;
-	u32 static_cost = 0;
-	u32 uncompressed_cost = 0;
+	/*
+	 * The cost for each block type, in bits.  Start with the cost of the
+	 * block header which is 3 bits.
+	 */
+	u32 dynamic_cost = 3;
+	u32 static_cost = 3;
+	u32 uncompressed_cost = 3;
 	u32 best_cost;
 	struct deflate_codes *codes;
 	unsigned sym;
@@ -2017,7 +2020,7 @@ out:
 	 * that uncompressed blocks will always be used when cheaper.
 	 */
 	ASSERT(8 * (out_next - os->next) + bitcount - os->bitcount ==
-	       3 + best_cost || out_next == out_end);
+	       best_cost || out_next == out_end);
 
 	os->bitbuf = bitbuf;
 	os->bitcount = bitcount;
