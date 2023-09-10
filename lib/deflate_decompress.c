@@ -805,38 +805,48 @@ build_decode_table(u32 decode_table[],
 		u32 entry;
 		unsigned i;
 
+		/*
+		 * The DEFLATE RFC explicitly allows the offset code to be
+		 * incomplete in two cases: a code containing just 1 codeword,
+		 * if that codeword has length 1; and a code containing no
+		 * codewords.  Note: the list of offset codeword lengths is
+		 * always nonempty, but lengths of 0 don't count as codewords.
+		 *
+		 * The RFC doesn't say whether the same cases are allowed for
+		 * the litlen and pre codes.  It's actually impossible for no
+		 * symbols to be used from these codes; however, it's
+		 * technically possible for only one symbol to be used.  zlib
+		 * allows 1 codeword for the litlen code, but not the precode.
+		 * The RFC also doesn't say whether, when there is 1 codeword,
+		 * that codeword is '0' or '1'.  zlib uses '0'.
+		 *
+		 * We accept what zlib accepts, plus a bit more.  First, we
+		 * don't treat the precode more strictly than the litlen and
+		 * offset codes.  There's no convincing reason to add a special
+		 * case for the precode here.
+		 *
+		 * Second, we just map each allowed incompete code to a complete
+		 * code with only real symbols.  To do this, we choose a symbol,
+		 * either the used symbol (for codes with 1 codeword) or an
+		 * arbitrary symbol (for empty codes), and give it both
+		 * codewords '0' and '1'.  zlib instead uses a special ERROR
+		 * symbol in the part of the codespace the code doesn't use.
+		 * However, having an ERROR symbol reduces the performance of
+		 * the Huffman decoder, for no real benefit.  Our approach also
+		 * avoids having to decide whether '0' or '1' is correct.
+		 *
+		 * Like zlib, we still reject all incomplete codes that contain
+		 * more than 1 codeword or a codeword length greater than 1.
+		 */
 		if (codespace_used == 0) {
-			/*
-			 * An empty code is allowed.  This can happen for the
-			 * offset code in DEFLATE, since a dynamic Huffman block
-			 * need not contain any matches.
-			 */
-
-			/* sym=0, len=1 (arbitrary) */
-			entry = make_decode_table_entry(decode_results, 0, 1);
+			sym = 0; /* arbitrary */
 		} else {
-			/*
-			 * Allow codes with a single used symbol, with codeword
-			 * length 1.  The DEFLATE RFC is unclear regarding this
-			 * case.  What zlib's decompressor does is permit this
-			 * for the litlen and offset codes and assume the
-			 * codeword is '0' rather than '1'.  We do the same
-			 * except we allow this for precodes too, since there's
-			 * no convincing reason to treat the codes differently.
-			 * We also assign both codewords '0' and '1' to the
-			 * symbol to avoid having to handle '1' specially.
-			 */
 			if (codespace_used != (1U << (max_codeword_len - 1)) ||
 			    len_counts[1] != 1)
 				return false;
-			entry = make_decode_table_entry(decode_results,
-							*sorted_syms, 1);
+			sym = sorted_syms[0];
 		}
-		/*
-		 * Note: the decode table still must be fully initialized, in
-		 * case the stream is malformed and contains bits from the part
-		 * of the codespace the incomplete code doesn't use.
-		 */
+		entry = make_decode_table_entry(decode_results, sym, 1);
 		for (i = 0; i < (1U << table_bits); i++)
 			decode_table[i] = entry;
 		return true;
