@@ -145,6 +145,16 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_BMI2_INTRIN	0
 #endif
+/*
+ * MSVC from VS2017 (toolset v141) apparently miscompiles the _bzhi_*()
+ * intrinsics.  It seems to be fixed in VS2022.
+ */
+#if defined(_MSC_VER) && _MSC_VER < 1930 /* older than VS2022 (toolset v143) */
+#  undef HAVE_BMI2_NATIVE
+#  undef HAVE_BMI2_INTRIN
+#  define HAVE_BMI2_NATIVE	0
+#  define HAVE_BMI2_INTRIN	0
+#endif
 
 #endif /* ARCH_X86_32 || ARCH_X86_64 */
 
