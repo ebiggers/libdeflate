@@ -70,7 +70,7 @@ libdeflate_alloc_compressor_ex(int compression_level,
  * data.  It attempts to compress 'in_nbytes' bytes of data located at 'in' and
  * write the result to 'out', which has space for 'out_nbytes_avail' bytes.  The
  * return value is the compressed size in bytes, or 0 if the data could not be
- * compressed to 'out_nbytes_avail' bytes or fewer (but see note below).
+ * compressed to 'out_nbytes_avail' bytes or fewer.
  *
  * If compression is successful, then the output data is guaranteed to be a
  * valid DEFLATE stream that decompresses to the input data.  No other
