@@ -1,5 +1,26 @@
 # libdeflate release notes
 
+## Version 1.19
+
+* Added new functions `libdeflate_alloc_compressor_ex()` and
+  `libdeflate_alloc_decompressor_ex()`.  These functions allow specifying a
+  custom memory allocator on a per-compressor basis.
+
+* libdeflate now always generates Huffman codes with at least 2 codewords.  This
+  fixes a compatibility issue where Windows Explorer's ZIP unpacker could not
+  decompress DEFLATE streams created by libdeflate.  libdeflate's behavior was
+  allowed by the DEFLATE RFC, but not all software was okay with it.  In rare
+  cases, compression ratios can be slightly reduced by this change.
+
+* Disabled the use of some compiler intrinsics on MSVC versions where they don't
+  work correctly.
+
+* libdeflate can now compress up to the exact size of the output buffer.
+
+* Slightly improved compression performance at levels 1-9.
+
+* Improved the compression ratio of very short inputs.
+
 ## Version 1.18
 
 * Fixed a bug where the build type didn't default to "Release" when using
