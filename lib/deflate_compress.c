@@ -1362,8 +1362,8 @@ deflate_make_huffman_code(unsigned num_syms, unsigned max_codeword_len,
 	 * We follow practice by generating 2 codewords of length 1: codeword
 	 * '0' for symbol 0, and codeword '1' for another symbol -- the used
 	 * symbol if it exists and is not symbol 0, otherwise symbol 1.  This
-	 * does worsen the compression ratio by having to send 1-2 unnecessary
-	 * offset codeword lengths.  But this only affects rare cases such as
+	 * does worsen the compression ratio by having to send an unnecessary
+	 * offset codeword length.  But this only affects rare cases such as
 	 * blocks containing all literals, and it only makes a tiny difference.
 	 */
 	if (unlikely(num_used_syms < 2)) {
