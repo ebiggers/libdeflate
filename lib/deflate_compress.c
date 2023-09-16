@@ -4080,7 +4080,6 @@ LIBDEFLATEAPI size_t
 libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 				  size_t in_nbytes)
 {
-	size_t bound = 0;
 	size_t max_blocks;
 
 	/*
@@ -4097,10 +4096,12 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 	 */
 
 	/*
-	 * The minimum length that is passed to deflate_flush_block() is
-	 * MIN_BLOCK_LENGTH bytes, except for the final block if needed.
+	 * Calculate the maximum number of uncompressed blocks that the
+	 * compressor can use for 'in_nbytes' of data.
 	 *
-	 * If deflate_flush_block() decides to use an uncompressed block, it
+	 * The minimum length that is passed to deflate_flush_block() is
+	 * MIN_BLOCK_LENGTH bytes, except for the final block if needed.  If
+	 * deflate_flush_block() decides to use an uncompressed block, it
 	 * actually will (in general) output a series of uncompressed blocks in
 	 * order to stay within the UINT16_MAX limit of DEFLATE.  But this can
 	 * be disregarded here as long as '2 * MIN_BLOCK_LENGTH <= UINT16_MAX',
@@ -4119,11 +4120,8 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 	 * BTYPE, LEN, and NLEN fields.  (For the reason explained earlier, the
 	 * alignment bits at the very start of the block can be disregarded;
 	 * they would otherwise increase the overhead to 6 bytes per block.)
+	 * Therefore, the maximum number of overhead bytes is '5 * max_blocks'.
+	 * To get the final bound, add the number of uncompressed bytes.
 	 */
-	bound += 5 * max_blocks;
-
-	/* Account for the data itself, stored uncompressed. */
-	bound += in_nbytes;
-
-	return bound;
+	return (5 * max_blocks) + in_nbytes;
 }
