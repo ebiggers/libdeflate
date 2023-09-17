@@ -1,3 +1,5 @@
 /build*
+/libdeflate-*-windows-*
+/libdeflate-*.tar.gz
 cscope*
 tags
