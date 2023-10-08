@@ -18,6 +18,9 @@ check_c_source_compiles("#include <sys/types.h>
                          #include <sys/stat.h>
                          int main() { struct stat st; (void)st.st_atim; }"
                          HAVE_STAT_NANOSECOND_PRECISION)
+check_c_source_compiles("#include <sys/mman.h>
+                         int main() { mmap(0, 0, 0, 0, 0, 0); }"
+                         HAVE_MMAP)
 configure_file(config.h.in config.h)
 
 # Build a utility library for the programs.  This library is not installed.

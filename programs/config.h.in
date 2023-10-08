@@ -16,4 +16,7 @@
 /* Does stat() provide nanosecond-precision timestamps? */
 #cmakedefine HAVE_STAT_NANOSECOND_PRECISION
 
+/* Is the mmap() function available? */
+#cmakedefine HAVE_MMAP
+
 #endif /* CONFIG_H */

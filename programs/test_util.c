@@ -33,7 +33,9 @@
 #  include <windows.h>
 #else
 #  include <unistd.h>
-#  include <sys/mman.h>
+#  if defined(HAVE_MMAP) || (!defined(HAVE_CONFIG_H) && defined(__unix__))
+#    include <sys/mman.h>
+#  endif
 #  include <sys/time.h>
 #endif
 
@@ -105,6 +107,7 @@ alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret)
 		ASSERT(0);
 	}
 #else
+#if defined(HAVE_MMAP) || (!defined(HAVE_CONFIG_H) && defined(__unix__))
 	/* Allocate buffer and guard pages. */
 	base_addr = mmap(NULL, (nr_pages + 2) * pagesize, PROT_READ|PROT_WRITE,
 			 MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
@@ -118,6 +121,15 @@ alloc_guarded_buffer(size_t size, u8 **start_ret, u8 **end_ret)
 	/* Unmap the guard pages. */
 	munmap(base_addr, pagesize);
 	munmap(end, pagesize);
+#else
+    base_addr = malloc(nr_pages * pagesize);
+	if (base_addr == (u8 *)NULL) {
+		msg_errno("Unable to allocate memory (anonymous mmap)");
+		ASSERT(0);
+	}
+	start = base_addr;
+	end = start + (nr_pages * pagesize);
+#endif
 #endif
 	*start_ret = start;
 	*end_ret = end;
@@ -132,7 +144,12 @@ free_guarded_buffer(u8 *start, u8 *end)
 #ifdef _WIN32
 	VirtualFree(start - get_page_size(), 0, MEM_RELEASE);
 #else
+#if defined(HAVE_MMAP) || (!defined(HAVE_CONFIG_H) && defined(__unix__))
 	munmap(start, end - start);
+#else
+	(void) end;
+	free(start);
+#endif
 #endif
 }
 

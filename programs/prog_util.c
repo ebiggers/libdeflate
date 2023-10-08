@@ -34,7 +34,9 @@
 #  include <windows.h>
 #else
 #  include <unistd.h>
-#  include <sys/mman.h>
+#  if defined(HAVE_MMAP) || (!defined(HAVE_CONFIG_H) && defined(__unix__))
+#    include <sys/mman.h>
+#  endif
 #endif
 
 #ifndef O_BINARY
@@ -351,6 +353,7 @@ map_file_contents(struct file_stream *strm, u64 size)
 		return -1;
 	}
 #else /* _WIN32 */
+#if defined(HAVE_MMAP) || (!defined(HAVE_CONFIG_H) && defined(__unix__))
 	strm->mmap_mem = mmap(NULL, size, PROT_READ, MAP_SHARED, strm->fd, 0);
 	if (strm->mmap_mem == MAP_FAILED) {
 		strm->mmap_mem = NULL;
@@ -376,6 +379,9 @@ map_file_contents(struct file_stream *strm, u64 size)
 #endif
 	strm->mmap_token = strm; /* anything that's not NULL */
 
+#else /* !HAVE_MMAP */
+	return read_full_contents(strm);
+#endif
 #endif /* !_WIN32 */
 	strm->mmap_size = size;
 	return 0;
@@ -439,6 +445,7 @@ xclose(struct file_stream *strm)
 		free(strm->name);
 	}
 
+#if defined(HAVE_MMAP) || (!defined(HAVE_CONFIG_H) && defined(__unix__))
 	if (strm->mmap_token != NULL) {
 #ifdef _WIN32
 		UnmapViewOfFile(strm->mmap_mem);
@@ -447,7 +454,9 @@ xclose(struct file_stream *strm)
 		munmap(strm->mmap_mem, strm->mmap_size);
 #endif
 		strm->mmap_token = NULL;
-	} else {
+	} else
+#endif
+	{
 		free(strm->mmap_mem);
 	}
 	strm->mmap_mem = NULL;
