@@ -22,18 +22,29 @@ jobs:
       run: $CC -O2 -Wall -Werror lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip
 
   other-arch-build-and-test:
-    name: Build and test (${{ matrix.arch }}, Debian Bullseye, ${{ matrix.compiler }})
+    name: Build and test (${{ matrix.arch }}, ${{ matrix.distro }}, ${{ matrix.compiler }})
     strategy:
       matrix:
-        arch: [armv6, armv7, aarch64, s390x, ppc64le]
-        compiler: [gcc, clang]
+        include:
+        - { arch: armv6, distro: bullseye, compiler: gcc }
+        - { arch: armv6, distro: bullseye, compiler: clang }
+        - { arch: armv7, distro: bullseye, compiler: gcc }
+        - { arch: armv7, distro: bullseye, compiler: clang }
+        - { arch: aarch64, distro: bullseye, compiler: gcc }
+        - { arch: aarch64, distro: bullseye, compiler: clang }
+        - { arch: s390x, distro: bullseye, compiler: gcc }
+        - { arch: s390x, distro: bullseye, compiler: clang }
+        - { arch: ppc64le, distro: bullseye, compiler: gcc }
+        - { arch: ppc64le, distro: bullseye, compiler: clang }
+        - { arch: riscv64, distro: ubuntu_latest, compiler: gcc }
+        - { arch: riscv64, distro: ubuntu_latest, compiler: clang }
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: uraimo/run-on-arch-action@v2.5.0
         with:
           arch: ${{ matrix.arch }}
-          distro: bullseye
+          distro: ${{ matrix.distro }}
           githubToken: ${{ github.token }}
           install: |
             apt-get update

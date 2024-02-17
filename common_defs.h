@@ -65,6 +65,7 @@
 #undef ARCH_X86_32
 #undef ARCH_ARM64
 #undef ARCH_ARM32
+#undef ARCH_RISCV
 #ifdef _MSC_VER
 #  if defined(_M_X64)
 #    define ARCH_X86_64
@@ -84,6 +85,8 @@
 #    define ARCH_ARM64
 #  elif defined(__arm__)
 #    define ARCH_ARM32
+#  elif defined(__riscv)
+#    define ARCH_RISCV
 #  endif
 #endif
 
@@ -374,6 +377,7 @@ static forceinline u64 bswap64(u64 v)
 #if (defined(__GNUC__) || defined(__clang__)) && \
 	(defined(ARCH_X86_64) || defined(ARCH_X86_32) || \
 	 defined(__ARM_FEATURE_UNALIGNED) || defined(__powerpc64__) || \
+	 defined(__riscv_misaligned_fast) || \
 	 /*
 	  * For all compilation purposes, WebAssembly behaves like any other CPU
 	  * instruction set. Even though WebAssembly engine might be running on

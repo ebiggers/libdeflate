@@ -114,6 +114,7 @@ if(LIBDEFLATE_COMPRESSION_SUPPORT)
          lib/hc_matchfinder.h
          lib/ht_matchfinder.h
          lib/matchfinder_common.h
+         lib/riscv/matchfinder_impl.h
          lib/x86/matchfinder_impl.h
     )
 endif()
