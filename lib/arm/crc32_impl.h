@@ -474,12 +474,12 @@ static u32 ATTRIBUTES MAYBE_UNUSED
 crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 {
 	static const u64 _aligned_attribute(16) mults[3][2] = {
-		CRC32_1VECS_MULTS,
-		CRC32_4VECS_MULTS,
-		CRC32_2VECS_MULTS,
+		{ CRC32_X159_MODG, CRC32_X95_MODG },  /* 1 vecs */
+		{ CRC32_X543_MODG, CRC32_X479_MODG }, /* 4 vecs */
+		{ CRC32_X287_MODG, CRC32_X223_MODG }, /* 2 vecs */
 	};
 	static const u64 _aligned_attribute(16) final_mults[3][2] = {
-		{ CRC32_FINAL_MULT, 0 },
+		{ CRC32_X63_MODG, 0 },
 		{ CRC32_BARRETT_CONSTANT_1, 0 },
 		{ CRC32_BARRETT_CONSTANT_2, 0 },
 	};

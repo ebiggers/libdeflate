@@ -165,7 +165,7 @@
  * intermediate remainder (which we never actually store explicitly) is 96 bits.
  *
  * On CPUs that support fast carryless multiplication, CRCs can be computed even
- * more quickly via "folding".  See e.g. the x86 PCLMUL implementation.
+ * more quickly via "folding".  See e.g. the x86 PCLMUL implementations.
  */
 
 #include "lib_common.h"

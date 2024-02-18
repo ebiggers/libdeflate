@@ -97,37 +97,34 @@ gen_vec_folding_constants(void)
 	/*
 	 * Compute the multipliers needed for CRC-32 folding with carryless
 	 * multiplication instructions that operate on the 64-bit halves of
-	 * 128-bit vectors.  Using the terminology from earlier, for each 64-bit
+	 * 128-bit segments.  Using the terminology from earlier, for each 64-bit
 	 * fold len(A(x)) = 64, and len(B(x)) = 95 since a 64-bit polynomial
 	 * multiplied by a 32-bit one produces a 95-bit one.  When A(x) is the
-	 * low order polynomial half of a 128-bit vector (high order physical
+	 * low order polynomial half of a 128-bit segments (high order physical
 	 * half), the separation between the message parts is the total length
-	 * of the 128-bit vectors separating the values.  When A(x) is the high
+	 * of the 128-bit segments separating the values.  When A(x) is the high
 	 * order polynomial half, the separation is 64 bits greater.
 	 */
-	for (int num_vecs = 1; num_vecs <= 12; num_vecs++) {
-		const int sep_lo = 128 * (num_vecs - 1);
+	for (int i = 1; i <= 32; i++) {
+		const int sep_lo = 128 * (i - 1);
 		const int sep_hi = sep_lo + 64;
 		const int len_B = 95;
 		int D;
 
 		/* A(x) = high 64 polynomial bits (low 64 physical bits) */
 		D = sep_hi + len_B;
-		printf("#define CRC32_%dVECS_MULT_1 0x%08"PRIx32" /* x^%d mod G(x) */\n",
-		       num_vecs, compute_xD_modG(D), D);
+		printf("#define CRC32_X%d_MODG 0x%08"PRIx32" /* x^%d mod G(x) */\n",
+		       D, compute_xD_modG(D), D);
 
 		/* A(x) = low 64 polynomial bits (high 64 physical bits) */
 		D = sep_lo + len_B;
-		printf("#define CRC32_%dVECS_MULT_2 0x%08"PRIx32" /* x^%d mod G(x) */\n",
-		       num_vecs, compute_xD_modG(D), D);
-
-		printf("#define CRC32_%dVECS_MULTS { CRC32_%dVECS_MULT_1, CRC32_%dVECS_MULT_2 }\n",
-		       num_vecs, num_vecs, num_vecs);
+		printf("#define CRC32_X%d_MODG 0x%08"PRIx32" /* x^%d mod G(x) */\n",
+		       D, compute_xD_modG(D), D);
 		printf("\n");
 	}
 
 	/* Multiplier for final 96 => 64 bit fold */
-	printf("#define CRC32_FINAL_MULT 0x%08"PRIx32" /* x^63 mod G(x) */\n",
+	printf("#define CRC32_X63_MODG 0x%08"PRIx32" /* x^63 mod G(x) */\n",
 	       compute_xD_modG(63));
 
 	/*

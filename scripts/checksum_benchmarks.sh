@@ -16,6 +16,13 @@ have_cpu_feature() {
 	grep -q "^$tag"$'[ \t]'"*:.*\<$feature\>" /proc/cpuinfo
 }
 
+have_cpu_features() {
+	local feature
+	for feature; do
+		have_cpu_feature "$feature" || return 1
+	done
+}
+
 make_and_test() {
 	# Build the checksum program and tests.  Set the special test support
 	# flag to get support for LIBDEFLATE_DISABLE_CPU_FEATURES.
@@ -37,7 +44,7 @@ __do_benchmark() {
 	speed=$(./build/programs/checksum "${CKSUM_FLAGS[@]}" \
 		"${flags[@]}" -t "$FILE" | \
 		grep -o '[0-9]\+ MB/s' | grep -o '[0-9]\+')
-	printf "%-45s%-10s\n" "$CKSUM_NAME ($impl)" "$speed"
+	printf "%-60s%-10s\n" "$CKSUM_NAME ($impl)" "$speed"
 }
 
 do_benchmark() {
@@ -95,8 +102,8 @@ else
 fi
 
 cat << EOF
-Method                                       Speed (MB/s)
-------                                       ------------
+Method                                                      Speed (MB/s)
+------                                                      ------------
 EOF
 
 # CRC-32
@@ -107,13 +114,25 @@ export LIBDEFLATE_DISABLE_CPU_FEATURES=""
 {
 case $ARCH in
 i386|x86_64)
-	if have_cpu_feature pclmulqdq && have_cpu_feature avx; then
-		do_benchmark "PCLMUL/AVX"
+	if have_cpu_features vpclmulqdq avx512f avx512vl; then
+		do_benchmark "VPCLMULQDQ/AVX512F/AVX512VL"
+		disable_cpu_feature "avx512f" "-mno-avx512f"
+	fi
+	if have_cpu_features vpclmulqdq avx512vl; then
+		do_benchmark "VPCLMULQDQ/AVX512VL"
+		disable_cpu_feature "avx512vl" "-mno-avx512vl"
+	fi
+	if have_cpu_features vpclmulqdq avx2; then
+		do_benchmark "VPCLMULQDQ/AVX2"
+		disable_cpu_feature "vpclmulqdq" "-mno-vpclmulqdq"
+	fi
+	if have_cpu_features pclmulqdq avx; then
+		do_benchmark "PCLMULQDQ/AVX"
 		disable_cpu_feature "avx" "-mno-avx"
 	fi
 	if have_cpu_feature pclmulqdq; then
-		do_benchmark "PCLMUL"
-		disable_cpu_feature "pclmul" "-mno-pclmul"
+		do_benchmark "PCLMULQDQ"
+		disable_cpu_feature "pclmulqdq" "-mno-pclmul"
 	fi
 	;;
 arm*|aarch*)

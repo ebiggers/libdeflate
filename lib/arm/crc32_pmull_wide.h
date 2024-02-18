@@ -59,7 +59,9 @@ ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len)
 
 	if (len < 3 * 192) {
 		static const u64 _aligned_attribute(16) mults[3][2] = {
-			CRC32_4VECS_MULTS, CRC32_2VECS_MULTS, CRC32_1VECS_MULTS,
+			{ CRC32_X543_MODG, CRC32_X479_MODG }, /* 4 vecs */
+			{ CRC32_X287_MODG, CRC32_X223_MODG }, /* 2 vecs */
+			{ CRC32_X159_MODG, CRC32_X95_MODG },  /* 1 vecs */
 		};
 		poly64x2_t multipliers_4, multipliers_2, multipliers_1;
 
@@ -97,8 +99,10 @@ ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len)
 		v0 = fold_vec(v0, v1, multipliers_1);
 	} else {
 		static const u64 _aligned_attribute(16) mults[4][2] = {
-			CRC32_12VECS_MULTS, CRC32_6VECS_MULTS,
-			CRC32_3VECS_MULTS, CRC32_1VECS_MULTS,
+			{ CRC32_X1567_MODG, CRC32_X1503_MODG }, /* 12 vecs */
+			{ CRC32_X799_MODG, CRC32_X735_MODG },   /* 6 vecs */
+			{ CRC32_X415_MODG, CRC32_X351_MODG },   /* 3 vecs */
+			{ CRC32_X159_MODG, CRC32_X95_MODG },    /* 1 vecs */
 		};
 		const poly64x2_t multipliers_12 = load_multipliers(mults[0]);
 		const poly64x2_t multipliers_6 = load_multipliers(mults[1]);

@@ -86,32 +86,71 @@ read_xcr(u32 index)
 
 static const struct cpu_feature x86_cpu_feature_table[] = {
 	{X86_CPU_FEATURE_SSE2,		"sse2"},
-	{X86_CPU_FEATURE_PCLMUL,	"pclmul"},
+	{X86_CPU_FEATURE_PCLMULQDQ,	"pclmulqdq"},
 	{X86_CPU_FEATURE_AVX,		"avx"},
 	{X86_CPU_FEATURE_AVX2,		"avx2"},
 	{X86_CPU_FEATURE_BMI2,		"bmi2"},
+	{X86_CPU_FEATURE_AVX512F,	"avx512f"},
+	{X86_CPU_FEATURE_AVX512VL,	"avx512vl"},
+	{X86_CPU_FEATURE_VPCLMULQDQ,	"vpclmulqdq"},
 };
 
 volatile u32 libdeflate_x86_cpu_features = 0;
 
+/*
+ * Don't use 512-bit vectors on Intel CPUs 10th generation and older, due to the
+ * downclocking penalty.
+ */
+static inline bool
+allow_512bit_vectors(const u32 manufacturer[3], u32 family, u32 model)
+{
+#ifdef TEST_SUPPORT__DO_NOT_USE
+	return true;
+#endif
+	if (memcmp(manufacturer, "GenuineIntel", 12) != 0)
+		return true;
+	if (family != 6)
+		return true;
+	switch (model) {
+	case 85: /* Skylake (Server), Cascade Lake, Cooper Lake */
+	case 106: /* Ice Lake (Server) */
+	case 108: /* Ice Lake (Server) */
+	case 126: /* Ice Lake (Client) */
+	case 140: /* Tiger Lake */
+	case 141: /* Tiger Lake */
+		return false;
+	}
+	return true;
+}
+
 /* Initialize libdeflate_x86_cpu_features. */
 void libdeflate_init_x86_cpu_features(void)
 {
-	u32 max_leaf, a, b, c, d;
+	u32 max_leaf;
+	u32 manufacturer[3];
+	u32 family, model;
+	u32 a, b, c, d;
 	u64 xcr0 = 0;
 	u32 features = 0;
 
 	/* EAX=0: Highest Function Parameter and Manufacturer ID */
-	cpuid(0, 0, &max_leaf, &b, &c, &d);
+	cpuid(0, 0, &max_leaf, &manufacturer[0], &manufacturer[2],
+	      &manufacturer[1]);
 	if (max_leaf < 1)
 		goto out;
 
 	/* EAX=1: Processor Info and Feature Bits */
 	cpuid(1, 0, &a, &b, &c, &d);
+	family = (a >> 8) & 0xf;
+	model = (a >> 4) & 0xf;
+	if (family == 6 || family == 0xf)
+		model += (a >> 12) & 0xf0;
+	if (family == 0xf)
+		family += (a >> 20) & 0xff;
 	if (d & (1 << 26))
 		features |= X86_CPU_FEATURE_SSE2;
 	if (c & (1 << 1))
-		features |= X86_CPU_FEATURE_PCLMUL;
+		features |= X86_CPU_FEATURE_PCLMULQDQ;
 	if (c & (1 << 27))
 		xcr0 = read_xcr(0);
 	if ((c & (1 << 28)) && ((xcr0 & 0x6) == 0x6))
@@ -126,6 +165,13 @@ void libdeflate_init_x86_cpu_features(void)
 		features |= X86_CPU_FEATURE_AVX2;
 	if (b & (1 << 8))
 		features |= X86_CPU_FEATURE_BMI2;
+	if ((b & (1 << 16)) && ((xcr0 & 0xe6) == 0xe6) &&
+	    allow_512bit_vectors(manufacturer, family, model))
+		features |= X86_CPU_FEATURE_AVX512F;
+	if ((b & (1U << 31)) && ((xcr0 & 0xa6) == 0xa6))
+		features |= X86_CPU_FEATURE_AVX512VL;
+	if ((c & (1 << 10)) && ((xcr0 & 0x6) == 0x6))
+		features |= X86_CPU_FEATURE_VPCLMULQDQ;
 
 out:
 	disable_cpu_features_for_testing(&features, x86_cpu_feature_table,
