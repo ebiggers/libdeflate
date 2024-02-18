@@ -174,7 +174,9 @@ timer_frequency(void)
 
 	QueryPerformanceFrequency(&freq);
 	return freq.QuadPart;
-#elif defined(HAVE_CLOCK_GETTIME)
+#elif defined(HAVE_CLOCK_GETTIME) || \
+	/* fallback detection method for direct compilation */ \
+	(!defined(HAVE_CONFIG_H) && defined(CLOCK_MONOTONIC))
 	return 1000000000;
 #else
 	return 1000000;
