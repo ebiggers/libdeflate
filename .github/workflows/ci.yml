@@ -117,7 +117,7 @@ jobs:
     runs-on: ${{matrix.os}}
     steps:
     - uses: actions/checkout@v4
-    - uses: microsoft/setup-msbuild@v1.1
+    - uses: microsoft/setup-msbuild@v2
     - run: vcpkg install zlib:${{matrix.vcpkg}}
     - run: >
         echo C:\vcpkg\packages\zlib_${{matrix.vcpkg}}\bin
@@ -145,7 +145,7 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: microsoft/setup-msbuild@v1.1
+    - uses: microsoft/setup-msbuild@v2
     # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
     - run: >
         cmake -B build -G "Visual Studio 17 2022" -T ${{matrix.toolset}}
