@@ -38,7 +38,7 @@
  *	   VL=16 && FOLD_LESSTHAN16BYTES=1: at least pclmul,sse4.1
  *	   VL=32 && USE_TERNARYLOGIC=0: at least vpclmulqdq,pclmul,avx2
  *	   VL=32 && USE_TERNARYLOGIC=1: at least vpclmulqdq,pclmul,avx512vl
- *	   VL=64: at least vpclmulqdq,pclmul,avx512f,avx512vl
+ *	   VL=64: at least vpclmulqdq,pclmul,avx512vl
  * VL:
  *	Vector length in bytes.  Supported values are 16, 32, and 64.
  * FOLD_LESSTHAN16BYTES:

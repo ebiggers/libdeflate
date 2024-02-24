@@ -95,14 +95,16 @@
 #endif
 
 /*
- * VPCLMULQDQ/AVX512VL implementation.  This takes advantage of some AVX-512
- * instructions but uses 256-bit vectors rather than 512-bit.  This can be
- * useful on CPUs where 512-bit vectors cause downclocking.
+ * VPCLMULQDQ/AVX512 implementation with 256-bit vectors.  This takes advantage
+ * of some AVX-512 instructions but uses 256-bit vectors rather than 512-bit.
+ * This can be useful on CPUs where 512-bit vectors cause downclocking.
  */
-#if HAVE_VPCLMULQDQ_INTRIN && HAVE_PCLMULQDQ_INTRIN && HAVE_AVX512VL_INTRIN
-#  define crc32_x86_vpclmulqdq_avx512vl	crc32_x86_vpclmulqdq_avx512vl
-#  define SUFFIX				 _vpclmulqdq_avx512vl
-#  if HAVE_VPCLMULQDQ_NATIVE && HAVE_PCLMULQDQ_NATIVE && HAVE_AVX512VL_NATIVE
+#if HAVE_VPCLMULQDQ_INTRIN && HAVE_PCLMULQDQ_INTRIN && \
+	HAVE_AVX512F_INTRIN && HAVE_AVX512VL_INTRIN
+#  define crc32_x86_vpclmulqdq_avx512_vl256  crc32_x86_vpclmulqdq_avx512_vl256
+#  define SUFFIX				      _vpclmulqdq_avx512_vl256
+#  if HAVE_VPCLMULQDQ_NATIVE && HAVE_PCLMULQDQ_NATIVE && \
+	HAVE_AVX512F_NATIVE && HAVE_AVX512VL_NATIVE
 #    define ATTRIBUTES
 #  else
 #    define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
@@ -113,16 +115,16 @@
 #  include "crc32_pclmul_template.h"
 #endif
 
-/* VPCLMULQDQ/AVX512F/AVX512VL implementation.  Uses 512-bit vectors. */
+/* VPCLMULQDQ/AVX512 implementation with 512-bit vectors */
 #if HAVE_VPCLMULQDQ_INTRIN && HAVE_PCLMULQDQ_INTRIN && \
 	HAVE_AVX512F_INTRIN && HAVE_AVX512VL_INTRIN
-#  define crc32_x86_vpclmulqdq_avx512f_avx512vl	crc32_x86_vpclmulqdq_avx512f_avx512vl
-#  define SUFFIX					 _vpclmulqdq_avx512f_avx512vl
-#if HAVE_VPCLMULQDQ_NATIVE && HAVE_PCLMULQDQ_NATIVE && \
+#  define crc32_x86_vpclmulqdq_avx512_vl512  crc32_x86_vpclmulqdq_avx512_vl512
+#  define SUFFIX				      _vpclmulqdq_avx512_vl512
+#  if HAVE_VPCLMULQDQ_NATIVE && HAVE_PCLMULQDQ_NATIVE && \
 	HAVE_AVX512F_NATIVE && HAVE_AVX512VL_NATIVE
 #    define ATTRIBUTES
 #  else
-#    define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512f,avx512vl")
+#    define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
 #  endif
 #  define VL			64
 #  define FOLD_LESSTHAN16BYTES	1
@@ -136,15 +138,16 @@ arch_select_crc32_func(void)
 {
 	const u32 features MAYBE_UNUSED = get_x86_cpu_features();
 
-#ifdef crc32_x86_vpclmulqdq_avx512f_avx512vl
+#ifdef crc32_x86_vpclmulqdq_avx512_vl512
+	if ((features & X86_CPU_FEATURE_ZMM) &&
+	    HAVE_VPCLMULQDQ(features) && HAVE_PCLMULQDQ(features) &&
+	    HAVE_AVX512F(features) && HAVE_AVX512VL(features))
+		return crc32_x86_vpclmulqdq_avx512_vl512;
+#endif
+#ifdef crc32_x86_vpclmulqdq_avx512_vl256
 	if (HAVE_VPCLMULQDQ(features) && HAVE_PCLMULQDQ(features) &&
 	    HAVE_AVX512F(features) && HAVE_AVX512VL(features))
-		return crc32_x86_vpclmulqdq_avx512f_avx512vl;
-#endif
-#ifdef crc32_x86_vpclmulqdq_avx512vl
-	if (HAVE_VPCLMULQDQ(features) && HAVE_PCLMULQDQ(features) &&
-	    HAVE_AVX512VL(features))
-		return crc32_x86_vpclmulqdq_avx512vl;
+		return crc32_x86_vpclmulqdq_avx512_vl256;
 #endif
 #ifdef crc32_x86_vpclmulqdq_avx2
 	if (HAVE_VPCLMULQDQ(features) && HAVE_PCLMULQDQ(features) &&

@@ -44,9 +44,16 @@
 #define X86_CPU_FEATURE_AVX		0x00000004
 #define X86_CPU_FEATURE_AVX2		0x00000008
 #define X86_CPU_FEATURE_BMI2		0x00000010
-#define X86_CPU_FEATURE_AVX512F		0x00000020
-#define X86_CPU_FEATURE_AVX512VL	0x00000040
-#define X86_CPU_FEATURE_VPCLMULQDQ	0x00000080
+/*
+ * ZMM indicates whether 512-bit vectors (zmm registers) should be used.  On
+ * some CPUs, to avoid downclocking issues we don't set ZMM even if the CPU
+ * supports it, i.e. even if AVX512F is set.  On these CPUs, we may still use
+ * AVX-512 instructions, but only with ymm and xmm registers.
+ */
+#define X86_CPU_FEATURE_ZMM		0x00000020
+#define X86_CPU_FEATURE_AVX512F		0x00000040
+#define X86_CPU_FEATURE_AVX512VL	0x00000080
+#define X86_CPU_FEATURE_VPCLMULQDQ	0x00000100
 
 #define HAVE_SSE2(features)	(HAVE_SSE2_NATIVE     || ((features) & X86_CPU_FEATURE_SSE2))
 #define HAVE_PCLMULQDQ(features) (HAVE_PCLMULQDQ_NATIVE || ((features) & X86_CPU_FEATURE_PCLMULQDQ))
