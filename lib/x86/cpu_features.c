@@ -171,7 +171,7 @@ void libdeflate_init_x86_cpu_features(void)
 		features |= X86_CPU_FEATURE_ZMM;
 	if ((b & (1 << 16)) && ((xcr0 & 0xe6) == 0xe6))
 		features |= X86_CPU_FEATURE_AVX512F;
-	if ((b & (1U << 31)) && ((xcr0 & 0xa6) == 0xa6))
+	if ((b & (1U << 31)) && ((xcr0 & 0xe6) == 0xe6))
 		features |= X86_CPU_FEATURE_AVX512VL;
 	if ((c & (1 << 10)) && ((xcr0 & 0x6) == 0x6))
 		features |= X86_CPU_FEATURE_VPCLMULQDQ;
