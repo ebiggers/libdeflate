@@ -157,10 +157,14 @@ echo
 {
 case $ARCH in
 i386|x86_64)
-	if have_cpu_features avx512_vnni avx512bw; then
-		do_benchmark "AVX512VNNI/AVX512BW"
-		disable_cpu_feature "avx512vnni" "-mno-avx512vnni"
+	if have_cpu_features avx512bw avx512_vnni; then
+		do_benchmark "AVX512BW/AVX512VNNI"
+		disable_cpu_feature "avx512_vnni" "-mno-avx512vnni"
 		disable_cpu_feature "avx512bw" "-mno-avx512bw"
+	fi
+	if have_cpu_features avx2 avx_vnni; then
+		do_benchmark "AVX2/AVX-VNNI"
+		disable_cpu_feature "avx_vnni" "-mno-avxvnni"
 	fi
 	if have_cpu_feature avx2; then
 		do_benchmark "AVX2"

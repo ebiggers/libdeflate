@@ -277,24 +277,115 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 #endif /* HAVE_AVX2_INTRIN */
 
 /*
- * AVX512VNNI/AVX512BW implementation.  Uses the dot product instruction
- * vpdpbusd from AVX512VNNI and the vpsadbw instruction from AVX512BW.
- * (vpdpbusd with ones could be used instead of vpsadbw, but it's slower.)
- *
- * We currently don't include an implementation using AVX512VNNI or AVX512BW
- * alone, since CPUs with good AVX-512 implementations tend to have both.
+ * AVX2/AVX-VNNI implementation.  This is similar to the AVX512BW/AVX512VNNI
+ * implementation, but instead of using AVX-512 it uses AVX2 plus AVX-VNNI.
+ * AVX-VNNI adds dot product instructions to CPUs without AVX-512.
  */
-#if HAVE_AVX512VNNI_INTRIN && HAVE_AVX512BW_INTRIN
-#  define adler32_avx512vnni_avx512bw	adler32_avx512vnni_avx512bw
-#  define FUNCNAME			adler32_avx512vnni_avx512bw
-#  define FUNCNAME_CHUNK		adler32_avx512vnni_avx512bw_chunk
-#  define IMPL_ALIGNMENT	64
+#if HAVE_AVX2_INTRIN && HAVE_AVXVNNI_INTRIN
+#  define adler32_avx2_vnni	adler32_avx2_vnni
+#  define FUNCNAME		adler32_avx2_vnni
+#  define FUNCNAME_CHUNK	adler32_avx2_vnni_chunk
+#  define IMPL_ALIGNMENT	32
 #  define IMPL_SEGMENT_LEN	128
-#  define IMPL_MAX_CHUNK_LEN	(128 * (0xFFFF / 0xFF))
-#  if HAVE_AVX512VNNI_NATIVE && HAVE_AVX512BW_NATIVE
+#  define IMPL_MAX_CHUNK_LEN	MAX_CHUNK_LEN
+#  if HAVE_AVX2_NATIVE && HAVE_AVXVNNI_NATIVE
 #    define ATTRIBUTES
 #  else
-#    define ATTRIBUTES		_target_attribute("avx512vnni,avx512bw")
+#    define ATTRIBUTES		_target_attribute("avx2,avxvnni")
+#  endif
+#  include <immintrin.h>
+  /*
+   * With clang in MSVC compatibility mode, immintrin.h incorrectly skips
+   * including some sub-headers.
+   */
+#  if defined(__clang__) && defined(_MSC_VER)
+#    include <tmmintrin.h>
+#    include <smmintrin.h>
+#    include <wmmintrin.h>
+#    include <avxintrin.h>
+#    include <avx2intrin.h>
+#    include <avxvnniintrin.h>
+#  endif
+static forceinline ATTRIBUTES void
+adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
+			u32 *s1, u32 *s2)
+{
+	static const u8 _aligned_attribute(32) mults[2][32] = {
+		{ 64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
+		  48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, },
+		{ 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
+		  16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1, },
+	};
+	const __m256i /* __v32qu */ mults_a = _mm256_load_si256((const __m256i *)mults[0]);
+	const __m256i /* __v32qu */ mults_b = _mm256_load_si256((const __m256i *)mults[1]);
+	const __m256i zeroes = _mm256_setzero_si256();
+	__m256i /* __v8su */ v_s1_a = zeroes;
+	__m256i /* __v8su */ v_s1_b = zeroes;
+	__m256i /* __v8su */ v_s1_sums_a = zeroes;
+	__m256i /* __v8su */ v_s1_sums_b = zeroes;
+	__m256i /* __v8su */ v_s2_a = zeroes;
+	__m256i /* __v8su */ v_s2_b = zeroes;
+	__m256i /* __v8su */ v_s2_c = zeroes;
+	__m256i /* __v8su */ v_s2_d = zeroes;
+
+	do {
+		__m256i bytes_a = *p++;
+		__m256i bytes_b = *p++;
+		__m256i bytes_c = *p++;
+		__m256i bytes_d = *p++;
+
+		v_s2_a = _mm256_dpbusd_avx_epi32(v_s2_a, bytes_a, mults_a);
+		v_s2_b = _mm256_dpbusd_avx_epi32(v_s2_b, bytes_b, mults_b);
+		v_s2_c = _mm256_dpbusd_avx_epi32(v_s2_c, bytes_c, mults_a);
+		v_s2_d = _mm256_dpbusd_avx_epi32(v_s2_d, bytes_d, mults_b);
+		v_s1_sums_a = _mm256_add_epi32(v_s1_sums_a, v_s1_a);
+		v_s1_sums_b = _mm256_add_epi32(v_s1_sums_b, v_s1_b);
+		v_s1_a = _mm256_add_epi32(v_s1_a,
+				  _mm256_add_epi32(_mm256_sad_epu8(bytes_a, zeroes),
+						   _mm256_sad_epu8(bytes_b, zeroes)));
+		v_s1_b = _mm256_add_epi32(v_s1_b,
+				  _mm256_add_epi32(_mm256_sad_epu8(bytes_c, zeroes),
+						   _mm256_sad_epu8(bytes_d, zeroes)));
+#if GCC_PREREQ(1, 0)
+		__asm__("" : "+x" (v_s1_a), "+x" (v_s1_b), "+x" (v_s1_sums_a),
+			     "+x" (v_s1_sums_b), "+x" (v_s2_a), "+x" (v_s2_b),
+			     "+x" (v_s2_c), "+x" (v_s2_d));
+#endif
+	} while (p != end);
+
+	v_s1_sums_a = _mm256_add_epi32(v_s1_sums_a, v_s1_sums_b);
+	v_s1_sums_a = _mm256_slli_epi32(v_s1_sums_a, 7);
+	v_s1_sums_a = _mm256_add_epi32(v_s1_sums_a, _mm256_slli_epi32(v_s1_a, 6));
+	v_s1_a = _mm256_add_epi32(v_s1_a, v_s1_b);
+	v_s2_a = _mm256_add_epi32(v_s2_a, v_s2_b);
+	v_s2_c = _mm256_add_epi32(v_s2_c, v_s2_d);
+	v_s2_a = _mm256_add_epi32(v_s2_a, v_s2_c);
+	v_s2_a = _mm256_add_epi32(v_s2_a, v_s1_sums_a);
+	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1_a, v_s2_a);
+}
+#  include "../adler32_vec_template.h"
+#endif /* HAVE_AVX2_INTRIN && HAVE_AVXVNNI_INTRIN */
+
+/*
+ * AVX512BW/AVX512VNNI implementation.  Uses the vpsadbw (sum of absolute
+ * differences) instruction from AVX512BW and the vpdpbusd (dot product)
+ * instruction from AVX512VNNI.  Note that vpdpbusd with all-ones could be used
+ * instead of vpsadbw, but vpsadbw is faster.
+ *
+ * We currently don't include an implementation using AVX512BW or AVX512VNNI
+ * alone, since CPUs with good AVX-512 implementations tend to have both.
+ */
+#if HAVE_AVX512BW_INTRIN && HAVE_AVX512VNNI_INTRIN
+#  define adler32_avx512_vnni	adler32_avx512_vnni
+#  define FUNCNAME		adler32_avx512_vnni
+#  define FUNCNAME_CHUNK	adler32_avx512_vnni_chunk
+#  define IMPL_ALIGNMENT	64
+#  define IMPL_SEGMENT_LEN	128
+#  define IMPL_MAX_CHUNK_LEN	MAX_CHUNK_LEN
+#  if HAVE_AVX512BW_NATIVE && HAVE_AVX512VNNI_NATIVE
+#    define ATTRIBUTES
+#  else
+#    define ATTRIBUTES		_target_attribute("avx512bw,avx512vnni")
 #  endif
 #  include <immintrin.h>
   /*
@@ -312,8 +403,8 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 #    include <avx512vnniintrin.h>
 #  endif
 static forceinline ATTRIBUTES void
-adler32_avx512vnni_avx512bw_chunk(const __m512i *p, const __m512i *const end,
-				  u32 *s1, u32 *s2)
+adler32_avx512_vnni_chunk(const __m512i *p, const __m512i *const end,
+			  u32 *s1, u32 *s2)
 {
 	static const u8 _aligned_attribute(64) mults[64] = {
 		64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
@@ -323,7 +414,8 @@ adler32_avx512vnni_avx512bw_chunk(const __m512i *p, const __m512i *const end,
 	};
 	const __m512i /* __v64qu */ mults_a = _mm512_load_si512((const __m512i *)mults);
 	const __m512i zeroes = _mm512_setzero_si512();
-	__m512i /* __v16su */ v_s1 = zeroes;
+	__m512i /* __v16su */ v_s1_a = zeroes;
+	__m512i /* __v16su */ v_s1_b = zeroes;
 	__m512i /* __v16su */ v_s1_sums_a = zeroes;
 	__m512i /* __v16su */ v_s1_sums_b = zeroes;
 	__m512i /* __v16su */ v_s2_a = zeroes;
@@ -332,36 +424,41 @@ adler32_avx512vnni_avx512bw_chunk(const __m512i *p, const __m512i *const end,
 	do {
 		const __m512i bytes_a = *p++;
 		const __m512i bytes_b = *p++;
-		__m512i v_sad_a, v_sad_b;
 
 		v_s2_a = _mm512_dpbusd_epi32(v_s2_a, bytes_a, mults_a);
 		v_s2_b = _mm512_dpbusd_epi32(v_s2_b, bytes_b, mults_a);
-		v_sad_a = _mm512_sad_epu8(bytes_a, zeroes);
-		v_sad_b = _mm512_sad_epu8(bytes_b, zeroes);
-		v_s1_sums_a = _mm512_add_epi32(v_s1_sums_a, v_s1);
-		v_s1 = _mm512_add_epi32(v_s1, v_sad_a);
-		v_s1_sums_b = _mm512_add_epi32(v_s1_sums_b, v_s1);
-		v_s1 = _mm512_add_epi32(v_s1, v_sad_b);
+		v_s1_sums_a = _mm512_add_epi32(v_s1_sums_a, v_s1_a);
+		v_s1_sums_b = _mm512_add_epi32(v_s1_sums_b, v_s1_b);
+		v_s1_a = _mm512_add_epi32(v_s1_a, _mm512_sad_epu8(bytes_a, zeroes));
+		v_s1_b = _mm512_add_epi32(v_s1_b, _mm512_sad_epu8(bytes_b, zeroes));
+		GCC_UPDATE_VARS(v_s1_a, v_s1_b, v_s1_sums_a, v_s1_sums_b,
+				v_s2_a, v_s2_b);
 	} while (p != end);
 
 	v_s1_sums_a = _mm512_add_epi32(v_s1_sums_a, v_s1_sums_b);
-	v_s1_sums_a = _mm512_slli_epi32(v_s1_sums_a, 6);
+	v_s1_sums_a = _mm512_slli_epi32(v_s1_sums_a, 7);
+	v_s1_sums_a = _mm512_add_epi32(v_s1_sums_a, _mm512_slli_epi32(v_s1_a, 6));
+	v_s1_a = _mm512_add_epi32(v_s1_a, v_s1_b);
 	v_s2_a = _mm512_add_epi32(v_s2_a, v_s2_b);
 	v_s2_a = _mm512_add_epi32(v_s2_a, v_s1_sums_a);
-	ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1, v_s2_a);
+	ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1_a, v_s2_a);
 }
 #  include "../adler32_vec_template.h"
-#endif /* HAVE_AVX512VNNI_INTRIN && HAVE_AVX512BW_INTRIN */
+#endif /* HAVE_AVX512BW_INTRIN && HAVE_AVX512VNNI_INTRIN */
 
 static inline adler32_func_t
 arch_select_adler32_func(void)
 {
 	const u32 features MAYBE_UNUSED = get_x86_cpu_features();
 
-#ifdef adler32_avx512vnni_avx512bw
+#ifdef adler32_avx512_vnni
 	if ((features & X86_CPU_FEATURE_ZMM) &&
-	    HAVE_AVX512VNNI(features) && HAVE_AVX512BW(features))
-		return adler32_avx512vnni_avx512bw;
+	    HAVE_AVX512BW(features) && HAVE_AVX512VNNI(features))
+		return adler32_avx512_vnni;
+#endif
+#ifdef adler32_avx2_vnni
+	if (HAVE_AVX2(features) && HAVE_AVXVNNI(features))
+		return adler32_avx2_vnni;
 #endif
 #ifdef adler32_avx2
 	if (HAVE_AVX2(features))

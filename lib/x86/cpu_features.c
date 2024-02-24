@@ -95,7 +95,8 @@ static const struct cpu_feature x86_cpu_feature_table[] = {
 	{X86_CPU_FEATURE_AVX512BW,	"avx512bw"},
 	{X86_CPU_FEATURE_AVX512VL,	"avx512vl"},
 	{X86_CPU_FEATURE_VPCLMULQDQ,	"vpclmulqdq"},
-	{X86_CPU_FEATURE_AVX512VNNI,	"avx512vnni"},
+	{X86_CPU_FEATURE_AVX512VNNI,	"avx512_vnni"},
+	{X86_CPU_FEATURE_AVXVNNI,	"avx_vnni"},
 };
 
 volatile u32 libdeflate_x86_cpu_features = 0;
@@ -181,6 +182,11 @@ void libdeflate_init_x86_cpu_features(void)
 		features |= X86_CPU_FEATURE_VPCLMULQDQ;
 	if ((c & (1 << 11)) && ((xcr0 & 0xe6) == 0xe6))
 		features |= X86_CPU_FEATURE_AVX512VNNI;
+
+	/* EAX=7, ECX=1: Extended Features */
+	cpuid(7, 1, &a, &b, &c, &d);
+	if ((a & (1 << 4)) && ((xcr0 & 0x6) == 0x6))
+		features |= X86_CPU_FEATURE_AVXVNNI;
 
 out:
 	disable_cpu_features_for_testing(&features, x86_cpu_feature_table,

@@ -56,6 +56,7 @@
 #define X86_CPU_FEATURE_AVX512VL	0x00000100
 #define X86_CPU_FEATURE_VPCLMULQDQ	0x00000200
 #define X86_CPU_FEATURE_AVX512VNNI	0x00000400
+#define X86_CPU_FEATURE_AVXVNNI		0x00000800
 
 #define HAVE_SSE2(features)	(HAVE_SSE2_NATIVE     || ((features) & X86_CPU_FEATURE_SSE2))
 #define HAVE_PCLMULQDQ(features) (HAVE_PCLMULQDQ_NATIVE || ((features) & X86_CPU_FEATURE_PCLMULQDQ))
@@ -67,6 +68,7 @@
 #define HAVE_AVX512VL(features)	(HAVE_AVX512VL_NATIVE || ((features) & X86_CPU_FEATURE_AVX512VL))
 #define HAVE_VPCLMULQDQ(features) (HAVE_VPCLMULQDQ_NATIVE || ((features) & X86_CPU_FEATURE_VPCLMULQDQ))
 #define HAVE_AVX512VNNI(features) (HAVE_AVX512VNNI_NATIVE || ((features) & X86_CPU_FEATURE_AVX512VNNI))
+#define HAVE_AVXVNNI(features)	(HAVE_AVXVNNI_NATIVE || ((features) & X86_CPU_FEATURE_AVXVNNI))
 
 #if HAVE_DYNAMIC_X86_CPU_FEATURES
 #define X86_CPU_FEATURES_KNOWN		0x80000000
@@ -173,7 +175,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_BMI2_INTRIN	0
 #endif
 
-/* AVX-512F */
+/* AVX512F */
 #ifdef __AVX512F__
 #  define HAVE_AVX512F_NATIVE	1
 #else
@@ -186,7 +188,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_AVX512F_INTRIN	0
 #endif
 
-/* AVX-512BW */
+/* AVX512BW */
 #ifdef __AVX512BW__
 #  define HAVE_AVX512BW_NATIVE	1
 #else
@@ -199,7 +201,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_AVX512BW_INTRIN	0
 #endif
 
-/* AVX-512VL */
+/* AVX512VL */
 #ifdef __AVX512VL__
 #  define HAVE_AVX512VL_NATIVE	1
 #else
@@ -236,6 +238,19 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_AVX512VNNI_INTRIN	1
 #else
 #  define HAVE_AVX512VNNI_INTRIN	0
+#endif
+
+/* AVX-VNNI */
+#ifdef __AVXVNNI__
+#  define HAVE_AVXVNNI_NATIVE	1
+#else
+#  define HAVE_AVXVNNI_NATIVE	0
+#endif
+#if HAVE_AVXVNNI_NATIVE || GCC_PREREQ(11, 1) || CLANG_PREREQ(12, 0, 0) || \
+			   defined(_MSC_VER)
+#  define HAVE_AVXVNNI_INTRIN	1
+#else
+#  define HAVE_AVXVNNI_INTRIN	0
 #endif
 
 #endif /* ARCH_X86_32 || ARCH_X86_64 */
