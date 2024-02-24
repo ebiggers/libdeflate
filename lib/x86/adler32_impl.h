@@ -36,16 +36,22 @@
  * of which halves the vector length, until just one counter remains.
  *
  * The s1 reductions don't depend on the s2 reductions and vice versa, so for
- * efficiency they are interleaved.  Also, every other s1 counter is 0 due to
- * the 'psadbw' instruction (_mm_sad_epu8) summing groups of 8 bytes rather than
- * 4; hence, one of the s1 reductions is skipped when going from 128 => 32 bits.
+ * efficiency they are interleaved.
+ *
+ * If used_sad=1, then the bytes were summed using one of the Sum of Absolute
+ * Differences instructions (psadbw or vpsadbw) before they were added to v_s1.
+ * In this case every other counter in v_s1 is 0, so we skip one of the s1
+ * reductions when going from 128 => 32 bits.
  */
 
-#define ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2)		    \
+#define ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2, used_sad)	    \
 {									    \
 	__m128i /* __v4su */ s1_last = (v_s1), s2_last = (v_s2);	    \
 									    \
 	/* 128 => 32 bits */						    \
+	if (!(used_sad))						    \
+		s1_last = _mm_add_epi32(s1_last,			    \
+					_mm_shuffle_epi32(s1_last, 0x31));  \
 	s2_last = _mm_add_epi32(s2_last, _mm_shuffle_epi32(s2_last, 0x31)); \
 	s1_last = _mm_add_epi32(s1_last, _mm_shuffle_epi32(s1_last, 0x02)); \
 	s2_last = _mm_add_epi32(s2_last, _mm_shuffle_epi32(s2_last, 0x02)); \
@@ -54,7 +60,7 @@
 	*(s2) += (u32)_mm_cvtsi128_si32(s2_last);			    \
 }
 
-#define ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2)		    \
+#define ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2, used_sad)	    \
 {									    \
 	__m128i /* __v4su */ s1_128bit, s2_128bit;			    \
 									    \
@@ -64,10 +70,11 @@
 	s2_128bit = _mm_add_epi32(_mm256_extracti128_si256((v_s2), 0),	    \
 				  _mm256_extracti128_si256((v_s2), 1));	    \
 									    \
-	ADLER32_FINISH_VEC_CHUNK_128((s1), (s2), s1_128bit, s2_128bit);	    \
+	ADLER32_FINISH_VEC_CHUNK_128((s1), (s2), s1_128bit, s2_128bit,	    \
+				     (used_sad));			    \
 }
 
-#define ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1, v_s2)		    \
+#define ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1, v_s2, used_sad)	    \
 {									    \
 	__m256i /* __v8su */ s1_256bit, s2_256bit;			    \
 									    \
@@ -77,7 +84,8 @@
 	s2_256bit = _mm256_add_epi32(_mm512_extracti64x4_epi64((v_s2), 0),  \
 				     _mm512_extracti64x4_epi64((v_s2), 1)); \
 									    \
-	ADLER32_FINISH_VEC_CHUNK_256((s1), (s2), s1_256bit, s2_256bit);	    \
+	ADLER32_FINISH_VEC_CHUNK_256((s1), (s2), s1_256bit, s2_256bit,	    \
+				     (used_sad));			    \
 }
 
 /*
@@ -191,7 +199,7 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 	v_s2 = _mm_add_epi32(v_s2, _mm_madd_epi16(v_byte_sums_d, mults_d));
 
 	/* Add the counters to the real s1 and s2. */
-	ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2);
+	ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2, 1);
 }
 #  include "../adler32_vec_template.h"
 #endif /* HAVE_SSE2_INTRIN */
@@ -271,7 +279,7 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 	v_s2 = _mm256_add_epi32(v_s2, _mm256_madd_epi16(v_byte_sums_b, mults_b));
 	v_s2 = _mm256_add_epi32(v_s2, _mm256_madd_epi16(v_byte_sums_c, mults_c));
 	v_s2 = _mm256_add_epi32(v_s2, _mm256_madd_epi16(v_byte_sums_d, mults_d));
-	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2);
+	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2, 1);
 }
 #  include "../adler32_vec_template.h"
 #endif /* HAVE_AVX2_INTRIN */
@@ -361,19 +369,14 @@ adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
 	v_s2_c = _mm256_add_epi32(v_s2_c, v_s2_d);
 	v_s2_a = _mm256_add_epi32(v_s2_a, v_s2_c);
 	v_s2_a = _mm256_add_epi32(v_s2_a, v_s1_sums_a);
-	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1_a, v_s2_a);
+	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1_a, v_s2_a, 1);
 }
 #  include "../adler32_vec_template.h"
 #endif /* HAVE_AVX2_INTRIN && HAVE_AVXVNNI_INTRIN */
 
 /*
- * AVX512BW/AVX512VNNI implementation.  Uses the vpsadbw (sum of absolute
- * differences) instruction from AVX512BW and the vpdpbusd (dot product)
- * instruction from AVX512VNNI.  Note that vpdpbusd with all-ones could be used
- * instead of vpsadbw, but vpsadbw is faster.
- *
- * We currently don't include an implementation using AVX512BW or AVX512VNNI
- * alone, since CPUs with good AVX-512 implementations tend to have both.
+ * AVX512BW/AVX512VNNI implementation.  Uses the vpdpbusd (dot product)
+ * instruction from AVX512VNNI.
  */
 #if HAVE_AVX512BW_INTRIN && HAVE_AVX512VNNI_INTRIN
 #  define adler32_avx512_vnni	adler32_avx512_vnni
@@ -413,6 +416,7 @@ adler32_avx512_vnni_chunk(const __m512i *p, const __m512i *const end,
 		16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,
 	};
 	const __m512i /* __v64qu */ mults_a = _mm512_load_si512((const __m512i *)mults);
+	const __m512i /* __v64qu */ ones = _mm512_set1_epi8(1);
 	const __m512i zeroes = _mm512_setzero_si512();
 	__m512i /* __v16su */ v_s1_a = zeroes;
 	__m512i /* __v16su */ v_s1_b = zeroes;
@@ -429,8 +433,12 @@ adler32_avx512_vnni_chunk(const __m512i *p, const __m512i *const end,
 		v_s2_b = _mm512_dpbusd_epi32(v_s2_b, bytes_b, mults_a);
 		v_s1_sums_a = _mm512_add_epi32(v_s1_sums_a, v_s1_a);
 		v_s1_sums_b = _mm512_add_epi32(v_s1_sums_b, v_s1_b);
-		v_s1_a = _mm512_add_epi32(v_s1_a, _mm512_sad_epu8(bytes_a, zeroes));
-		v_s1_b = _mm512_add_epi32(v_s1_b, _mm512_sad_epu8(bytes_b, zeroes));
+		/*
+		 * vpdpbusd with 1's seems to be faster than vpsadbw + vpaddd
+		 * here, provided that the accumulators are independent.
+		 */
+		v_s1_a = _mm512_dpbusd_epi32(v_s1_a, bytes_a, ones);
+		v_s1_b = _mm512_dpbusd_epi32(v_s1_b, bytes_b, ones);
 		GCC_UPDATE_VARS(v_s1_a, v_s1_b, v_s1_sums_a, v_s1_sums_b,
 				v_s2_a, v_s2_b);
 	} while (p != end);
@@ -441,7 +449,7 @@ adler32_avx512_vnni_chunk(const __m512i *p, const __m512i *const end,
 	v_s1_a = _mm512_add_epi32(v_s1_a, v_s1_b);
 	v_s2_a = _mm512_add_epi32(v_s2_a, v_s2_b);
 	v_s2_a = _mm512_add_epi32(v_s2_a, v_s1_sums_a);
-	ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1_a, v_s2_a);
+	ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1_a, v_s2_a, 0);
 }
 #  include "../adler32_vec_template.h"
 #endif /* HAVE_AVX512BW_INTRIN && HAVE_AVX512VNNI_INTRIN */
