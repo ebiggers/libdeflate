@@ -71,12 +71,12 @@ typedef s16 mf_pos_t;
  * MATCHFINDER_MEM_ALIGNMENT).  The architecture-specific implementations of
  * matchfinder_init() and matchfinder_rebase() take advantage of this value.
  *
- * Currently the maximum size alignment required is 256 bytes, needed by
+ * Currently the maximum size alignment required is 128 bytes, needed by
  * the AVX-2 matchfinder functions.  However, the RISC-V Vector Extension
  * matchfinder functions can, in principle, take advantage of a larger size
  * alignment.  Therefore, we set this to 1024, which still easily divides the
  * actual sizes that result from the current matchfinder struct definitions.
- * This value can safely be changed to any power of two that is >= 256.
+ * This value can safely be changed to any power of two that is >= 128.
  */
 #define MATCHFINDER_SIZE_ALIGNMENT	1024
 
