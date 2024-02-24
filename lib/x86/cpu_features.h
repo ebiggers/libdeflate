@@ -52,8 +52,10 @@
  */
 #define X86_CPU_FEATURE_ZMM		0x00000020
 #define X86_CPU_FEATURE_AVX512F		0x00000040
-#define X86_CPU_FEATURE_AVX512VL	0x00000080
-#define X86_CPU_FEATURE_VPCLMULQDQ	0x00000100
+#define X86_CPU_FEATURE_AVX512BW	0x00000080
+#define X86_CPU_FEATURE_AVX512VL	0x00000100
+#define X86_CPU_FEATURE_VPCLMULQDQ	0x00000200
+#define X86_CPU_FEATURE_AVX512VNNI	0x00000400
 
 #define HAVE_SSE2(features)	(HAVE_SSE2_NATIVE     || ((features) & X86_CPU_FEATURE_SSE2))
 #define HAVE_PCLMULQDQ(features) (HAVE_PCLMULQDQ_NATIVE || ((features) & X86_CPU_FEATURE_PCLMULQDQ))
@@ -61,8 +63,10 @@
 #define HAVE_AVX2(features)	(HAVE_AVX2_NATIVE     || ((features) & X86_CPU_FEATURE_AVX2))
 #define HAVE_BMI2(features)	(HAVE_BMI2_NATIVE     || ((features) & X86_CPU_FEATURE_BMI2))
 #define HAVE_AVX512F(features)	(HAVE_AVX512F_NATIVE || ((features) & X86_CPU_FEATURE_AVX512F))
+#define HAVE_AVX512BW(features)	(HAVE_AVX512BW_NATIVE || ((features) & X86_CPU_FEATURE_AVX512BW))
 #define HAVE_AVX512VL(features)	(HAVE_AVX512VL_NATIVE || ((features) & X86_CPU_FEATURE_AVX512VL))
 #define HAVE_VPCLMULQDQ(features) (HAVE_VPCLMULQDQ_NATIVE || ((features) & X86_CPU_FEATURE_VPCLMULQDQ))
+#define HAVE_AVX512VNNI(features) (HAVE_AVX512VNNI_NATIVE || ((features) & X86_CPU_FEATURE_AVX512VNNI))
 
 #if HAVE_DYNAMIC_X86_CPU_FEATURES
 #define X86_CPU_FEATURES_KNOWN		0x80000000
@@ -182,6 +186,19 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_AVX512F_INTRIN	0
 #endif
 
+/* AVX-512BW */
+#ifdef __AVX512BW__
+#  define HAVE_AVX512BW_NATIVE	1
+#else
+#  define HAVE_AVX512BW_NATIVE	0
+#endif
+#if HAVE_AVX512BW_NATIVE || GCC_PREREQ(5, 1) || CLANG_PREREQ(3, 9, 0) || \
+			    defined(_MSC_VER)
+#  define HAVE_AVX512BW_INTRIN	1
+#else
+#  define HAVE_AVX512BW_INTRIN	0
+#endif
+
 /* AVX-512VL */
 #ifdef __AVX512VL__
 #  define HAVE_AVX512VL_NATIVE	1
@@ -201,11 +218,24 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_VPCLMULQDQ_NATIVE	0
 #endif
-#if HAVE_VPCLMULQDQ_NATIVE || (GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0) || \
-			       defined(_MSC_VER))
+#if HAVE_VPCLMULQDQ_NATIVE || GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0) || \
+			      defined(_MSC_VER)
 #  define HAVE_VPCLMULQDQ_INTRIN	1
 #else
 #  define HAVE_VPCLMULQDQ_INTRIN	0
+#endif
+
+/* AVX512VNNI */
+#ifdef __AVX512VNNI__
+#  define HAVE_AVX512VNNI_NATIVE	1
+#else
+#  define HAVE_AVX512VNNI_NATIVE	0
+#endif
+#if HAVE_AVX512VNNI_NATIVE || GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0) || \
+			      defined(_MSC_VER)
+#  define HAVE_AVX512VNNI_INTRIN	1
+#else
+#  define HAVE_AVX512VNNI_INTRIN	0
 #endif
 
 #endif /* ARCH_X86_32 || ARCH_X86_64 */
