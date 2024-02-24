@@ -126,8 +126,9 @@ jobs:
     - run: >
         cmake -B build -G "${{matrix.gen}}" -T ${{matrix.toolset}}
         -A ${{matrix.vs}} -DLIBDEFLATE_BUILD_TESTS=1
-        -DCMAKE_C_FLAGS="/W4 /WX /DLIBDEFLATE_ENABLE_ASSERTIONS /IC:\vcpkg\packages\zlib_${{matrix.vcpkg}}\include"
+        -DCMAKE_C_FLAGS="/W4 /WX /DLIBDEFLATE_ENABLE_ASSERTIONS"
         -DZLIB_LIBRARY=C:\vcpkg\packages\zlib_${{matrix.vcpkg}}\lib\zlib.lib
+        -DZLIB_INCLUDE_DIR=C:\vcpkg\packages\zlib_${{matrix.vcpkg}}\include
         -DCMAKE_INSTALL_PREFIX=build\install
     - run: cmake --build build --verbose --config Debug
     - run: cmake --install build --verbose --config Debug
