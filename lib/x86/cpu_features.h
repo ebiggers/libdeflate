@@ -58,17 +58,17 @@
 #define X86_CPU_FEATURE_AVX512VNNI	0x00000400
 #define X86_CPU_FEATURE_AVXVNNI		0x00000800
 
-#define HAVE_SSE2(features)	(HAVE_SSE2_NATIVE     || ((features) & X86_CPU_FEATURE_SSE2))
-#define HAVE_PCLMULQDQ(features) (HAVE_PCLMULQDQ_NATIVE || ((features) & X86_CPU_FEATURE_PCLMULQDQ))
-#define HAVE_AVX(features)	(HAVE_AVX_NATIVE      || ((features) & X86_CPU_FEATURE_AVX))
-#define HAVE_AVX2(features)	(HAVE_AVX2_NATIVE     || ((features) & X86_CPU_FEATURE_AVX2))
-#define HAVE_BMI2(features)	(HAVE_BMI2_NATIVE     || ((features) & X86_CPU_FEATURE_BMI2))
-#define HAVE_AVX512F(features)	(HAVE_AVX512F_NATIVE || ((features) & X86_CPU_FEATURE_AVX512F))
-#define HAVE_AVX512BW(features)	(HAVE_AVX512BW_NATIVE || ((features) & X86_CPU_FEATURE_AVX512BW))
-#define HAVE_AVX512VL(features)	(HAVE_AVX512VL_NATIVE || ((features) & X86_CPU_FEATURE_AVX512VL))
+#define HAVE_SSE2(features)	  (HAVE_SSE2_NATIVE	  || ((features) & X86_CPU_FEATURE_SSE2))
+#define HAVE_PCLMULQDQ(features)  (HAVE_PCLMULQDQ_NATIVE  || ((features) & X86_CPU_FEATURE_PCLMULQDQ))
+#define HAVE_AVX(features)	  (HAVE_AVX_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX))
+#define HAVE_AVX2(features)	  (HAVE_AVX2_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX2))
+#define HAVE_BMI2(features)	  (HAVE_BMI2_NATIVE	  || ((features) & X86_CPU_FEATURE_BMI2))
+#define HAVE_AVX512F(features)	  (HAVE_AVX512F_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX512F))
+#define HAVE_AVX512BW(features)	  (HAVE_AVX512BW_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX512BW))
+#define HAVE_AVX512VL(features)	  (HAVE_AVX512VL_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX512VL))
 #define HAVE_VPCLMULQDQ(features) (HAVE_VPCLMULQDQ_NATIVE || ((features) & X86_CPU_FEATURE_VPCLMULQDQ))
 #define HAVE_AVX512VNNI(features) (HAVE_AVX512VNNI_NATIVE || ((features) & X86_CPU_FEATURE_AVX512VNNI))
-#define HAVE_AVXVNNI(features)	(HAVE_AVXVNNI_NATIVE || ((features) & X86_CPU_FEATURE_AVXVNNI))
+#define HAVE_AVXVNNI(features)	  (HAVE_AVXVNNI_NATIVE	  || ((features) & X86_CPU_FEATURE_AVXVNNI))
 
 #if HAVE_DYNAMIC_X86_CPU_FEATURES
 #define X86_CPU_FEATURES_KNOWN		0x80000000
