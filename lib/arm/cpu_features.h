@@ -98,8 +98,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #if HAVE_PMULL_NATIVE || \
 	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
 	 HAVE_NEON_INTRIN /* needed to exclude soft float arm32 case */ && \
-	 (GCC_PREREQ(6, 1) || CLANG_PREREQ(3, 5, 6010000) || \
-	  defined(_MSC_VER)) && \
+	 (GCC_PREREQ(6, 1) || defined(__clang__) || defined(_MSC_VER)) && \
 	  /*
 	   * On arm32 with clang, the crypto intrinsics (which include pmull)
 	   * are not defined, even when using -mfpu=crypto-neon-fp-armv8,
@@ -179,9 +178,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 	!defined(__ARM_ARCH_7EM__)
 #      define HAVE_CRC32_INTRIN	1
 #    endif
-#  elif CLANG_PREREQ(3, 4, 6000000)
-#    define HAVE_CRC32_INTRIN	1
-#  elif defined(_MSC_VER)
+#  elif defined(__clang__) || defined(_MSC_VER)
 #    define HAVE_CRC32_INTRIN	1
 #  endif
 #endif
