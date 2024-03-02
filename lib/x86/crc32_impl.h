@@ -67,7 +67,7 @@
  * incorrectly assumes that VPCLMULQDQ implies AVX-512:
  * https://developercommunity.visualstudio.com/t/Compiler-incorrectly-assumes-VAES-and-VP/10578785?space=62&q=AVX512&sort=newest
  */
-#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0)
+#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000)
 #  define crc32_x86_vpclmulqdq_avx2	crc32_x86_vpclmulqdq_avx2
 #  define SUFFIX				 _vpclmulqdq_avx2
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx2")
@@ -77,7 +77,7 @@
 #  include "crc32_pclmul_template.h"
 #endif
 
-#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0) || defined(_MSC_VER)
+#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)
 /*
  * VPCLMULQDQ/AVX512 implementation with 256-bit vectors.  This takes advantage
  * of some AVX-512 instructions but uses 256-bit vectors rather than 512-bit.

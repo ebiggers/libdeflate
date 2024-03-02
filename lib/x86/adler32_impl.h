@@ -268,7 +268,7 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
  * implementation, but instead of using AVX-512 it uses AVX2 plus AVX-VNNI.
  * AVX-VNNI adds dot product instructions to CPUs without AVX-512.
  */
-#if GCC_PREREQ(11, 1) || CLANG_PREREQ(12, 0, 0) || defined(_MSC_VER)
+#if GCC_PREREQ(11, 1) || CLANG_PREREQ(12, 0, 13000000) || MSVC_PREREQ(1930)
 #  define adler32_avx2_vnni	adler32_avx2_vnni
 #  define FUNCNAME		adler32_avx2_vnni
 #  define FUNCNAME_CHUNK	adler32_avx2_vnni_chunk
@@ -340,7 +340,7 @@ adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
  * AVX512BW/AVX512VNNI implementation.  Uses the vpdpbusd (dot product)
  * instruction from AVX512VNNI.
  */
-#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0) || defined(_MSC_VER)
+#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)
 #  define adler32_avx512_vnni	adler32_avx512_vnni
 #  define FUNCNAME		adler32_avx512_vnni
 #  define FUNCNAME_CHUNK	adler32_avx512_vnni_chunk
