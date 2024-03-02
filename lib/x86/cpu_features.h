@@ -86,19 +86,6 @@ static inline u32 get_x86_cpu_features(void)
 static inline u32 get_x86_cpu_features(void) { return 0; }
 #endif /* !HAVE_DYNAMIC_X86_CPU_FEATURES */
 
-/*
- * Prior to gcc 4.9 (r200349) and clang 3.8 (r239883), x86 intrinsics not
- * available in the main target couldn't be used in 'target' attribute
- * functions.  Unfortunately clang has no feature test macro for this, so we
- * have to check its version.
- */
-#if HAVE_DYNAMIC_X86_CPU_FEATURES && \
-	(GCC_PREREQ(4, 9) || CLANG_PREREQ(3, 8, 7030000) || defined(_MSC_VER))
-#  define HAVE_TARGET_INTRINSICS	1
-#else
-#  define HAVE_TARGET_INTRINSICS	0
-#endif
-
 /* SSE2 */
 #if defined(__SSE2__) || \
 	(defined(_MSC_VER) && \
@@ -107,7 +94,12 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_SSE2_NATIVE	0
 #endif
-#define HAVE_SSE2_INTRIN	(HAVE_SSE2_NATIVE || HAVE_TARGET_INTRINSICS)
+#if HAVE_SSE2_NATIVE || defined(__GNUC__) || defined(__clang__) || \
+			defined(_MSC_VER)
+#  define HAVE_SSE2_INTRIN	1
+#else
+#  define HAVE_SSE2_INTRIN	0
+#endif
 
 /* PCLMULQDQ */
 #if defined(__PCLMUL__) || (defined(_MSC_VER) && defined(__AVX2__))
@@ -115,9 +107,8 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_PCLMULQDQ_NATIVE	0
 #endif
-#if HAVE_PCLMULQDQ_NATIVE || (HAVE_TARGET_INTRINSICS && \
-			      (GCC_PREREQ(4, 4) || CLANG_PREREQ(3, 2, 0) || \
-			       defined(_MSC_VER)))
+#if HAVE_PCLMULQDQ_NATIVE || GCC_PREREQ(4, 4) || CLANG_PREREQ(3, 2, 0) || \
+			     defined(_MSC_VER)
 #  define HAVE_PCLMULQDQ_INTRIN	1
 #else
 #  define HAVE_PCLMULQDQ_INTRIN	0
@@ -129,9 +120,8 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_AVX_NATIVE	0
 #endif
-#if HAVE_AVX_NATIVE || (HAVE_TARGET_INTRINSICS && \
-			(GCC_PREREQ(4, 6) || CLANG_PREREQ(3, 0, 0) || \
-			 defined(_MSC_VER)))
+#if HAVE_AVX_NATIVE || GCC_PREREQ(4, 6) || CLANG_PREREQ(3, 0, 0) || \
+		       defined(_MSC_VER)
 #  define HAVE_AVX_INTRIN	1
 #else
 #  define HAVE_AVX_INTRIN	0
@@ -143,9 +133,8 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_AVX2_NATIVE	0
 #endif
-#if HAVE_AVX2_NATIVE || (HAVE_TARGET_INTRINSICS && \
-			 (GCC_PREREQ(4, 7) || CLANG_PREREQ(3, 1, 0) || \
-			  defined(_MSC_VER)))
+#if HAVE_AVX2_NATIVE || GCC_PREREQ(4, 7) || CLANG_PREREQ(3, 1, 0) || \
+			defined(_MSC_VER)
 #  define HAVE_AVX2_INTRIN	1
 #else
 #  define HAVE_AVX2_INTRIN	0
@@ -157,9 +146,8 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_BMI2_NATIVE	0
 #endif
-#if HAVE_BMI2_NATIVE || (HAVE_TARGET_INTRINSICS && \
-			 (GCC_PREREQ(4, 7) || CLANG_PREREQ(3, 1, 0) || \
-			  defined(_MSC_VER)))
+#if HAVE_BMI2_NATIVE || GCC_PREREQ(4, 7) || CLANG_PREREQ(3, 1, 0) || \
+			defined(_MSC_VER)
 #  define HAVE_BMI2_INTRIN	1
 #else
 #  define HAVE_BMI2_INTRIN	0
