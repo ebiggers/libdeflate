@@ -107,7 +107,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_PCLMULQDQ_NATIVE	0
 #endif
-#if HAVE_PCLMULQDQ_NATIVE || GCC_PREREQ(4, 4) || CLANG_PREREQ(3, 2, 0) || \
+#if HAVE_PCLMULQDQ_NATIVE || defined(__GNUC__) || defined(__clang__) || \
 			     defined(_MSC_VER)
 #  define HAVE_PCLMULQDQ_INTRIN	1
 #else
@@ -120,7 +120,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_AVX_NATIVE	0
 #endif
-#if HAVE_AVX_NATIVE || GCC_PREREQ(4, 6) || CLANG_PREREQ(3, 0, 0) || \
+#if HAVE_AVX_NATIVE || defined(__GNUC__) || defined(__clang__) || \
 		       defined(_MSC_VER)
 #  define HAVE_AVX_INTRIN	1
 #else
@@ -133,7 +133,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_AVX2_NATIVE	0
 #endif
-#if HAVE_AVX2_NATIVE || GCC_PREREQ(4, 7) || CLANG_PREREQ(3, 1, 0) || \
+#if HAVE_AVX2_NATIVE || defined(__GNUC__) || defined(__clang__) || \
 			defined(_MSC_VER)
 #  define HAVE_AVX2_INTRIN	1
 #else
@@ -146,7 +146,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_BMI2_NATIVE	0
 #endif
-#if HAVE_BMI2_NATIVE || GCC_PREREQ(4, 7) || CLANG_PREREQ(3, 1, 0) || \
+#if HAVE_BMI2_NATIVE || defined(__GNUC__) || defined(__clang__) || \
 			defined(_MSC_VER)
 #  define HAVE_BMI2_INTRIN	1
 #else
@@ -169,7 +169,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_AVX512F_NATIVE	0
 #endif
-#if HAVE_AVX512F_NATIVE || GCC_PREREQ(5, 1) || CLANG_PREREQ(3, 8, 0) || \
+#if HAVE_AVX512F_NATIVE || GCC_PREREQ(5, 1) || defined(__clang__) || \
 			   defined(_MSC_VER)
 #  define HAVE_AVX512F_INTRIN	1
 #else
@@ -182,7 +182,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_AVX512BW_NATIVE	0
 #endif
-#if HAVE_AVX512BW_NATIVE || GCC_PREREQ(5, 1) || CLANG_PREREQ(3, 9, 0) || \
+#if HAVE_AVX512BW_NATIVE || GCC_PREREQ(5, 1) || defined(__clang__) || \
 			    defined(_MSC_VER)
 #  define HAVE_AVX512BW_INTRIN	1
 #else
@@ -195,7 +195,7 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_AVX512VL_NATIVE	0
 #endif
-#if HAVE_AVX512VL_NATIVE || GCC_PREREQ(5, 1) || CLANG_PREREQ(3, 8, 0) || \
+#if HAVE_AVX512VL_NATIVE || GCC_PREREQ(5, 1) || defined(__clang__) || \
 			    defined(_MSC_VER)
 #  define HAVE_AVX512VL_INTRIN	1
 #else
