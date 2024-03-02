@@ -124,7 +124,7 @@
 static forceinline ATTRIBUTES void
 adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 {
-	static const u16 _aligned_attribute(16) mults[4][16] = {
+	static const u16 _aligned_attribute(16) mults[4][8] = {
 		{ 32, 31, 30, 29, 28, 27, 26, 25 },
 		{ 24, 23, 22, 21, 20, 19, 18, 17 },
 		{ 16, 15, 14, 13, 12, 11, 10, 9  },
