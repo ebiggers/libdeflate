@@ -35,7 +35,7 @@
 #if defined(ARCH_ARM32) || defined(ARCH_ARM64)
 
 #if !defined(FREESTANDING) && \
-    (COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE || defined(_MSC_VER)) && \
+    (defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)) && \
     (defined(__linux__) || \
      (defined(__APPLE__) && defined(ARCH_ARM64)) || \
      (defined(_WIN32) && defined(ARCH_ARM64)))

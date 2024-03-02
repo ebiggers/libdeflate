@@ -34,7 +34,7 @@
 
 #if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 
-#if COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE || defined(_MSC_VER)
+#if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 #  undef HAVE_DYNAMIC_X86_CPU_FEATURES
 #  define HAVE_DYNAMIC_X86_CPU_FEATURES	1
 #endif

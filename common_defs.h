@@ -282,10 +282,8 @@ typedef size_t machine_word_t;
  */
 #if GCC_PREREQ(4, 4) || __has_attribute(target)
 #  define _target_attribute(attrs)	__attribute__((target(attrs)))
-#  define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE	1
 #else
 #  define _target_attribute(attrs)
-#  define COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE	0
 #endif
 
 /* ========================================================================== */
