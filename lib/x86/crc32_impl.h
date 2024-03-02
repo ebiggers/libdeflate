@@ -34,11 +34,7 @@
 #if HAVE_PCLMULQDQ_INTRIN
 #  define crc32_x86_pclmulqdq	crc32_x86_pclmulqdq
 #  define SUFFIX			 _pclmulqdq
-#  if HAVE_PCLMULQDQ_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("pclmul")
-#  endif
+#  define ATTRIBUTES		_target_attribute("pclmul")
 #  define VL			16
 #  define FOLD_LESSTHAN16BYTES	0
 #  define USE_TERNARYLOGIC	0
@@ -62,11 +58,7 @@
 #if HAVE_PCLMULQDQ_INTRIN && HAVE_AVX_INTRIN
 #  define crc32_x86_pclmulqdq_avx	crc32_x86_pclmulqdq_avx
 #  define SUFFIX				 _pclmulqdq_avx
-#  if HAVE_PCLMULQDQ_NATIVE && HAVE_AVX_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("pclmul,avx")
-#  endif
+#  define ATTRIBUTES		_target_attribute("pclmul,avx")
 #  define VL			16
 #  define FOLD_LESSTHAN16BYTES	1
 #  define USE_TERNARYLOGIC	0
@@ -83,11 +75,7 @@
 	!(defined(_MSC_VER) && !defined(__clang__))
 #  define crc32_x86_vpclmulqdq_avx2	crc32_x86_vpclmulqdq_avx2
 #  define SUFFIX				 _vpclmulqdq_avx2
-#  if HAVE_VPCLMULQDQ_NATIVE && HAVE_PCLMULQDQ_NATIVE && HAVE_AVX2_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx2")
-#  endif
+#  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx2")
 #  define VL			32
 #  define FOLD_LESSTHAN16BYTES	1
 #  define USE_TERNARYLOGIC	0
@@ -103,12 +91,7 @@
 	HAVE_AVX512F_INTRIN && HAVE_AVX512VL_INTRIN
 #  define crc32_x86_vpclmulqdq_avx512_vl256  crc32_x86_vpclmulqdq_avx512_vl256
 #  define SUFFIX				      _vpclmulqdq_avx512_vl256
-#  if HAVE_VPCLMULQDQ_NATIVE && HAVE_PCLMULQDQ_NATIVE && \
-	HAVE_AVX512F_NATIVE && HAVE_AVX512VL_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
-#  endif
+#  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
 #  define VL			32
 #  define FOLD_LESSTHAN16BYTES	1
 #  define USE_TERNARYLOGIC	1
@@ -120,12 +103,7 @@
 	HAVE_AVX512F_INTRIN && HAVE_AVX512VL_INTRIN
 #  define crc32_x86_vpclmulqdq_avx512_vl512  crc32_x86_vpclmulqdq_avx512_vl512
 #  define SUFFIX				      _vpclmulqdq_avx512_vl512
-#  if HAVE_VPCLMULQDQ_NATIVE && HAVE_PCLMULQDQ_NATIVE && \
-	HAVE_AVX512F_NATIVE && HAVE_AVX512VL_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
-#  endif
+#  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
 #  define VL			64
 #  define FOLD_LESSTHAN16BYTES	1
 #  define USE_TERNARYLOGIC	1

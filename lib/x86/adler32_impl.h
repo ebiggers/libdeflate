@@ -117,11 +117,7 @@
  * would behave incorrectly.
  */
 #  define IMPL_MAX_CHUNK_LEN	(32 * (0x7FFF / 0xFF))
-#  if HAVE_SSE2_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("sse2")
-#  endif
+#  define ATTRIBUTES		_target_attribute("sse2")
 static forceinline ATTRIBUTES void
 adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 {
@@ -214,11 +210,7 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 #  define IMPL_ALIGNMENT	32
 #  define IMPL_SEGMENT_LEN	64
 #  define IMPL_MAX_CHUNK_LEN	(64 * (0x7FFF / 0xFF))
-#  if HAVE_AVX2_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("avx2")
-#  endif
+#  define ATTRIBUTES		_target_attribute("avx2")
 static forceinline ATTRIBUTES void
 adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 {
@@ -286,11 +278,7 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 #  define IMPL_ALIGNMENT	32
 #  define IMPL_SEGMENT_LEN	128
 #  define IMPL_MAX_CHUNK_LEN	MAX_CHUNK_LEN
-#  if HAVE_AVX2_NATIVE && HAVE_AVXVNNI_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("avx2,avxvnni")
-#  endif
+#  define ATTRIBUTES		_target_attribute("avx2,avxvnni")
 static forceinline ATTRIBUTES void
 adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
 			u32 *s1, u32 *s2)
@@ -362,11 +350,7 @@ adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
 #  define IMPL_ALIGNMENT	64
 #  define IMPL_SEGMENT_LEN	128
 #  define IMPL_MAX_CHUNK_LEN	MAX_CHUNK_LEN
-#  if HAVE_AVX512BW_NATIVE && HAVE_AVX512VNNI_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("avx512bw,avx512vnni")
-#  endif
+#  define ATTRIBUTES		_target_attribute("avx512bw,avx512vnni")
 static forceinline ATTRIBUTES void
 adler32_avx512_vnni_chunk(const __m512i *p, const __m512i *const end,
 			  u32 *s1, u32 *s2)
