@@ -58,18 +58,6 @@
 #define X86_CPU_FEATURE_AVX512VNNI	0x00000400
 #define X86_CPU_FEATURE_AVXVNNI		0x00000800
 
-#define HAVE_SSE2(features)	  (HAVE_SSE2_NATIVE	  || ((features) & X86_CPU_FEATURE_SSE2))
-#define HAVE_PCLMULQDQ(features)  (HAVE_PCLMULQDQ_NATIVE  || ((features) & X86_CPU_FEATURE_PCLMULQDQ))
-#define HAVE_AVX(features)	  (HAVE_AVX_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX))
-#define HAVE_AVX2(features)	  (HAVE_AVX2_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX2))
-#define HAVE_BMI2(features)	  (HAVE_BMI2_NATIVE	  || ((features) & X86_CPU_FEATURE_BMI2))
-#define HAVE_AVX512F(features)	  (HAVE_AVX512F_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX512F))
-#define HAVE_AVX512BW(features)	  (HAVE_AVX512BW_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX512BW))
-#define HAVE_AVX512VL(features)	  (HAVE_AVX512VL_NATIVE	  || ((features) & X86_CPU_FEATURE_AVX512VL))
-#define HAVE_VPCLMULQDQ(features) (HAVE_VPCLMULQDQ_NATIVE || ((features) & X86_CPU_FEATURE_VPCLMULQDQ))
-#define HAVE_AVX512VNNI(features) (HAVE_AVX512VNNI_NATIVE || ((features) & X86_CPU_FEATURE_AVX512VNNI))
-#define HAVE_AVXVNNI(features)	  (HAVE_AVXVNNI_NATIVE	  || ((features) & X86_CPU_FEATURE_AVXVNNI))
-
 #if HAVE_DYNAMIC_X86_CPU_FEATURES
 #define X86_CPU_FEATURES_KNOWN		0x80000000
 extern volatile u32 libdeflate_x86_cpu_features;
@@ -90,9 +78,11 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #if defined(__SSE2__) || \
 	(defined(_MSC_VER) && \
 	 (defined(ARCH_X86_64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
-#  define HAVE_SSE2_NATIVE	1
+#  define HAVE_SSE2(features)		1
+#  define HAVE_SSE2_NATIVE		1
 #else
-#  define HAVE_SSE2_NATIVE	0
+#  define HAVE_SSE2(features)		((features) & X86_CPU_FEATURE_SSE2)
+#  define HAVE_SSE2_NATIVE		0
 #endif
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 #  define HAVE_SSE2_INTRIN	1
@@ -102,9 +92,9 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* PCLMULQDQ */
 #if defined(__PCLMUL__) || (defined(_MSC_VER) && defined(__AVX2__))
-#  define HAVE_PCLMULQDQ_NATIVE	1
+#  define HAVE_PCLMULQDQ(features)	1
 #else
-#  define HAVE_PCLMULQDQ_NATIVE	0
+#  define HAVE_PCLMULQDQ(features)	((features) & X86_CPU_FEATURE_PCLMULQDQ)
 #endif
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 #  define HAVE_PCLMULQDQ_INTRIN	1
@@ -114,9 +104,9 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* AVX */
 #ifdef __AVX__
-#  define HAVE_AVX_NATIVE	1
+#  define HAVE_AVX(features)		1
 #else
-#  define HAVE_AVX_NATIVE	0
+#  define HAVE_AVX(features)		((features) & X86_CPU_FEATURE_AVX)
 #endif
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 #  define HAVE_AVX_INTRIN	1
@@ -126,9 +116,9 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* AVX2 */
 #ifdef __AVX2__
-#  define HAVE_AVX2_NATIVE	1
+#  define HAVE_AVX2(features)		1
 #else
-#  define HAVE_AVX2_NATIVE	0
+#  define HAVE_AVX2(features)		((features) & X86_CPU_FEATURE_AVX2)
 #endif
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 #  define HAVE_AVX2_INTRIN	1
@@ -138,9 +128,11 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* BMI2 */
 #if defined(__BMI2__) || (defined(_MSC_VER) && defined(__AVX2__))
-#  define HAVE_BMI2_NATIVE	1
+#  define HAVE_BMI2(features)		1
+#  define HAVE_BMI2_NATIVE		1
 #else
-#  define HAVE_BMI2_NATIVE	0
+#  define HAVE_BMI2(features)		((features) & X86_CPU_FEATURE_BMI2)
+#  define HAVE_BMI2_NATIVE		0
 #endif
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 #  define HAVE_BMI2_INTRIN	1
@@ -160,9 +152,9 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* AVX512F */
 #ifdef __AVX512F__
-#  define HAVE_AVX512F_NATIVE	1
+#  define HAVE_AVX512F(features)	1
 #else
-#  define HAVE_AVX512F_NATIVE	0
+#  define HAVE_AVX512F(features)	((features) & X86_CPU_FEATURE_AVX512F)
 #endif
 #if GCC_PREREQ(5, 1) || defined(__clang__) || defined(_MSC_VER)
 #  define HAVE_AVX512F_INTRIN	1
@@ -172,9 +164,9 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* AVX512BW */
 #ifdef __AVX512BW__
-#  define HAVE_AVX512BW_NATIVE	1
+#  define HAVE_AVX512BW(features)	1
 #else
-#  define HAVE_AVX512BW_NATIVE	0
+#  define HAVE_AVX512BW(features)	((features) & X86_CPU_FEATURE_AVX512BW)
 #endif
 #if GCC_PREREQ(5, 1) || defined(__clang__) || defined(_MSC_VER)
 #  define HAVE_AVX512BW_INTRIN	1
@@ -184,9 +176,9 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* AVX512VL */
 #ifdef __AVX512VL__
-#  define HAVE_AVX512VL_NATIVE	1
+#  define HAVE_AVX512VL(features)	1
 #else
-#  define HAVE_AVX512VL_NATIVE	0
+#  define HAVE_AVX512VL(features)	((features) & X86_CPU_FEATURE_AVX512VL)
 #endif
 #if GCC_PREREQ(5, 1) || defined(__clang__) || defined(_MSC_VER)
 #  define HAVE_AVX512VL_INTRIN	1
@@ -196,9 +188,9 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* VPCLMULQDQ */
 #ifdef __VPCLMULQDQ__
-#  define HAVE_VPCLMULQDQ_NATIVE	1
+#  define HAVE_VPCLMULQDQ(features)	1
 #else
-#  define HAVE_VPCLMULQDQ_NATIVE	0
+#  define HAVE_VPCLMULQDQ(features)	((features) & X86_CPU_FEATURE_VPCLMULQDQ)
 #endif
 #if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0) || defined(_MSC_VER)
 #  define HAVE_VPCLMULQDQ_INTRIN	1
@@ -208,9 +200,9 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* AVX512VNNI */
 #ifdef __AVX512VNNI__
-#  define HAVE_AVX512VNNI_NATIVE	1
+#  define HAVE_AVX512VNNI(features)	1
 #else
-#  define HAVE_AVX512VNNI_NATIVE	0
+#  define HAVE_AVX512VNNI(features)	((features) & X86_CPU_FEATURE_AVX512VNNI)
 #endif
 #if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0) || defined(_MSC_VER)
 #  define HAVE_AVX512VNNI_INTRIN	1
@@ -220,9 +212,9 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 
 /* AVX-VNNI */
 #ifdef __AVXVNNI__
-#  define HAVE_AVXVNNI_NATIVE	1
+#  define HAVE_AVXVNNI(features)	1
 #else
-#  define HAVE_AVXVNNI_NATIVE	0
+#  define HAVE_AVXVNNI(features)	((features) & X86_CPU_FEATURE_AVXVNNI)
 #endif
 #if GCC_PREREQ(11, 1) || CLANG_PREREQ(12, 0, 0) || defined(_MSC_VER)
 #  define HAVE_AVXVNNI_INTRIN	1

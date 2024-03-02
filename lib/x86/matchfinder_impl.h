@@ -30,7 +30,7 @@
 
 #include "cpu_features.h"
 
-#if HAVE_AVX2_NATIVE
+#ifdef __AVX2__
 static forceinline void
 matchfinder_init_avx2(mf_pos_t *data, size_t size)
 {
