@@ -43,11 +43,11 @@
 #  define HAVE_DYNAMIC_ARM_CPU_FEATURES	1
 #endif
 
-#define ARM_CPU_FEATURE_NEON		0x00000001
-#define ARM_CPU_FEATURE_PMULL		0x00000002
-#define ARM_CPU_FEATURE_CRC32		0x00000004
-#define ARM_CPU_FEATURE_SHA3		0x00000008
-#define ARM_CPU_FEATURE_DOTPROD		0x00000010
+#define ARM_CPU_FEATURE_NEON		(1 << 0)
+#define ARM_CPU_FEATURE_PMULL		(1 << 1)
+#define ARM_CPU_FEATURE_CRC32		(1 << 2)
+#define ARM_CPU_FEATURE_SHA3		(1 << 3)
+#define ARM_CPU_FEATURE_DOTPROD		(1 << 4)
 
 #define HAVE_NEON(features)	(HAVE_NEON_NATIVE    || ((features) & ARM_CPU_FEATURE_NEON))
 #define HAVE_PMULL(features)	(HAVE_PMULL_NATIVE   || ((features) & ARM_CPU_FEATURE_PMULL))
@@ -56,7 +56,7 @@
 #define HAVE_DOTPROD(features)	(HAVE_DOTPROD_NATIVE || ((features) & ARM_CPU_FEATURE_DOTPROD))
 
 #if HAVE_DYNAMIC_ARM_CPU_FEATURES
-#define ARM_CPU_FEATURES_KNOWN		0x80000000
+#define ARM_CPU_FEATURES_KNOWN		(1U << 31)
 extern volatile u32 libdeflate_arm_cpu_features;
 
 void libdeflate_init_arm_cpu_features(void);
