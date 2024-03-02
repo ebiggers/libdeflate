@@ -299,10 +299,10 @@ adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
 	__m256i /* __v8su */ v_s2_d = zeroes;
 
 	do {
-		__m256i bytes_a = *p++;
-		__m256i bytes_b = *p++;
-		__m256i bytes_c = *p++;
-		__m256i bytes_d = *p++;
+		const __m256i bytes_a = *p++;
+		const __m256i bytes_b = *p++;
+		const __m256i bytes_c = *p++;
+		const __m256i bytes_d = *p++;
 
 		v_s2_a = _mm256_dpbusd_avx_epi32(v_s2_a, bytes_a, mults_a);
 		v_s2_b = _mm256_dpbusd_avx_epi32(v_s2_b, bytes_b, mults_b);
