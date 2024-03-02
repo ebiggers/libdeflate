@@ -77,10 +77,27 @@ You should compile both `lib/*.c` and `lib/*/*.c`.  You don't need to worry
 about excluding irrelevant architecture-specific code, as this is already
 handled in the source files themselves using `#ifdef`s.
 
-It is strongly recommended to use either gcc or clang, and to use `-O2`.
-
 If you are doing a freestanding build with `-ffreestanding`, you must add
 `-DFREESTANDING` as well (matching what the `CMakeLists.txt` does).
+
+## Supported compilers
+
+- gcc: v4.9 and later
+- clang: v3.9 and later (upstream), Xcode 8 and later (Apple)
+- MSVC: Visual Studio 2015 and later
+- Other compilers: any other C99-compatible compiler should work, though if your
+  compiler pretends to be gcc, clang, or MSVC, it needs to be sufficiently
+  compatible with the compiler it pretends to be.
+
+The above are the minimums, but using a newer compiler allows more of the
+architecture-optimized code to be built.  libdeflate is most heavily optimized
+for gcc and clang, but MSVC is supported fairly well now too.
+
+The recommended optimization flag is `-O2`, and the `CMakeLists.txt` sets this
+for release builds.  `-O3` is fine too, but often `-O2` actually gives better
+results.  It's unnecessary to add flags such as `-mavx2` or `/arch:AVX2`, though
+you can do so if you want to.  Most of the relevant optimized functions are
+built regardless of such flags, and appropriate ones are selected at runtime.
 
 # API
 

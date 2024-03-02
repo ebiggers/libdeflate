@@ -135,6 +135,9 @@ typedef size_t machine_word_t;
 #  define GCC_PREREQ(major, minor)		\
 	(__GNUC__ > (major) ||			\
 	 (__GNUC__ == (major) && __GNUC_MINOR__ >= (minor)))
+#  if !GCC_PREREQ(4, 9)
+#    error "gcc versions older than 4.9 are no longer supported"
+#  endif
 #else
 #  define GCC_PREREQ(major, minor)	0
 #endif
@@ -147,8 +150,19 @@ typedef size_t machine_word_t;
 	(__clang_major__ > (major) ||			\
 	 (__clang_major__ == (major) && __clang_minor__ >= (minor)))
 #  endif
+#  if !CLANG_PREREQ(3, 9, 8000000)
+#    error "clang versions older than 3.9 are no longer supported"
+#  endif
 #else
 #  define CLANG_PREREQ(major, minor, apple_version)	0
+#endif
+#ifdef _MSC_VER
+#  define MSVC_PREREQ(version)	(_MSC_VER >= (version))
+#  if !MSVC_PREREQ(1900)
+#    error "MSVC versions older than Visual Studio 2015 are no longer supported"
+#  endif
+#else
+#  define MSVC_PREREQ(version)	0
 #endif
 
 /*
