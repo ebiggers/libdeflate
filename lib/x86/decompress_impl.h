@@ -4,12 +4,18 @@
 #include "cpu_features.h"
 
 /*
- * BMI2 optimized version
+ * BMI2 optimized decompression function.
  *
- * FIXME: with MSVC, this isn't actually compiled with BMI2 code generation
- * enabled yet.  That would require that this be moved to its own .c file.
+ * With gcc and clang we just compile the whole function with
+ * __attribute__((target("bmi2"))), and the compiler uses bmi2 automatically.
+ *
+ * With MSVC, there is no target function attribute, but it's still possible to
+ * use bmi2 intrinsics explicitly.  Currently we mostly don't, but there's a
+ * case in which we do (see below), so we at least take advantage of that.
+ * However, MSVC from VS2017 (toolset v141) apparently miscompiles the _bzhi_*()
+ * intrinsics.  It seems to be fixed in VS2022.  Hence, use MSVC_PREREQ(1930).
  */
-#if HAVE_BMI2_INTRIN
+#if defined(__GNUC__) || defined(__clang__) || MSVC_PREREQ(1930)
 #  define deflate_decompress_bmi2	deflate_decompress_bmi2
 #  define FUNCNAME			deflate_decompress_bmi2
 #  define ATTRIBUTES			_target_attribute("bmi2")
@@ -31,7 +37,7 @@
 #    endif
 #  endif
 #  include "../decompress_template.h"
-#endif /* HAVE_BMI2_INTRIN */
+#endif
 
 #if defined(deflate_decompress_bmi2) && HAVE_BMI2_NATIVE
 #define DEFAULT_IMPL	deflate_decompress_bmi2

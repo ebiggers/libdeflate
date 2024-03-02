@@ -30,8 +30,8 @@
 
 #include "cpu_features.h"
 
+#if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 /* PCLMULQDQ implementation */
-#if HAVE_PCLMULQDQ_INTRIN
 #  define crc32_x86_pclmulqdq	crc32_x86_pclmulqdq
 #  define SUFFIX			 _pclmulqdq
 #  define ATTRIBUTES		_target_attribute("pclmul")
@@ -39,7 +39,6 @@
 #  define FOLD_LESSTHAN16BYTES	0
 #  define USE_TERNARYLOGIC	0
 #  include "crc32_pclmul_template.h"
-#endif
 
 /*
  * PCLMULQDQ/AVX implementation.  Compared to the regular PCLMULQDQ
@@ -51,11 +50,7 @@
  * and SSE4.1 support, and we can use SSSE3 and SSE4.1 intrinsics for efficient
  * handling of partial blocks.  (We *could* compile a variant with
  * PCLMULQDQ+SSE4.1 without AVX, but for simplicity we don't currently bother.)
- *
- * FIXME: with MSVC, this isn't actually compiled with AVX code generation
- * enabled yet.  That would require that this be moved to its own .c file.
  */
-#if HAVE_PCLMULQDQ_INTRIN && HAVE_AVX_INTRIN
 #  define crc32_x86_pclmulqdq_avx	crc32_x86_pclmulqdq_avx
 #  define SUFFIX				 _pclmulqdq_avx
 #  define ATTRIBUTES		_target_attribute("pclmul,avx")
@@ -65,14 +60,14 @@
 #  include "crc32_pclmul_template.h"
 #endif
 
-/* VPCLMULQDQ/AVX2 implementation.  Uses 256-bit vectors. */
-#if HAVE_VPCLMULQDQ_INTRIN && HAVE_PCLMULQDQ_INTRIN && HAVE_AVX2_INTRIN && \
-	/*
-	 * This has to be disabled on MSVC because MSVC has a bug where it
-	 * incorrectly assumes that VPCLMULQDQ implies AVX-512:
-	 * https://developercommunity.visualstudio.com/t/Compiler-incorrectly-assumes-VAES-and-VP/10578785?space=62&q=AVX512&sort=newest
-	 */ \
-	!(defined(_MSC_VER) && !defined(__clang__))
+/*
+ * VPCLMULQDQ/AVX2 implementation.  Uses 256-bit vectors.
+ *
+ * Currently this can't be enabled with MSVC because MSVC has a bug where it
+ * incorrectly assumes that VPCLMULQDQ implies AVX-512:
+ * https://developercommunity.visualstudio.com/t/Compiler-incorrectly-assumes-VAES-and-VP/10578785?space=62&q=AVX512&sort=newest
+ */
+#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0)
 #  define crc32_x86_vpclmulqdq_avx2	crc32_x86_vpclmulqdq_avx2
 #  define SUFFIX				 _vpclmulqdq_avx2
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx2")
@@ -82,13 +77,12 @@
 #  include "crc32_pclmul_template.h"
 #endif
 
+#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 0) || defined(_MSC_VER)
 /*
  * VPCLMULQDQ/AVX512 implementation with 256-bit vectors.  This takes advantage
  * of some AVX-512 instructions but uses 256-bit vectors rather than 512-bit.
  * This can be useful on CPUs where 512-bit vectors cause downclocking.
  */
-#if HAVE_VPCLMULQDQ_INTRIN && HAVE_PCLMULQDQ_INTRIN && \
-	HAVE_AVX512F_INTRIN && HAVE_AVX512VL_INTRIN
 #  define crc32_x86_vpclmulqdq_avx512_vl256  crc32_x86_vpclmulqdq_avx512_vl256
 #  define SUFFIX				      _vpclmulqdq_avx512_vl256
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
@@ -96,11 +90,8 @@
 #  define FOLD_LESSTHAN16BYTES	1
 #  define USE_TERNARYLOGIC	1
 #  include "crc32_pclmul_template.h"
-#endif
 
 /* VPCLMULQDQ/AVX512 implementation with 512-bit vectors */
-#if HAVE_VPCLMULQDQ_INTRIN && HAVE_PCLMULQDQ_INTRIN && \
-	HAVE_AVX512F_INTRIN && HAVE_AVX512VL_INTRIN
 #  define crc32_x86_vpclmulqdq_avx512_vl512  crc32_x86_vpclmulqdq_avx512_vl512
 #  define SUFFIX				      _vpclmulqdq_avx512_vl512
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
@@ -110,7 +101,6 @@
 #  include "crc32_pclmul_template.h"
 #endif
 
-/* Choose the best implementation at runtime. */
 static inline crc32_func_t
 arch_select_crc32_func(void)
 {
