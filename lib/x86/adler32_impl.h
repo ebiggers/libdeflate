@@ -122,7 +122,6 @@
 #  else
 #    define ATTRIBUTES		_target_attribute("sse2")
 #  endif
-#  include <emmintrin.h>
 static forceinline ATTRIBUTES void
 adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 {
@@ -220,15 +219,6 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 #  else
 #    define ATTRIBUTES		_target_attribute("avx2")
 #  endif
-#  include <immintrin.h>
-  /*
-   * With clang in MSVC compatibility mode, immintrin.h incorrectly skips
-   * including some sub-headers.
-   */
-#  if defined(__clang__) && defined(_MSC_VER)
-#    include <avxintrin.h>
-#    include <avx2intrin.h>
-#  endif
 static forceinline ATTRIBUTES void
 adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 {
@@ -300,19 +290,6 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 #    define ATTRIBUTES
 #  else
 #    define ATTRIBUTES		_target_attribute("avx2,avxvnni")
-#  endif
-#  include <immintrin.h>
-  /*
-   * With clang in MSVC compatibility mode, immintrin.h incorrectly skips
-   * including some sub-headers.
-   */
-#  if defined(__clang__) && defined(_MSC_VER)
-#    include <tmmintrin.h>
-#    include <smmintrin.h>
-#    include <wmmintrin.h>
-#    include <avxintrin.h>
-#    include <avx2intrin.h>
-#    include <avxvnniintrin.h>
 #  endif
 static forceinline ATTRIBUTES void
 adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
@@ -389,21 +366,6 @@ adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
 #    define ATTRIBUTES
 #  else
 #    define ATTRIBUTES		_target_attribute("avx512bw,avx512vnni")
-#  endif
-#  include <immintrin.h>
-  /*
-   * With clang in MSVC compatibility mode, immintrin.h incorrectly skips
-   * including some sub-headers.
-   */
-#  if defined(__clang__) && defined(_MSC_VER)
-#    include <tmmintrin.h>
-#    include <smmintrin.h>
-#    include <wmmintrin.h>
-#    include <avxintrin.h>
-#    include <avx2intrin.h>
-#    include <avx512fintrin.h>
-#    include <avx512bwintrin.h>
-#    include <avx512vnniintrin.h>
 #  endif
 static forceinline ATTRIBUTES void
 adler32_avx512_vnni_chunk(const __m512i *p, const __m512i *const end,

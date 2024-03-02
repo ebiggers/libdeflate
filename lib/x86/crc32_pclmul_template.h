@@ -62,22 +62,6 @@
  * or AVX512VL, or four in combination with AVX512F.
  */
 
-#include <immintrin.h>
-/*
- * With clang in MSVC compatibility mode, immintrin.h incorrectly skips
- * including some sub-headers.
- */
-#if defined(__clang__) && defined(_MSC_VER)
-#  include <tmmintrin.h>
-#  include <smmintrin.h>
-#  include <wmmintrin.h>
-#  include <avxintrin.h>
-#  include <avx2intrin.h>
-#  include <avx512fintrin.h>
-#  include <avx512vlintrin.h>
-#  include <vpclmulqdqintrin.h>
-#endif
-
 #undef fold_vec128
 static forceinline ATTRIBUTES __m128i
 ADD_SUFFIX(fold_vec128)(__m128i src, __m128i dst, __m128i multipliers)

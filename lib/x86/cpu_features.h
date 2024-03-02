@@ -253,6 +253,33 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_AVXVNNI_INTRIN	0
 #endif
 
+#if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
+#  include <immintrin.h>
+#endif
+#if defined(_MSC_VER) && defined(__clang__)
+  /*
+   * With clang in MSVC compatibility mode, immintrin.h incorrectly skips
+   * including some sub-headers.
+   */
+#  include <tmmintrin.h>
+#  include <smmintrin.h>
+#  include <wmmintrin.h>
+#  include <avxintrin.h>
+#  include <avx2intrin.h>
+#  include <avx512fintrin.h>
+#  include <avx512bwintrin.h>
+#  include <avx512vlintrin.h>
+#  if __has_include(<vpclmulqdqintrin.h>)
+#    include <vpclmulqdqintrin.h>
+#  endif
+#  if __has_include(<avx512vnniintrin.h>)
+#    include <avx512vnniintrin.h>
+#  endif
+#  if __has_include(<avxvnniintrin.h>)
+#    include <avxvnniintrin.h>
+#  endif
+#endif
+
 #endif /* ARCH_X86_32 || ARCH_X86_64 */
 
 #endif /* LIB_X86_CPU_FEATURES_H */

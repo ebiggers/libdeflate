@@ -24,7 +24,6 @@
     * as the bzhi instruction truncates the count to 8 bits implicitly.
     */
 #  ifndef __clang__
-#    include <immintrin.h>
 #    ifdef ARCH_X86_64
 #      define EXTRACT_VARBITS(word, count)  _bzhi_u64((word), (count))
 #      define EXTRACT_VARBITS8(word, count) _bzhi_u64((word), (count))
