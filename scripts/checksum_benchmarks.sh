@@ -50,10 +50,10 @@ __do_benchmark() {
 do_benchmark() {
 	local impl="$1"
 
+	CFLAGS="${EXTRA_CFLAGS[*]}" make_and_test
 	if [ "$impl" = zlib ]; then
 		__do_benchmark "$impl" "-Z"
 	else
-		CFLAGS="${EXTRA_CFLAGS[*]}" make_and_test
 		__do_benchmark "libdeflate, $impl"
 		if [ "$ARCH" = x86_64 ]; then
 			CFLAGS="-m32 ${EXTRA_CFLAGS[*]}" make_and_test
