@@ -30,16 +30,6 @@
 
 #if HAVE_DYNAMIC_X86_CPU_FEATURES
 
-/*
- * With old GCC versions we have to manually save and restore the x86_32 PIC
- * register (ebx).  See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47602
- */
-#if defined(ARCH_X86_32) && defined(__PIC__)
-#  define EBX_CONSTRAINT "=&r"
-#else
-#  define EBX_CONSTRAINT "=b"
-#endif
-
 /* Execute the CPUID instruction. */
 static inline void
 cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c, u32 *d)
@@ -56,7 +46,7 @@ cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c, u32 *d)
 	__asm__ volatile(".ifnc %%ebx, %1; mov  %%ebx, %1; .endif\n"
 			 "cpuid                                  \n"
 			 ".ifnc %%ebx, %1; xchg %%ebx, %1; .endif\n"
-			 : "=a" (*a), EBX_CONSTRAINT (*b), "=c" (*c), "=d" (*d)
+			 : "=a" (*a), "=b" (*b), "=c" (*c), "=d" (*d)
 			 : "a" (leaf), "c" (subleaf));
 #endif
 }
