@@ -28,7 +28,8 @@
 #include "../cpu_features_common.h" /* must be included first */
 #include "cpu_features.h"
 
-#if HAVE_DYNAMIC_X86_CPU_FEATURES
+#ifdef X86_CPU_FEATURES_KNOWN
+/* Runtime x86 CPU feature detection is supported. */
 
 /* Execute the CPUID instruction. */
 static inline void
@@ -185,4 +186,4 @@ out:
 	libdeflate_x86_cpu_features = features | X86_CPU_FEATURES_KNOWN;
 }
 
-#endif /* HAVE_DYNAMIC_X86_CPU_FEATURES */
+#endif /* X86_CPU_FEATURES_KNOWN */
