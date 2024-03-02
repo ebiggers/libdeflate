@@ -286,7 +286,7 @@ typedef size_t machine_word_t;
  * code as well as the corresponding intrinsics.  On other compilers this macro
  * expands to nothing, though MSVC allows intrinsics to be used anywhere anyway.
  */
-#if GCC_PREREQ(4, 4) || __has_attribute(target)
+#if defined(__GNUC__) || __has_attribute(target)
 #  define _target_attribute(attrs)	__attribute__((target(attrs)))
 #else
 #  define _target_attribute(attrs)
@@ -334,7 +334,7 @@ static forceinline bool CPU_IS_LITTLE_ENDIAN(void)
 /* bswap16(v) - swap the bytes of a 16-bit integer */
 static forceinline u16 bswap16(u16 v)
 {
-#if GCC_PREREQ(4, 8) || __has_builtin(__builtin_bswap16)
+#if defined(__GNUC__) || __has_builtin(__builtin_bswap16)
 	return __builtin_bswap16(v);
 #elif defined(_MSC_VER)
 	return _byteswap_ushort(v);
@@ -346,7 +346,7 @@ static forceinline u16 bswap16(u16 v)
 /* bswap32(v) - swap the bytes of a 32-bit integer */
 static forceinline u32 bswap32(u32 v)
 {
-#if GCC_PREREQ(4, 3) || __has_builtin(__builtin_bswap32)
+#if defined(__GNUC__) || __has_builtin(__builtin_bswap32)
 	return __builtin_bswap32(v);
 #elif defined(_MSC_VER)
 	return _byteswap_ulong(v);
@@ -361,7 +361,7 @@ static forceinline u32 bswap32(u32 v)
 /* bswap64(v) - swap the bytes of a 64-bit integer */
 static forceinline u64 bswap64(u64 v)
 {
-#if GCC_PREREQ(4, 3) || __has_builtin(__builtin_bswap64)
+#if defined(__GNUC__) || __has_builtin(__builtin_bswap64)
 	return __builtin_bswap64(v);
 #elif defined(_MSC_VER)
 	return _byteswap_uint64(v);
