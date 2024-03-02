@@ -166,13 +166,19 @@ typedef size_t machine_word_t;
 #endif
 
 /*
- * Macros to check for compiler support for attributes and builtins.  clang
- * implements these macros, but gcc doesn't, so generally any use of one of
- * these macros must also be combined with a gcc version check.
+ * __has_attribute(attribute) - check whether the compiler supports the given
+ * attribute (and also supports doing the check in the first place).  Mostly
+ * useful just for clang, since gcc didn't add this macro until gcc 5.
  */
 #ifndef __has_attribute
 #  define __has_attribute(attribute)	0
 #endif
+
+/*
+ * __has_builtin(builtin) - check whether the compiler supports the given
+ * builtin (and also supports doing the check in the first place).  Mostly
+ * useful just for clang, since gcc didn't add this macro until gcc 10.
+ */
 #ifndef __has_builtin
 #  define __has_builtin(builtin)	0
 #endif
