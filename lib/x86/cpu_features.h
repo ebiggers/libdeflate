@@ -79,11 +79,17 @@ static inline u32 get_x86_cpu_features(void)
 #    include <avx512fintrin.h>
 #    include <avx512bwintrin.h>
 #    include <avx512vlintrin.h>
+#    if __has_include(<avx512vlbwintrin.h>)
+#      include <avx512vlbwintrin.h>
+#    endif
 #    if __has_include(<vpclmulqdqintrin.h>)
 #      include <vpclmulqdqintrin.h>
 #    endif
 #    if __has_include(<avx512vnniintrin.h>)
 #      include <avx512vnniintrin.h>
+#    endif
+#    if __has_include(<avx512vlvnniintrin.h>)
+#      include <avx512vlvnniintrin.h>
 #    endif
 #    if __has_include(<avxvnniintrin.h>)
 #      include <avxvnniintrin.h>

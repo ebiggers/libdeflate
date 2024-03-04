@@ -142,8 +142,7 @@ build_and_run_tests()
 	if ! [[ "$CFLAGS" =~ "-march=native" ]] && ! $quick; then
 		case "$ARCH" in
 		i386|x86_64)
-			features+=(zmm avx_vnni avx512_vnni vpclmulqdq
-				   avx512vl avx512bw avx512f
+			features+=(zmm avx512_vnni avx512vl avx_vnni vpclmulqdq
 				   avx2 avx bmi2 pclmulqdq sse2)
 			;;
 		arm*|aarch*)
