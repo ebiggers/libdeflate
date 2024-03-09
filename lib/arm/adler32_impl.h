@@ -32,13 +32,7 @@
 
 /* Regular NEON implementation */
 #if HAVE_NEON_INTRIN && CPU_IS_LITTLE_ENDIAN()
-#  define adler32_neon		adler32_neon
-#  define FUNCNAME		adler32_neon
-#  define FUNCNAME_CHUNK	adler32_neon_chunk
-#  define IMPL_ALIGNMENT	16
-#  define IMPL_SEGMENT_LEN	64
-/* Prevent unsigned overflow of the 16-bit precision byte counters */
-#  define IMPL_MAX_CHUNK_LEN	(64 * (0xFFFF / 0xFF))
+#  define adler32_arm_neon		adler32_arm_neon
 #  if HAVE_NEON_NATIVE
 #    define ATTRIBUTES
 #  else
@@ -49,9 +43,8 @@
 #    endif
 #  endif
 #  include <arm_neon.h>
-static forceinline ATTRIBUTES void
-adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
-		   u32 *s1, u32 *s2)
+static u32 ATTRIBUTES MAYBE_UNUSED
+adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 {
 	static const u16 _aligned_attribute(16) mults[64] = {
 		64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
@@ -67,104 +60,153 @@ adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 	const uint16x8_t mults_f = vld1q_u16(&mults[40]);
 	const uint16x8_t mults_g = vld1q_u16(&mults[48]);
 	const uint16x8_t mults_h = vld1q_u16(&mults[56]);
+	u32 s1 = adler & 0xFFFF;
+	u32 s2 = adler >> 16;
 
-	uint32x4_t v_s1 = vdupq_n_u32(0);
-	uint32x4_t v_s2 = vdupq_n_u32(0);
 	/*
-	 * v_byte_sums_* contain the sum of the bytes at index i across all
-	 * 64-byte segments, for each index 0..63.
+	 * If the length is large and the pointer is misaligned, align it.
+	 * For smaller lengths, just take the unaligned load penalty.
 	 */
-	uint16x8_t v_byte_sums_a = vdupq_n_u16(0);
-	uint16x8_t v_byte_sums_b = vdupq_n_u16(0);
-	uint16x8_t v_byte_sums_c = vdupq_n_u16(0);
-	uint16x8_t v_byte_sums_d = vdupq_n_u16(0);
-	uint16x8_t v_byte_sums_e = vdupq_n_u16(0);
-	uint16x8_t v_byte_sums_f = vdupq_n_u16(0);
-	uint16x8_t v_byte_sums_g = vdupq_n_u16(0);
-	uint16x8_t v_byte_sums_h = vdupq_n_u16(0);
+	if (unlikely(len > 32768 && ((uintptr_t)p & 15))) {
+		do {
+			s1 += *p++;
+			s2 += s1;
+			len--;
+		} while ((uintptr_t)p & 15);
+		s1 %= DIVISOR;
+		s2 %= DIVISOR;
+	}
 
-	do {
-		/* Load the next 64 bytes. */
-		const uint8x16_t bytes1 = *p++;
-		const uint8x16_t bytes2 = *p++;
-		const uint8x16_t bytes3 = *p++;
-		const uint8x16_t bytes4 = *p++;
-		uint16x8_t tmp;
-
+	while (len) {
 		/*
-		 * Accumulate the previous s1 counters into the s2 counters.
-		 * The needed multiplication by 64 is delayed to later.
+		 * Calculate the length of the next data chunk such that s1 and
+		 * s2 are guaranteed to not exceed UINT32_MAX.
 		 */
-		v_s2 = vaddq_u32(v_s2, v_s1);
+		size_t n = MIN(len, MAX_CHUNK_LEN & ~63);
 
-		/*
-		 * Add the 64 bytes to their corresponding v_byte_sums counters,
-		 * while also accumulating the sums of each adjacent set of 4
-		 * bytes into v_s1.
-		 */
-		tmp = vpaddlq_u8(bytes1);
-		v_byte_sums_a = vaddw_u8(v_byte_sums_a, vget_low_u8(bytes1));
-		v_byte_sums_b = vaddw_u8(v_byte_sums_b, vget_high_u8(bytes1));
-		tmp = vpadalq_u8(tmp, bytes2);
-		v_byte_sums_c = vaddw_u8(v_byte_sums_c, vget_low_u8(bytes2));
-		v_byte_sums_d = vaddw_u8(v_byte_sums_d, vget_high_u8(bytes2));
-		tmp = vpadalq_u8(tmp, bytes3);
-		v_byte_sums_e = vaddw_u8(v_byte_sums_e, vget_low_u8(bytes3));
-		v_byte_sums_f = vaddw_u8(v_byte_sums_f, vget_high_u8(bytes3));
-		tmp = vpadalq_u8(tmp, bytes4);
-		v_byte_sums_g = vaddw_u8(v_byte_sums_g, vget_low_u8(bytes4));
-		v_byte_sums_h = vaddw_u8(v_byte_sums_h, vget_high_u8(bytes4));
-		v_s1 = vpadalq_u16(v_s1, tmp);
+		len -= n;
 
-	} while (p != end);
+		if (n >= 64) {
+			uint32x4_t v_s1 = vdupq_n_u32(0);
+			uint32x4_t v_s2 = vdupq_n_u32(0);
+			/*
+			 * v_byte_sums_* contain the sum of the bytes at index i
+			 * across all 64-byte segments, for each index 0..63.
+			 */
+			uint16x8_t v_byte_sums_a = vdupq_n_u16(0);
+			uint16x8_t v_byte_sums_b = vdupq_n_u16(0);
+			uint16x8_t v_byte_sums_c = vdupq_n_u16(0);
+			uint16x8_t v_byte_sums_d = vdupq_n_u16(0);
+			uint16x8_t v_byte_sums_e = vdupq_n_u16(0);
+			uint16x8_t v_byte_sums_f = vdupq_n_u16(0);
+			uint16x8_t v_byte_sums_g = vdupq_n_u16(0);
+			uint16x8_t v_byte_sums_h = vdupq_n_u16(0);
 
-	/* s2 = 64*s2 + (64*bytesum0 + 63*bytesum1 + ... + 1*bytesum63) */
-#ifdef ARCH_ARM32
-#  define umlal2(a, b, c)  vmlal_u16((a), vget_high_u16(b), vget_high_u16(c))
-#else
-#  define umlal2	   vmlal_high_u16
-#endif
-	v_s2 = vqshlq_n_u32(v_s2, 6);
-	v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_a), vget_low_u16(mults_a));
-	v_s2 = umlal2(v_s2, v_byte_sums_a, mults_a);
-	v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_b), vget_low_u16(mults_b));
-	v_s2 = umlal2(v_s2, v_byte_sums_b, mults_b);
-	v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_c), vget_low_u16(mults_c));
-	v_s2 = umlal2(v_s2, v_byte_sums_c, mults_c);
-	v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_d), vget_low_u16(mults_d));
-	v_s2 = umlal2(v_s2, v_byte_sums_d, mults_d);
-	v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_e), vget_low_u16(mults_e));
-	v_s2 = umlal2(v_s2, v_byte_sums_e, mults_e);
-	v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_f), vget_low_u16(mults_f));
-	v_s2 = umlal2(v_s2, v_byte_sums_f, mults_f);
-	v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_g), vget_low_u16(mults_g));
-	v_s2 = umlal2(v_s2, v_byte_sums_g, mults_g);
-	v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_h), vget_low_u16(mults_h));
-	v_s2 = umlal2(v_s2, v_byte_sums_h, mults_h);
-#undef umlal2
+			s2 += s1 * (n & ~63);
 
-	/* Horizontal sum to finish up */
-#ifdef ARCH_ARM32
-	*s1 += vgetq_lane_u32(v_s1, 0) + vgetq_lane_u32(v_s1, 1) +
-	       vgetq_lane_u32(v_s1, 2) + vgetq_lane_u32(v_s1, 3);
-	*s2 += vgetq_lane_u32(v_s2, 0) + vgetq_lane_u32(v_s2, 1) +
-	       vgetq_lane_u32(v_s2, 2) + vgetq_lane_u32(v_s2, 3);
-#else
-	*s1 += vaddvq_u32(v_s1);
-	*s2 += vaddvq_u32(v_s2);
-#endif
+			do {
+				/* Load the next 64 data bytes. */
+				const uint8x16_t data_a = vld1q_u8(p + 0);
+				const uint8x16_t data_b = vld1q_u8(p + 16);
+				const uint8x16_t data_c = vld1q_u8(p + 32);
+				const uint8x16_t data_d = vld1q_u8(p + 48);
+				uint16x8_t tmp;
+
+				/*
+				 * Accumulate the previous s1 counters into the
+				 * s2 counters.  The needed multiplication by 64
+				 * is delayed to later.
+				 */
+				v_s2 = vaddq_u32(v_s2, v_s1);
+
+				/*
+				 * Add the 64 data bytes to their v_byte_sums
+				 * counters, while also accumulating the sums of
+				 * each adjacent set of 4 bytes into v_s1.
+				 */
+				tmp = vpaddlq_u8(data_a);
+				v_byte_sums_a = vaddw_u8(v_byte_sums_a,
+							 vget_low_u8(data_a));
+				v_byte_sums_b = vaddw_u8(v_byte_sums_b,
+							 vget_high_u8(data_a));
+				tmp = vpadalq_u8(tmp, data_b);
+				v_byte_sums_c = vaddw_u8(v_byte_sums_c,
+							 vget_low_u8(data_b));
+				v_byte_sums_d = vaddw_u8(v_byte_sums_d,
+							 vget_high_u8(data_b));
+				tmp = vpadalq_u8(tmp, data_c);
+				v_byte_sums_e = vaddw_u8(v_byte_sums_e,
+							 vget_low_u8(data_c));
+				v_byte_sums_f = vaddw_u8(v_byte_sums_f,
+							 vget_high_u8(data_c));
+				tmp = vpadalq_u8(tmp, data_d);
+				v_byte_sums_g = vaddw_u8(v_byte_sums_g,
+							 vget_low_u8(data_d));
+				v_byte_sums_h = vaddw_u8(v_byte_sums_h,
+							 vget_high_u8(data_d));
+				v_s1 = vpadalq_u16(v_s1, tmp);
+
+				p += 64;
+				n -= 64;
+			} while (n >= 64);
+
+			/* s2 = 64*s2 + (64*bytesum0 + 63*bytesum1 + ... + 1*bytesum63) */
+		#ifdef ARCH_ARM32
+		#  define umlal2(a, b, c)  vmlal_u16((a), vget_high_u16(b), vget_high_u16(c))
+		#else
+		#  define umlal2	   vmlal_high_u16
+		#endif
+			v_s2 = vqshlq_n_u32(v_s2, 6);
+			v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_a),
+					 vget_low_u16(mults_a));
+			v_s2 = umlal2(v_s2, v_byte_sums_a, mults_a);
+			v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_b),
+					 vget_low_u16(mults_b));
+			v_s2 = umlal2(v_s2, v_byte_sums_b, mults_b);
+			v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_c),
+					 vget_low_u16(mults_c));
+			v_s2 = umlal2(v_s2, v_byte_sums_c, mults_c);
+			v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_d),
+					 vget_low_u16(mults_d));
+			v_s2 = umlal2(v_s2, v_byte_sums_d, mults_d);
+			v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_e),
+					 vget_low_u16(mults_e));
+			v_s2 = umlal2(v_s2, v_byte_sums_e, mults_e);
+			v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_f),
+					 vget_low_u16(mults_f));
+			v_s2 = umlal2(v_s2, v_byte_sums_f, mults_f);
+			v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_g),
+					 vget_low_u16(mults_g));
+			v_s2 = umlal2(v_s2, v_byte_sums_g, mults_g);
+			v_s2 = vmlal_u16(v_s2, vget_low_u16(v_byte_sums_h),
+					 vget_low_u16(mults_h));
+			v_s2 = umlal2(v_s2, v_byte_sums_h, mults_h);
+		#undef umlal2
+
+			/* Horizontal sum to finish up */
+		#ifdef ARCH_ARM32
+			s1 += vgetq_lane_u32(v_s1, 0) + vgetq_lane_u32(v_s1, 1) +
+			      vgetq_lane_u32(v_s1, 2) + vgetq_lane_u32(v_s1, 3);
+			s2 += vgetq_lane_u32(v_s2, 0) + vgetq_lane_u32(v_s2, 1) +
+			      vgetq_lane_u32(v_s2, 2) + vgetq_lane_u32(v_s2, 3);
+		#else
+			s1 += vaddvq_u32(v_s1);
+			s2 += vaddvq_u32(v_s2);
+		#endif
+		}
+		adler32_generic_noreduce(&s1, &s2, p, n);
+		p += n;
+		s1 %= DIVISOR;
+		s2 %= DIVISOR;
+	}
+	return (s2 << 16) | s1;
 }
-#  include "../adler32_vec_template.h"
+#undef ATTRIBUTES
 #endif /* Regular NEON implementation */
 
 /* NEON+dotprod implementation */
 #if HAVE_DOTPROD_INTRIN && CPU_IS_LITTLE_ENDIAN()
-#  define adler32_neon_dotprod	adler32_neon_dotprod
-#  define FUNCNAME		adler32_neon_dotprod
-#  define FUNCNAME_CHUNK	adler32_neon_dotprod_chunk
-#  define IMPL_ALIGNMENT	16
-#  define IMPL_SEGMENT_LEN	64
-#  define IMPL_MAX_CHUNK_LEN	MAX_CHUNK_LEN
+#  define adler32_arm_neon_dotprod	adler32_arm_neon_dotprod
 #  if HAVE_DOTPROD_NATIVE
 #    define ATTRIBUTES
 #  else
@@ -182,9 +224,8 @@ adler32_neon_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 #    endif
 #  endif
 #  include <arm_neon.h>
-static forceinline ATTRIBUTES void
-adler32_neon_dotprod_chunk(const uint8x16_t *p, const uint8x16_t * const end,
-			   u32 *s1, u32 *s2)
+static u32 ATTRIBUTES
+adler32_arm_neon_dotprod(u32 adler, const u8 *p, size_t len)
 {
 	static const u8 _aligned_attribute(16) mults[64] = {
 		64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
@@ -197,72 +238,144 @@ adler32_neon_dotprod_chunk(const uint8x16_t *p, const uint8x16_t * const end,
 	const uint8x16_t mults_c = vld1q_u8(&mults[32]);
 	const uint8x16_t mults_d = vld1q_u8(&mults[48]);
 	const uint8x16_t ones = vdupq_n_u8(1);
-	uint32x4_t v_s1_a = vdupq_n_u32(0);
-	uint32x4_t v_s1_b = vdupq_n_u32(0);
-	uint32x4_t v_s1_c = vdupq_n_u32(0);
-	uint32x4_t v_s1_d = vdupq_n_u32(0);
-	uint32x4_t v_s2_a = vdupq_n_u32(0);
-	uint32x4_t v_s2_b = vdupq_n_u32(0);
-	uint32x4_t v_s2_c = vdupq_n_u32(0);
-	uint32x4_t v_s2_d = vdupq_n_u32(0);
-	uint32x4_t v_s1_sums_a = vdupq_n_u32(0);
-	uint32x4_t v_s1_sums_b = vdupq_n_u32(0);
-	uint32x4_t v_s1_sums_c = vdupq_n_u32(0);
-	uint32x4_t v_s1_sums_d = vdupq_n_u32(0);
-	uint32x4_t v_s1;
-	uint32x4_t v_s2;
-	uint32x4_t v_s1_sums;
+	u32 s1 = adler & 0xFFFF;
+	u32 s2 = adler >> 16;
 
-	do {
-		uint8x16_t bytes_a = *p++;
-		uint8x16_t bytes_b = *p++;
-		uint8x16_t bytes_c = *p++;
-		uint8x16_t bytes_d = *p++;
+	/*
+	 * If the length is large and the pointer is misaligned, align it.
+	 * For smaller lengths, just take the unaligned load penalty.
+	 */
+	if (unlikely(len > 32768 && ((uintptr_t)p & 15))) {
+		do {
+			s1 += *p++;
+			s2 += s1;
+			len--;
+		} while ((uintptr_t)p & 15);
+		s1 %= DIVISOR;
+		s2 %= DIVISOR;
+	}
 
-		v_s1_sums_a = vaddq_u32(v_s1_sums_a, v_s1_a);
-		v_s1_a = vdotq_u32(v_s1_a, bytes_a, ones);
-		v_s2_a = vdotq_u32(v_s2_a, bytes_a, mults_a);
+	while (len) {
+		/*
+		 * Calculate the length of the next data chunk such that s1 and
+		 * s2 are guaranteed to not exceed UINT32_MAX.
+		 */
+		size_t n = MIN(len, MAX_CHUNK_LEN & ~63);
 
-		v_s1_sums_b = vaddq_u32(v_s1_sums_b, v_s1_b);
-		v_s1_b = vdotq_u32(v_s1_b, bytes_b, ones);
-		v_s2_b = vdotq_u32(v_s2_b, bytes_b, mults_b);
+		len -= n;
 
-		v_s1_sums_c = vaddq_u32(v_s1_sums_c, v_s1_c);
-		v_s1_c = vdotq_u32(v_s1_c, bytes_c, ones);
-		v_s2_c = vdotq_u32(v_s2_c, bytes_c, mults_c);
+		if (n >= 64) {
+			uint32x4_t v_s1_a = vdupq_n_u32(0);
+			uint32x4_t v_s1_b = vdupq_n_u32(0);
+			uint32x4_t v_s1_c = vdupq_n_u32(0);
+			uint32x4_t v_s1_d = vdupq_n_u32(0);
+			uint32x4_t v_s2_a = vdupq_n_u32(0);
+			uint32x4_t v_s2_b = vdupq_n_u32(0);
+			uint32x4_t v_s2_c = vdupq_n_u32(0);
+			uint32x4_t v_s2_d = vdupq_n_u32(0);
+			uint32x4_t v_s1_sums_a = vdupq_n_u32(0);
+			uint32x4_t v_s1_sums_b = vdupq_n_u32(0);
+			uint32x4_t v_s1_sums_c = vdupq_n_u32(0);
+			uint32x4_t v_s1_sums_d = vdupq_n_u32(0);
+			uint32x4_t v_s1;
+			uint32x4_t v_s2;
+			uint32x4_t v_s1_sums;
 
-		v_s1_sums_d = vaddq_u32(v_s1_sums_d, v_s1_d);
-		v_s1_d = vdotq_u32(v_s1_d, bytes_d, ones);
-		v_s2_d = vdotq_u32(v_s2_d, bytes_d, mults_d);
-	} while (p != end);
+			s2 += s1 * (n & ~63);
 
-	v_s1 = vaddq_u32(vaddq_u32(v_s1_a, v_s1_b), vaddq_u32(v_s1_c, v_s1_d));
-	v_s2 = vaddq_u32(vaddq_u32(v_s2_a, v_s2_b), vaddq_u32(v_s2_c, v_s2_d));
-	v_s1_sums = vaddq_u32(vaddq_u32(v_s1_sums_a, v_s1_sums_b),
-			      vaddq_u32(v_s1_sums_c, v_s1_sums_d));
-	v_s2 = vaddq_u32(v_s2, vqshlq_n_u32(v_s1_sums, 6));
+			do {
+				uint8x16_t data_a = vld1q_u8(p + 0);
+				uint8x16_t data_b = vld1q_u8(p + 16);
+				uint8x16_t data_c = vld1q_u8(p + 32);
+				uint8x16_t data_d = vld1q_u8(p + 48);
 
-	*s1 += vaddvq_u32(v_s1);
-	*s2 += vaddvq_u32(v_s2);
+				v_s1_sums_a = vaddq_u32(v_s1_sums_a, v_s1_a);
+				v_s1_a = vdotq_u32(v_s1_a, data_a, ones);
+				v_s2_a = vdotq_u32(v_s2_a, data_a, mults_a);
+
+				v_s1_sums_b = vaddq_u32(v_s1_sums_b, v_s1_b);
+				v_s1_b = vdotq_u32(v_s1_b, data_b, ones);
+				v_s2_b = vdotq_u32(v_s2_b, data_b, mults_b);
+
+				v_s1_sums_c = vaddq_u32(v_s1_sums_c, v_s1_c);
+				v_s1_c = vdotq_u32(v_s1_c, data_c, ones);
+				v_s2_c = vdotq_u32(v_s2_c, data_c, mults_c);
+
+				v_s1_sums_d = vaddq_u32(v_s1_sums_d, v_s1_d);
+				v_s1_d = vdotq_u32(v_s1_d, data_d, ones);
+				v_s2_d = vdotq_u32(v_s2_d, data_d, mults_d);
+
+				p += 64;
+				n -= 64;
+			} while (n >= 64);
+
+			v_s1 = vaddq_u32(vaddq_u32(v_s1_a, v_s1_b),
+					 vaddq_u32(v_s1_c, v_s1_d));
+			v_s2 = vaddq_u32(vaddq_u32(v_s2_a, v_s2_b),
+					 vaddq_u32(v_s2_c, v_s2_d));
+			v_s1_sums = vaddq_u32(vaddq_u32(v_s1_sums_a,
+							v_s1_sums_b),
+					      vaddq_u32(v_s1_sums_c,
+							v_s1_sums_d));
+			v_s2 = vaddq_u32(v_s2, vqshlq_n_u32(v_s1_sums, 6));
+
+			s1 += vaddvq_u32(v_s1);
+			s2 += vaddvq_u32(v_s2);
+		}
+		/*
+		 * Process the last 0 <= n < 64 bytes of the chunk.  This is a
+		 * copy of adler32_generic_noreduce().  We can't just call it
+		 * directly here because in some cases the compiler errors out
+		 * when inlining it due to a target specific option mismatch due
+		 * to the use of arch=armv8.2 above.
+		 */
+		if (n >= 4) {
+			u32 s1_sum = 0;
+			u32 byte_0_sum = 0;
+			u32 byte_1_sum = 0;
+			u32 byte_2_sum = 0;
+			u32 byte_3_sum = 0;
+
+			do {
+				s1_sum += s1;
+				s1 += p[0] + p[1] + p[2] + p[3];
+				byte_0_sum += p[0];
+				byte_1_sum += p[1];
+				byte_2_sum += p[2];
+				byte_3_sum += p[3];
+				p += 4;
+				n -= 4;
+			} while (n >= 4);
+			s2 += (4 * (s1_sum + byte_0_sum)) + (3 * byte_1_sum) +
+			      (2 * byte_2_sum) + byte_3_sum;
+		}
+		for (; n; n--, p++) {
+			s1 += *p;
+			s2 += s1;
+		}
+		s1 %= DIVISOR;
+		s2 %= DIVISOR;
+	}
+	return (s2 << 16) | s1;
 }
-#  include "../adler32_vec_template.h"
+#undef ATTRIBUTES
 #endif /* NEON+dotprod implementation */
 
-#if defined(adler32_neon_dotprod) && HAVE_DOTPROD_NATIVE
-#define DEFAULT_IMPL	adler32_neon_dotprod
+#if defined(adler32_arm_neon_dotprod) && HAVE_DOTPROD_NATIVE
+#define DEFAULT_IMPL	adler32_arm_neon_dotprod
 #else
 static inline adler32_func_t
 arch_select_adler32_func(void)
 {
 	const u32 features MAYBE_UNUSED = get_arm_cpu_features();
 
-#ifdef adler32_neon_dotprod
+#ifdef adler32_arm_neon_dotprod
 	if (HAVE_NEON(features) && HAVE_DOTPROD(features))
-		return adler32_neon_dotprod;
+		return adler32_arm_neon_dotprod;
 #endif
-#ifdef adler32_neon
+#ifdef adler32_arm_neon
 	if (HAVE_NEON(features))
-		return adler32_neon;
+		return adler32_arm_neon;
 #endif
 	return NULL;
 }

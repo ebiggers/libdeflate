@@ -128,7 +128,6 @@ endif()
 if(LIBDEFLATE_ZLIB_SUPPORT)
     list(APPEND LIB_SOURCES
          lib/adler32.c
-         lib/adler32_vec_template.h
          lib/arm/adler32_impl.h
          lib/x86/adler32_impl.h
          lib/x86/adler32_template.h
