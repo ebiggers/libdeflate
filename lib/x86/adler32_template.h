@@ -221,7 +221,7 @@ ADD_SUFFIX(adler32)(u32 adler, const u8 *p, size_t len)
 
 	/*
 	 * If the length is large and the pointer is misaligned, align it.
-	 * For smaller lengths, just take the unaligned load penalty.
+	 * For smaller lengths, just take the misaligned load penalty.
 	 */
 	if (unlikely(len > 65536 && ((uintptr_t)p & (VL-1)))) {
 		do {
@@ -477,12 +477,9 @@ ADD_SUFFIX(adler32)(u32 adler, const u8 *p, size_t len)
 		}
 		/*
 		 * Process the last 0 <= n < 2*VL bytes of the chunk using
-		 * scalar instructions, then reduce s1 and s2 mod DIVISOR.
+		 * scalar instructions and reduce s1 and s2 mod DIVISOR.
 		 */
-		adler32_generic_noreduce(&s1, &s2, p, n);
-		p += n;
-		s1 %= DIVISOR;
-		s2 %= DIVISOR;
+		ADLER32_CHUNK(s1, s2, p, n);
 	}
 #endif /* !USE_VNNI */
 	return (s2 << 16) | s1;

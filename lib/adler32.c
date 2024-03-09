@@ -53,47 +53,54 @@
  */
 #define MAX_CHUNK_LEN	5552
 
-static forceinline void MAYBE_UNUSED
-adler32_generic_noreduce(u32 *s1_p, u32 *s2_p, const u8 *p, size_t len)
-{
-	u32 s1 = *s1_p;
-	u32 s2 = *s2_p;
-
-	/*
-	 * This loop processes four bytes at a time with increased instruction-
-	 * level parallelism when compared to the traditional approach of
-	 * repeatedly doing 's1 += *p++; s2 += s1'.  It is very similar to how
-	 * vectorized implementations (e.g. AVX2) of Adler-32 commonly work.
-	 */
-	if (len >= 4) {
-		u32 s1_sum = 0;
-		u32 byte_0_sum = 0;
-		u32 byte_1_sum = 0;
-		u32 byte_2_sum = 0;
-		u32 byte_3_sum = 0;
-
-		do {
-			s1_sum += s1;
-			s1 += p[0] + p[1] + p[2] + p[3];
-			byte_0_sum += p[0];
-			byte_1_sum += p[1];
-			byte_2_sum += p[2];
-			byte_3_sum += p[3];
-			p += 4;
-			len -= 4;
-		} while (len >= 4);
-		s2 += (4 * (s1_sum + byte_0_sum)) + (3 * byte_1_sum) +
-		      (2 * byte_2_sum) + byte_3_sum;
-	}
-
-	/* Process any remainder. */
-	for (; len; len--, p++) {
-		s1 += *p;
-		s2 += s1;
-	}
-	*s1_p = s1;
-	*s2_p = s2;
-}
+/*
+ * Update the Adler-32 values s1 and s2 using n bytes from p, update p to p + n,
+ * update n to 0, and reduce s1 and s2 mod DIVISOR.  It is assumed that neither
+ * s1 nor s2 can overflow before the reduction at the end, i.e. n plus any bytes
+ * already processed after the last reduction must not exceed MAX_CHUNK_LEN.
+ *
+ * This uses only portable C code.  This is used as a fallback when a vectorized
+ * implementation of Adler-32 (e.g. AVX2) is unavailable on the platform.
+ *
+ * Some of the vectorized implementations also use this to handle the end of the
+ * data when the data isn't evenly divisible by the length the vectorized code
+ * works on.  To avoid compiler errors about target-specific option mismatches
+ * when this is used in that way, this is a macro rather than a function.
+ *
+ * Although this is unvectorized, this does include an optimization where the
+ * main loop processes four bytes at a time using a strategy similar to that
+ * used by vectorized implementations.  This provides increased instruction-
+ * level parallelism compared to the traditional 's1 += *p++; s2 += s1;'.
+ */
+#define ADLER32_CHUNK(s1, s2, p, n)					\
+do {									\
+	if (n >= 4) {							\
+		u32 s1_sum = 0;						\
+		u32 byte_0_sum = 0;					\
+		u32 byte_1_sum = 0;					\
+		u32 byte_2_sum = 0;					\
+		u32 byte_3_sum = 0;					\
+									\
+		do {							\
+			s1_sum += s1;					\
+			s1 += p[0] + p[1] + p[2] + p[3];		\
+			byte_0_sum += p[0];				\
+			byte_1_sum += p[1];				\
+			byte_2_sum += p[2];				\
+			byte_3_sum += p[3];				\
+			p += 4;						\
+			n -= 4;						\
+		} while (n >= 4);					\
+		s2 += (4 * (s1_sum + byte_0_sum)) + (3 * byte_1_sum) +	\
+		      (2 * byte_2_sum) + byte_3_sum;			\
+	}								\
+	for (; n; n--, p++) {						\
+		s1 += *p;						\
+		s2 += s1;						\
+	}								\
+	s1 %= DIVISOR;							\
+	s2 %= DIVISOR;							\
+} while (0)
 
 static u32 MAYBE_UNUSED
 adler32_generic(u32 adler, const u8 *p, size_t len)
@@ -102,14 +109,10 @@ adler32_generic(u32 adler, const u8 *p, size_t len)
 	u32 s2 = adler >> 16;
 
 	while (len) {
-		size_t chunk_len = MIN(len, MAX_CHUNK_LEN);
+		size_t n = MIN(len, MAX_CHUNK_LEN & ~3);
 
-		adler32_generic_noreduce(&s1, &s2, p, chunk_len);
-		p += chunk_len;
-		len -= chunk_len;
-
-		s1 %= DIVISOR;
-		s2 %= DIVISOR;
+		len -= n;
+		ADLER32_CHUNK(s1, s2, p, n);
 	}
 
 	return (s2 << 16) | s1;

@@ -65,7 +65,7 @@ adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 
 	/*
 	 * If the length is large and the pointer is misaligned, align it.
-	 * For smaller lengths, just take the unaligned load penalty.
+	 * For smaller lengths, just take the misaligned load penalty.
 	 */
 	if (unlikely(len > 32768 && ((uintptr_t)p & 15))) {
 		do {
@@ -194,10 +194,11 @@ adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 			s2 += vaddvq_u32(v_s2);
 		#endif
 		}
-		adler32_generic_noreduce(&s1, &s2, p, n);
-		p += n;
-		s1 %= DIVISOR;
-		s2 %= DIVISOR;
+		/*
+		 * Process the last 0 <= n < 64 bytes of the chunk using
+		 * scalar instructions and reduce s1 and s2 mod DIVISOR.
+		 */
+		ADLER32_CHUNK(s1, s2, p, n);
 	}
 	return (s2 << 16) | s1;
 }
@@ -243,7 +244,7 @@ adler32_arm_neon_dotprod(u32 adler, const u8 *p, size_t len)
 
 	/*
 	 * If the length is large and the pointer is misaligned, align it.
-	 * For smaller lengths, just take the unaligned load penalty.
+	 * For smaller lengths, just take the misaligned load penalty.
 	 */
 	if (unlikely(len > 32768 && ((uintptr_t)p & 15))) {
 		do {
@@ -323,38 +324,10 @@ adler32_arm_neon_dotprod(u32 adler, const u8 *p, size_t len)
 			s2 += vaddvq_u32(v_s2);
 		}
 		/*
-		 * Process the last 0 <= n < 64 bytes of the chunk.  This is a
-		 * copy of adler32_generic_noreduce().  We can't just call it
-		 * directly here because in some cases the compiler errors out
-		 * when inlining it due to a target specific option mismatch due
-		 * to the use of arch=armv8.2 above.
+		 * Process the last 0 <= n < 64 bytes of the chunk using
+		 * scalar instructions and reduce s1 and s2 mod DIVISOR.
 		 */
-		if (n >= 4) {
-			u32 s1_sum = 0;
-			u32 byte_0_sum = 0;
-			u32 byte_1_sum = 0;
-			u32 byte_2_sum = 0;
-			u32 byte_3_sum = 0;
-
-			do {
-				s1_sum += s1;
-				s1 += p[0] + p[1] + p[2] + p[3];
-				byte_0_sum += p[0];
-				byte_1_sum += p[1];
-				byte_2_sum += p[2];
-				byte_3_sum += p[3];
-				p += 4;
-				n -= 4;
-			} while (n >= 4);
-			s2 += (4 * (s1_sum + byte_0_sum)) + (3 * byte_1_sum) +
-			      (2 * byte_2_sum) + byte_3_sum;
-		}
-		for (; n; n--, p++) {
-			s1 += *p;
-			s2 += s1;
-		}
-		s1 %= DIVISOR;
-		s2 %= DIVISOR;
+		ADLER32_CHUNK(s1, s2, p, n);
 	}
 	return (s2 << 16) | s1;
 }
