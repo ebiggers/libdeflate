@@ -12,7 +12,7 @@ if [ $# -ne 0 ]; then
 fi
 
 # Use NDKDIR if specified in environment, else use default value.
-: "${NDKDIR:=$HOME/android-ndk-r23b}"
+: "${NDKDIR:=$HOME/android-ndk-r25b}"
 if [ ! -e "$NDKDIR" ]; then
 	cat 1>&2 << EOF
 Android NDK was not found in NDKDIR=$NDKDIR!  Set the

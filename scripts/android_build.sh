@@ -6,10 +6,10 @@ SCRIPTDIR="$(dirname "$0")"
 BUILDDIR="$SCRIPTDIR/../build"
 API_LEVEL=28
 ARCH=arm64
-export CFLAGS=${CFLAGS:-}
+CFLAGS=${CFLAGS:-}
 ENABLE_CRC=false
 ENABLE_CRYPTO=false
-NDKDIR=$HOME/android-ndk-r23b
+NDKDIR=$HOME/android-ndk-r25b
 
 usage() {
 	cat << EOF
@@ -111,6 +111,7 @@ esac
 
 "$SCRIPTDIR"/cmake-helper.sh -G Ninja \
 	-DCMAKE_TOOLCHAIN_FILE="$NDKDIR"/build/cmake/android.toolchain.cmake \
+	-DCMAKE_C_FLAGS="$CFLAGS" \
 	-DANDROID_ABI="$ANDROID_ABI" \
 	-DANDROID_PLATFORM="$API_LEVEL" \
 	-DLIBDEFLATE_BUILD_TESTS=1
