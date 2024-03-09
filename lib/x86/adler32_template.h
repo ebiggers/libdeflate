@@ -137,16 +137,16 @@ ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p)
 #else
 	{
 		__m256i v_s1_256, v_s2_256;
-#  if VL == 32
+	#if VL == 32
 		v_s1_256 = v_s1;
 		v_s2_256 = v_s2;
-#  else
+	#else
 		/* Reduce 512 bits to 256 bits. */
 		v_s1_256 = _mm256_add_epi32(_mm512_extracti64x4_epi64(v_s1, 0),
 					    _mm512_extracti64x4_epi64(v_s1, 1));
 		v_s2_256 = _mm256_add_epi32(_mm512_extracti64x4_epi64(v_s2, 0),
 					    _mm512_extracti64x4_epi64(v_s2, 1));
-#  endif
+	#endif
 		/* Reduce 256 bits to 128 bits. */
 		v_s1_128 = _mm_add_epi32(_mm256_extracti128_si256(v_s1_256, 0),
 					 _mm256_extracti128_si256(v_s1_256, 1));
@@ -394,8 +394,8 @@ ADD_SUFFIX(adler32)(u32 adler, const u8 *p, size_t len)
 	 * For the s2 contribution from (2*VL - i)*data[i] for each of the 2*VL
 	 * bytes of each iteration of the inner loop, use punpck{l,h}bw + paddw
 	 * to sum, for each i across iterations, byte i into a corresponding
-	 * 16-bit counter in v_byte_sums_*.  After the inner loop, use pmaddw to
-	 * multiply each counter i by (2*VL - i), then add the products to s2.
+	 * 16-bit counter in v_byte_sums_*.  After the inner loop, use pmaddwd
+	 * to multiply each counter by (2*VL - i), then add the products to s2.
 	 *
 	 * An alternative implementation would use pmaddubsw and pmaddwd in the
 	 * inner loop to do (2*VL - i)*data[i] directly and add the products in
@@ -413,7 +413,7 @@ ADD_SUFFIX(adler32)(u32 adler, const u8 *p, size_t len)
 		 * s2 are guaranteed to not exceed UINT32_MAX, and every
 		 * v_byte_sums_* counter is guaranteed to not exceed INT16_MAX.
 		 * It's INT16_MAX, not UINT16_MAX, because v_byte_sums_* are
-		 * used with pmaddw which does signed multiplication.  In the
+		 * used with pmaddwd which does signed multiplication.  In the
 		 * SSE2 case this limits chunks to 4096 bytes instead of 5504.
 		 */
 		size_t n = MIN(len, MIN(2 * VL * (INT16_MAX / UINT8_MAX),
