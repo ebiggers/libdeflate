@@ -218,8 +218,30 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	__m128i x0, x1;
 
 	if (len < 8*VL) {
-		if (len < VL)
-			return crc32_slice1(crc, p, len);
+		if (len < VL) {
+			STATIC_ASSERT(VL == 16 || VL == 32 || VL == 64);
+			if (VL == 16 || len < 16)
+				return crc32_slice1(crc, p, len);
+			/*
+			 * 16 <= len < VL where VL is 32 or 64.  Use 128-bit
+			 * instructions so that the VL >= 32 functions don't
+			 * handle these lengths more slowly than when VL == 16.
+			 */
+			x0 = _mm_xor_si128(_mm_loadu_si128((const void *)p),
+					   _mm_cvtsi32_si128(crc));
+			p += 16;
+			if (VL == 64 && len >= 32) {
+				x0 = fold_vec128(x0, _mm_loadu_si128((const void *)p),
+						 mults_128b);
+				p += 16;
+				if (len >= 48) {
+					x0 = fold_vec128(x0, _mm_loadu_si128((const void *)p),
+							 mults_128b);
+					p += 16;
+				}
+			}
+			goto reduce_x0;
+		}
 		v0 = VXOR(VLOADU(p), M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
 		p += VL;
 		if (len < 2*VL)
@@ -362,6 +384,7 @@ reduce_v0:
 		p += 16;
 	}
 #endif
+reduce_x0:
 	len &= 15;
 
 	/*
