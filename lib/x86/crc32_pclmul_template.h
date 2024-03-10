@@ -70,7 +70,6 @@
 #  define VLOADU(p)		_mm_loadu_si128((const void *)(p))
 #  define VXOR(a, b)		_mm_xor_si128((a), (b))
 #  define M128I_TO_VEC(a)	a
-#  define MULTS_8V		_mm_set_epi64x(CRC32_X991_MODG, CRC32_X1055_MODG)
 #  define MULTS_4V		_mm_set_epi64x(CRC32_X479_MODG, CRC32_X543_MODG)
 #  define MULTS_2V		_mm_set_epi64x(CRC32_X223_MODG, CRC32_X287_MODG)
 #  define MULTS_1V		_mm_set_epi64x(CRC32_X95_MODG, CRC32_X159_MODG)
@@ -81,7 +80,6 @@
 #  define VXOR(a, b)		_mm256_xor_si256((a), (b))
 #  define M128I_TO_VEC(a)	_mm256_castsi128_si256(a)
 #  define MULTS(a, b)		_mm256_set_epi64x(a, b, a, b)
-#  define MULTS_8V		MULTS(CRC32_X2015_MODG, CRC32_X2079_MODG)
 #  define MULTS_4V		MULTS(CRC32_X991_MODG, CRC32_X1055_MODG)
 #  define MULTS_2V		MULTS(CRC32_X479_MODG, CRC32_X543_MODG)
 #  define MULTS_1V		MULTS(CRC32_X223_MODG, CRC32_X287_MODG)
@@ -92,7 +90,6 @@
 #  define VXOR(a, b)		_mm512_xor_si512((a), (b))
 #  define M128I_TO_VEC(a)	_mm512_castsi128_si512(a)
 #  define MULTS(a, b)		_mm512_set_epi64(a, b, a, b, a, b, a, b)
-#  define MULTS_8V		MULTS(CRC32_X4063_MODG, CRC32_X4127_MODG)
 #  define MULTS_4V		MULTS(CRC32_X2015_MODG, CRC32_X2079_MODG)
 #  define MULTS_2V		MULTS(CRC32_X991_MODG, CRC32_X1055_MODG)
 #  define MULTS_1V		MULTS(CRC32_X479_MODG, CRC32_X543_MODG)
@@ -202,7 +199,6 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	 * this is for CRC-32 only their low 32 bits are nonzero.  For more
 	 * details, see scripts/gen_crc32_multipliers.c.
 	 */
-	const vec_t mults_8v = MULTS_8V;
 	const vec_t mults_4v = MULTS_4V;
 	const vec_t mults_2v = MULTS_2V;
 	const vec_t mults_1v = MULTS_1V;
@@ -214,10 +210,10 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	const __m128i /* __v2du */ barrett_reduction_constants =
 		_mm_set_epi64x(CRC32_BARRETT_CONSTANT_2,
 			       CRC32_BARRETT_CONSTANT_1);
-	vec_t v0, v1, v2, v3, v4, v5, v6, v7;
+	vec_t v0, v1, v2, v3;
 	__m128i x0, x1;
 
-	if (len < 8*VL) {
+	if (len < 4*VL) {
 		if (len < VL) {
 			STATIC_ASSERT(VL == 16 || VL == 32 || VL == 64);
 			if (VL == 16 || len < 16)
@@ -242,20 +238,15 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 			}
 			goto reduce_x0;
 		}
+		/* VL <= len < 4*VL */
 		v0 = VXOR(VLOADU(p), M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
 		p += VL;
-		if (len < 2*VL)
-			goto reduce_v0;
-		v1 = VLOADU(p);
-		p += VL;
-		if (len >= 4*VL) {
-			v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_2v);
-			v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_2v);
-			p += 2*VL;
-			if (len >= 6*VL) {
-				v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_2v);
-				v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_2v);
-				p += 2*VL;
+		if (len >= 2*VL) {
+			v0 = fold_vec(v0, VLOADU(p), mults_1v);
+			p += VL;
+			if (len >= 3*VL) {
+				v0 = fold_vec(v0, VLOADU(p), mults_1v);
+				p += VL;
 			}
 		}
 	} else {
@@ -305,39 +296,24 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 		v1 = VLOADU(p + 1*VL);
 		v2 = VLOADU(p + 2*VL);
 		v3 = VLOADU(p + 3*VL);
-		v4 = VLOADU(p + 4*VL);
-		v5 = VLOADU(p + 5*VL);
-		v6 = VLOADU(p + 6*VL);
-		v7 = VLOADU(p + 7*VL);
-		p += 8*VL;
-		while (len >= 16*VL) {
-			v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_8v);
-			v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_8v);
-			v2 = fold_vec(v2, VLOADU(p + 2*VL), mults_8v);
-			v3 = fold_vec(v3, VLOADU(p + 3*VL), mults_8v);
-			v4 = fold_vec(v4, VLOADU(p + 4*VL), mults_8v);
-			v5 = fold_vec(v5, VLOADU(p + 5*VL), mults_8v);
-			v6 = fold_vec(v6, VLOADU(p + 6*VL), mults_8v);
-			v7 = fold_vec(v7, VLOADU(p + 7*VL), mults_8v);
-			p += 8*VL;
-			len -= 8*VL;
-		}
-
+		p += 4*VL;
 		/*
-		 * Reduce v0-v7 (length 8*VL bytes) to v0 (length VL bytes)
-		 * and fold in any VL-byte data segments that remain.
+		 * This is the main loop, processing 4*VL bytes per iteration.
+		 * Increasing this to 8*VL doesn't seem to be helpful; using
+		 * VL > 16 seems to be a better way to increase the width.
 		 */
-		v0 = fold_vec(v0, v4, mults_4v);
-		v1 = fold_vec(v1, v5, mults_4v);
-		v2 = fold_vec(v2, v6, mults_4v);
-		v3 = fold_vec(v3, v7, mults_4v);
-		if (len & (4*VL)) {
+		while (len >= 8*VL) {
 			v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_4v);
 			v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_4v);
 			v2 = fold_vec(v2, VLOADU(p + 2*VL), mults_4v);
 			v3 = fold_vec(v3, VLOADU(p + 3*VL), mults_4v);
 			p += 4*VL;
+			len -= 4*VL;
 		}
+		/*
+		 * Reduce v0-v3 (length 4*VL bytes) to v0 (length VL bytes)
+		 * and fold in any VL-byte data segments that remain.
+		 */
 		v0 = fold_vec(v0, v2, mults_2v);
 		v1 = fold_vec(v1, v3, mults_2v);
 		if (len & (2*VL)) {
@@ -345,13 +321,12 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 			v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_2v);
 			p += 2*VL;
 		}
+		v0 = fold_vec(v0, v1, mults_1v);
+		if (len & VL) {
+			v0 = fold_vec(v0, VLOADU(p), mults_1v);
+			p += VL;
+		}
 	}
-	v0 = fold_vec(v0, v1, mults_1v);
-	if (len & VL) {
-		v0 = fold_vec(v0, VLOADU(p), mults_1v);
-		p += VL;
-	}
-reduce_v0:
 	/*
 	 * Reduce v0 (length VL bytes) to x0 (length 16 bytes)
 	 * and fold in any 16-byte data segments that remain.
@@ -472,7 +447,6 @@ reduce_x0:
 #undef VXOR
 #undef M128I_TO_VEC
 #undef MULTS
-#undef MULTS_8V
 #undef MULTS_4V
 #undef MULTS_2V
 #undef MULTS_1V

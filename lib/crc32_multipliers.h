@@ -52,54 +52,6 @@
 #define CRC32_X2079_MODG 0xce3371cb /* x^2079 mod G(x) */
 #define CRC32_X2015_MODG 0xe95c1271 /* x^2015 mod G(x) */
 
-#define CRC32_X2207_MODG 0xa749e894 /* x^2207 mod G(x) */
-#define CRC32_X2143_MODG 0xb918a347 /* x^2143 mod G(x) */
-
-#define CRC32_X2335_MODG 0x2c538639 /* x^2335 mod G(x) */
-#define CRC32_X2271_MODG 0x71d54a59 /* x^2271 mod G(x) */
-
-#define CRC32_X2463_MODG 0x32b0733c /* x^2463 mod G(x) */
-#define CRC32_X2399_MODG 0xff6f2fc2 /* x^2399 mod G(x) */
-
-#define CRC32_X2591_MODG 0x0e9bd5cc /* x^2591 mod G(x) */
-#define CRC32_X2527_MODG 0xcec97417 /* x^2527 mod G(x) */
-
-#define CRC32_X2719_MODG 0x76278617 /* x^2719 mod G(x) */
-#define CRC32_X2655_MODG 0x1c63267b /* x^2655 mod G(x) */
-
-#define CRC32_X2847_MODG 0xc51b93e3 /* x^2847 mod G(x) */
-#define CRC32_X2783_MODG 0xf183c71b /* x^2783 mod G(x) */
-
-#define CRC32_X2975_MODG 0x7eaed122 /* x^2975 mod G(x) */
-#define CRC32_X2911_MODG 0x9b9bdbd0 /* x^2911 mod G(x) */
-
-#define CRC32_X3103_MODG 0x2ce423f1 /* x^3103 mod G(x) */
-#define CRC32_X3039_MODG 0xd31343ea /* x^3039 mod G(x) */
-
-#define CRC32_X3231_MODG 0x8b8d8645 /* x^3231 mod G(x) */
-#define CRC32_X3167_MODG 0x4470ac44 /* x^3167 mod G(x) */
-
-#define CRC32_X3359_MODG 0x4b700aa8 /* x^3359 mod G(x) */
-#define CRC32_X3295_MODG 0xeea395c4 /* x^3295 mod G(x) */
-
-#define CRC32_X3487_MODG 0xeff5e99d /* x^3487 mod G(x) */
-#define CRC32_X3423_MODG 0xf9d9c7ee /* x^3423 mod G(x) */
-
-#define CRC32_X3615_MODG 0xad0d2bb2 /* x^3615 mod G(x) */
-#define CRC32_X3551_MODG 0xcd669a40 /* x^3551 mod G(x) */
-
-#define CRC32_X3743_MODG 0x9fb66bd3 /* x^3743 mod G(x) */
-#define CRC32_X3679_MODG 0x6d40f445 /* x^3679 mod G(x) */
-
-#define CRC32_X3871_MODG 0xc2dcc467 /* x^3871 mod G(x) */
-#define CRC32_X3807_MODG 0x9ee62949 /* x^3807 mod G(x) */
-
-#define CRC32_X3999_MODG 0x398e2ff2 /* x^3999 mod G(x) */
-#define CRC32_X3935_MODG 0x145575d5 /* x^3935 mod G(x) */
-
-#define CRC32_X4127_MODG 0x1072db28 /* x^4127 mod G(x) */
-#define CRC32_X4063_MODG 0x0c30f51d /* x^4063 mod G(x) */
-
 #define CRC32_X63_MODG 0xb8bc6765 /* x^63 mod G(x) */
 #define CRC32_BARRETT_CONSTANT_1 0x00000001f7011641ULL /* floor(x^64 / G(x)) */
 #define CRC32_BARRETT_CONSTANT_2 0x00000001db710641ULL /* G(x) */

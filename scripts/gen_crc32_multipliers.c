@@ -105,7 +105,7 @@ gen_vec_folding_constants(void)
 	 * of the 128-bit segments separating the values.  When A(x) is the high
 	 * order polynomial half, the separation is 64 bits greater.
 	 */
-	for (int i = 1; i <= 32; i++) {
+	for (int i = 1; i <= 16; i++) {
 		const int sep_lo = 128 * (i - 1);
 		const int sep_hi = sep_lo + 64;
 		const int len_B = 95;
