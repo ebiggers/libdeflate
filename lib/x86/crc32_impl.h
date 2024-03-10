@@ -30,6 +30,19 @@
 
 #include "cpu_features.h"
 
+/*
+ * pshufb(x, shift_tab[len..len+15]) left shifts x by 16-len bytes.
+ * pshufb(x, shift_tab[len+16..len+31]) right shifts x by len bytes.
+ */
+static const u8 MAYBE_UNUSED shift_tab[48] = {
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+};
+
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 /* PCLMULQDQ implementation */
 #  define crc32_x86_pclmulqdq	crc32_x86_pclmulqdq
@@ -88,7 +101,7 @@
  */
 #  define crc32_x86_vpclmulqdq_avx512_vl256  crc32_x86_vpclmulqdq_avx512_vl256
 #  define SUFFIX				      _vpclmulqdq_avx512_vl256
-#  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
+#  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512bw,avx512vl")
 #  define VL			32
 #  define USE_SSE4_1		1
 #  define USE_AVX512		1
@@ -101,7 +114,7 @@
  */
 #  define crc32_x86_vpclmulqdq_avx512_vl512  crc32_x86_vpclmulqdq_avx512_vl512
 #  define SUFFIX				      _vpclmulqdq_avx512_vl512
-#  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
+#  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512bw,avx512vl")
 #  define VL			64
 #  define USE_SSE4_1		1
 #  define USE_AVX512		1
@@ -116,12 +129,12 @@ arch_select_crc32_func(void)
 #ifdef crc32_x86_vpclmulqdq_avx512_vl512
 	if ((features & X86_CPU_FEATURE_ZMM) &&
 	    HAVE_VPCLMULQDQ(features) && HAVE_PCLMULQDQ(features) &&
-	    HAVE_AVX512F(features) && HAVE_AVX512VL(features))
+	    HAVE_AVX512BW(features) && HAVE_AVX512VL(features))
 		return crc32_x86_vpclmulqdq_avx512_vl512;
 #endif
 #ifdef crc32_x86_vpclmulqdq_avx512_vl256
 	if (HAVE_VPCLMULQDQ(features) && HAVE_PCLMULQDQ(features) &&
-	    HAVE_AVX512F(features) && HAVE_AVX512VL(features))
+	    HAVE_AVX512BW(features) && HAVE_AVX512VL(features))
 		return crc32_x86_vpclmulqdq_avx512_vl256;
 #endif
 #ifdef crc32_x86_vpclmulqdq_avx2

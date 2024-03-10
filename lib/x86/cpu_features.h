@@ -39,17 +39,16 @@
 #define X86_CPU_FEATURE_BMI2		(1 << 4)
 /*
  * ZMM indicates whether 512-bit vectors (zmm registers) should be used.  On
- * some CPUs, to avoid downclocking issues we don't set ZMM even if the CPU
- * supports it, i.e. even if AVX512F is set.  On these CPUs, we may still use
- * AVX-512 instructions, but only with ymm and xmm registers.
+ * some CPUs, to avoid downclocking issues we don't set ZMM even if the CPU and
+ * operating system support AVX-512.  On these CPUs, we may still use AVX-512
+ * instructions, but only with xmm and ymm registers.
  */
 #define X86_CPU_FEATURE_ZMM		(1 << 5)
-#define X86_CPU_FEATURE_AVX512F		(1 << 6)
-#define X86_CPU_FEATURE_AVX512BW	(1 << 7)
-#define X86_CPU_FEATURE_AVX512VL	(1 << 8)
-#define X86_CPU_FEATURE_VPCLMULQDQ	(1 << 9)
-#define X86_CPU_FEATURE_AVX512VNNI	(1 << 10)
-#define X86_CPU_FEATURE_AVXVNNI		(1 << 11)
+#define X86_CPU_FEATURE_AVX512BW	(1 << 6)
+#define X86_CPU_FEATURE_AVX512VL	(1 << 7)
+#define X86_CPU_FEATURE_VPCLMULQDQ	(1 << 8)
+#define X86_CPU_FEATURE_AVX512VNNI	(1 << 9)
+#define X86_CPU_FEATURE_AVXVNNI		(1 << 10)
 
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 /* Runtime x86 CPU feature detection is supported. */
@@ -133,12 +132,6 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #else
 #  define HAVE_BMI2(features)		((features) & X86_CPU_FEATURE_BMI2)
 #  define HAVE_BMI2_NATIVE		0
-#endif
-
-#ifdef __AVX512F__
-#  define HAVE_AVX512F(features)	1
-#else
-#  define HAVE_AVX512F(features)	((features) & X86_CPU_FEATURE_AVX512F)
 #endif
 
 #ifdef __AVX512BW__

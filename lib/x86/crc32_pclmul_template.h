@@ -37,8 +37,8 @@
  *	   VL=16 && USE_SSE4_1=0 && USE_AVX512=0: at least pclmul
  *	   VL=16 && USE_SSE4_1=1 && USE_AVX512=0: at least pclmul,sse4.1
  *	   VL=32 && USE_SSE4_1=1 && USE_AVX512=0: at least vpclmulqdq,pclmul,avx2
- *	   VL=32 && USE_SSE4_1=1 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512vl
- *	   VL=64 && USE_SSE4_1=1 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512vl
+ *	   VL=32 && USE_SSE4_1=1 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512bw,avx512vl
+ *	   VL=64 && USE_SSE4_1=1 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512bw,avx512vl
  *	   (Other combinations are not useful and have not been tested.)
  * VL:
  *	Vector length in bytes.  Must be 16, 32, or 64.
@@ -162,18 +162,6 @@ static forceinline ATTRIBUTES __m128i
 ADD_SUFFIX(fold_lessthan16bytes)(__m128i x, const u8 *p, size_t len,
 				 __m128i /* __v2du */ mults_128b)
 {
-	/*
-	 * pshufb(x, shift_tab[len..len+15]) left shifts x by 16-len bytes.
-	 * pshufb(x, shift_tab[len+16..len+31]) right shifts x by len bytes.
-	 */
-	static const u8 shift_tab[48] = {
-		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-		0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-	};
 	__m128i lshift = _mm_loadu_si128((const void *)&shift_tab[len]);
 	__m128i rshift = _mm_loadu_si128((const void *)&shift_tab[len + 16]);
 	__m128i x0, x1;
@@ -216,70 +204,77 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	const __m128i barrett_reduction_constants =
 		_mm_set_epi64x(CRC32_BARRETT_CONSTANT_2, CRC32_BARRETT_CONSTANT_1);
 	vec_t v0, v1, v2, v3, v4, v5, v6, v7;
-	__m128i x0, x1;
+	__m128i x0 = _mm_cvtsi32_si128(crc);
+	__m128i x1;
 
-	/*
-	 * There are two overall code paths.  The first path supports all
-	 * lengths, but is intended for short lengths; it uses unaligned loads
-	 * and does at most 4-way folds.  The second path only supports longer
-	 * lengths, aligns the pointer in order to do aligned loads, and does up
-	 * to 8-way folds.  The length check below decides which path to take.
-	 */
-	if (len < 64*VL) {
-		if (len < VL)
-			return crc32_slice1(crc, p, len);
-
-		v0 = VXOR(VLOADU(p), M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
-		p += VL;
-
-		if (len >= 4*VL) {
-			v1 = VLOADU(p + 0*VL);
-			v2 = VLOADU(p + 1*VL);
-			v3 = VLOADU(p + 2*VL);
-			p += 3*VL;
-			while (len >= 8*VL) {
-				v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_4v);
-				v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_4v);
-				v2 = fold_vec(v2, VLOADU(p + 2*VL), mults_4v);
-				v3 = fold_vec(v3, VLOADU(p + 3*VL), mults_4v);
-				p += 4*VL;
-				len -= 4*VL;
+	if (len < 8*VL) {
+		if (len < VL) {
+			STATIC_ASSERT(VL == 16 || VL == 32 || VL == 64);
+			if (len < 16) {
+			#if USE_AVX512
+				if (len < 4)
+					return crc32_slice1(crc, p, len);
+				/*
+				 * Handle 4 <= len <= 15 bytes by doing a masked
+				 * load, XOR'ing the current CRC with the first
+				 * 4 bytes, left-shifting by '16 - len' bytes to
+				 * align the result to the end of x0 (so that it
+				 * becomes the low-order coefficients of a
+				 * 128-bit polynomial), and then doing the usual
+				 * reduction from 128 bits to 32 bits.
+				 */
+				x0 = _mm_xor_si128(
+					x0, _mm_maskz_loadu_epi8((1 << len) - 1, p));
+				x0 = _mm_shuffle_epi8(
+					x0, _mm_loadu_si128((const void *)&shift_tab[len]));
+				goto reduce_x0;
+			#else
+				return crc32_slice1(crc, p, len);
+			#endif
 			}
-			v0 = fold_vec(v0, v2, mults_2v);
-			v1 = fold_vec(v1, v3, mults_2v);
-			if (len & (2*VL)) {
-				v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_2v);
-				v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_2v);
-				p += 2*VL;
+			/*
+			 * Handle 16 <= len < VL bytes where VL is 32 or 64.
+			 * Use 128-bit instructions so that these lengths aren't
+			 * slower with VL > 16 than with VL=16.
+			 */
+			x0 = _mm_xor_si128(_mm_loadu_si128((const void *)p), x0);
+			if (len >= 32) {
+				x0 = fold_vec128(x0, _mm_loadu_si128((const void *)(p + 16)),
+						 mults_128b);
+				if (len >= 48)
+					x0 = fold_vec128(x0, _mm_loadu_si128((const void *)(p + 32)),
+							 mults_128b);
 			}
-			v0 = fold_vec(v0, v1, mults_1v);
-			if (len & VL) {
-				v0 = fold_vec(v0, VLOADU(p), mults_1v);
-				p += VL;
-			}
-		} else {
-			if (len >= 2*VL) {
-				v0 = fold_vec(v0, VLOADU(p), mults_1v);
-				p += VL;
-				if (len >= 3*VL) {
-					v0 = fold_vec(v0, VLOADU(p), mults_1v);
-					p += VL;
-				}
-			}
+			p += len & ~15;
+			goto less_than_16_remaining;
 		}
+		v0 = VXOR(VLOADU(p), M128I_TO_VEC(x0));
+		if (len < 2*VL) {
+			p += VL;
+			goto less_than_vl_remaining;
+		}
+		v1 = VLOADU(p + 1*VL);
+		if (len < 4*VL) {
+			p += 2*VL;
+			goto less_than_2vl_remaining;
+		}
+		v2 = VLOADU(p + 2*VL);
+		v3 = VLOADU(p + 3*VL);
+		p += 4*VL;
 	} else {
-		size_t align = -(uintptr_t)p & (VL-1);
-		const vec_t *vp;
+		/*
+		 * If the length is large and the pointer is misaligned, align
+		 * it.  For smaller lengths, just take the misaligned load
+		 * penalty.  Note that on recent x86 CPUs, vmovdqu with an
+		 * aligned address is just as fast as vmovdqa, so there's no
+		 * need to use vmovdqa in the main loop.
+		 */
+		if (len > 65536 && ((uintptr_t)p & (VL-1))) {
+			size_t align = -(uintptr_t)p & (VL-1);
 
-		/* Align p to the next VL-byte boundary. */
-		if (align == 0) {
-			vp = (const vec_t *)p;
-			v0 = VXOR(*vp++, M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
-		} else {
 			len -= align;
 		#if USE_SSE4_1
-			x0 = _mm_xor_si128(_mm_loadu_si128((const void *)p),
-					   _mm_cvtsi32_si128(crc));
+			x0 = _mm_xor_si128(_mm_loadu_si128((const void *)p), x0);
 			p += 16;
 			if (align & 15) {
 				x0 = fold_lessthan16bytes(x0, p, align & 15,
@@ -287,7 +282,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 				p += align & 15;
 				align &= ~15;
 			}
-			while (align >= 16) {
+			while (align) {
 				x0 = fold_vec128(x0, *(const __m128i *)p,
 						 mults_128b);
 				p += 16;
@@ -296,66 +291,75 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 			v0 = M128I_TO_VEC(x0);
 		#  if VL == 32
 			v0 = _mm256_inserti128_si256(v0, *(const __m128i *)p, 1);
-			p += 16;
 		#  elif VL == 64
 			v0 = _mm512_inserti32x4(v0, *(const __m128i *)p, 1);
-			p += 16;
-			v0 = _mm512_inserti64x4(v0, *(const __m256i *)p, 1);
-			p += 32;
+			v0 = _mm512_inserti64x4(v0, *(const __m256i *)(p + 16), 1);
 		#  endif
-			vp = (const vec_t *)p;
+			p -= 16;
 		#else
 			crc = crc32_slice1(crc, p, align);
 			p += align;
-			vp = (const vec_t *)p;
-			v0 = VXOR(*vp++, M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
+			v0 = VXOR(VLOADU(p), M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
 		#endif
+		} else {
+			v0 = VXOR(VLOADU(p), M128I_TO_VEC(x0));
 		}
-		v1 = *vp++;
-		v2 = *vp++;
-		v3 = *vp++;
-		v4 = *vp++;
-		v5 = *vp++;
-		v6 = *vp++;
-		v7 = *vp++;
-		do {
-			v0 = fold_vec(v0, *vp++, mults_8v);
-			v1 = fold_vec(v1, *vp++, mults_8v);
-			v2 = fold_vec(v2, *vp++, mults_8v);
-			v3 = fold_vec(v3, *vp++, mults_8v);
-			v4 = fold_vec(v4, *vp++, mults_8v);
-			v5 = fold_vec(v5, *vp++, mults_8v);
-			v6 = fold_vec(v6, *vp++, mults_8v);
-			v7 = fold_vec(v7, *vp++, mults_8v);
-			len -= 8*VL;
-		} while (len >= 16*VL);
+		v1 = VLOADU(p + 1*VL);
+		v2 = VLOADU(p + 2*VL);
+		v3 = VLOADU(p + 3*VL);
+		v4 = VLOADU(p + 4*VL);
+		v5 = VLOADU(p + 5*VL);
+		v6 = VLOADU(p + 6*VL);
+		v7 = VLOADU(p + 7*VL);
+		p += 8*VL;
 
 		/*
-		 * Reduce v0-v7 (length 8*VL bytes) to v0 (length VL bytes)
-		 * and fold in any VL-byte data segments that remain.
+		 * This is the main loop, processing 8*VL bytes per iteration.
+		 * 4*VL is usually enough and would result in smaller code, but
+		 * Skylake and Cascade Lake need 8*VL to get full performance.
 		 */
+		while (len >= 16*VL) {
+			v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_8v);
+			v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_8v);
+			v2 = fold_vec(v2, VLOADU(p + 2*VL), mults_8v);
+			v3 = fold_vec(v3, VLOADU(p + 3*VL), mults_8v);
+			v4 = fold_vec(v4, VLOADU(p + 4*VL), mults_8v);
+			v5 = fold_vec(v5, VLOADU(p + 5*VL), mults_8v);
+			v6 = fold_vec(v6, VLOADU(p + 6*VL), mults_8v);
+			v7 = fold_vec(v7, VLOADU(p + 7*VL), mults_8v);
+			p += 8*VL;
+			len -= 8*VL;
+		}
+
+		/* Fewer than 8*VL bytes remain. */
 		v0 = fold_vec(v0, v4, mults_4v);
 		v1 = fold_vec(v1, v5, mults_4v);
 		v2 = fold_vec(v2, v6, mults_4v);
 		v3 = fold_vec(v3, v7, mults_4v);
 		if (len & (4*VL)) {
-			v0 = fold_vec(v0, *vp++, mults_4v);
-			v1 = fold_vec(v1, *vp++, mults_4v);
-			v2 = fold_vec(v2, *vp++, mults_4v);
-			v3 = fold_vec(v3, *vp++, mults_4v);
+			v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_4v);
+			v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_4v);
+			v2 = fold_vec(v2, VLOADU(p + 2*VL), mults_4v);
+			v3 = fold_vec(v3, VLOADU(p + 3*VL), mults_4v);
+			p += 4*VL;
 		}
-		v0 = fold_vec(v0, v2, mults_2v);
-		v1 = fold_vec(v1, v3, mults_2v);
-		if (len & (2*VL)) {
-			v0 = fold_vec(v0, *vp++, mults_2v);
-			v1 = fold_vec(v1, *vp++, mults_2v);
-		}
-		v0 = fold_vec(v0, v1, mults_1v);
-		if (len & VL)
-			v0 = fold_vec(v0, *vp++, mults_1v);
-		p = (const u8 *)vp;
 	}
-
+	/* Fewer than 4*VL bytes remain. */
+	v0 = fold_vec(v0, v2, mults_2v);
+	v1 = fold_vec(v1, v3, mults_2v);
+	if (len & (2*VL)) {
+		v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_2v);
+		v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_2v);
+		p += 2*VL;
+	}
+less_than_2vl_remaining:
+	/* Fewer than 2*VL bytes remain. */
+	v0 = fold_vec(v0, v1, mults_1v);
+	if (len & VL) {
+		v0 = fold_vec(v0, VLOADU(p), mults_1v);
+		p += VL;
+	}
+less_than_vl_remaining:
 	/*
 	 * Fewer than VL bytes remain.  Reduce v0 (length VL bytes) to x0
 	 * (length 16 bytes) and fold in any 16-byte data segments that remain.
@@ -388,6 +392,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 		p += 16;
 	}
 #endif
+less_than_16_remaining:
 	len &= 15;
 
 	/*
@@ -397,6 +402,9 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 #if USE_SSE4_1
 	if (len)
 		x0 = fold_lessthan16bytes(x0, p, len, mults_128b);
+#endif
+#if USE_AVX512
+reduce_x0:
 #endif
 
 	/*

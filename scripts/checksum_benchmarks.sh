@@ -153,12 +153,12 @@ export LIBDEFLATE_DISABLE_CPU_FEATURES=""
 {
 case $ARCH in
 i386|x86_64)
-	if have_cpu_features vpclmulqdq pclmulqdq avx512f avx512vl; then
+	if have_cpu_features vpclmulqdq pclmulqdq avx512bw avx512vl; then
 		do_benchmark "VPCLMULQDQ/AVX512/VL512"
 		disable_cpu_feature zmm
 		do_benchmark "VPCLMULQDQ/AVX512/VL256"
 		disable_cpu_feature avx512vl "-mno-avx512vl"
-		disable_cpu_feature avx512f "-mno-avx512f"
+		disable_cpu_feature avx512bw "-mno-avx512bw"
 	fi
 	if have_cpu_features vpclmulqdq pclmulqdq avx2; then
 		do_benchmark "VPCLMULQDQ/AVX2"
