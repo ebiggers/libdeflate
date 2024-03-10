@@ -171,7 +171,7 @@ tmain(int argc, tchar *argv[])
 	test_random_buffers(buf_start, buf_end, 256,  5000);
 	test_random_buffers(buf_start, buf_end, 1024,  500);
 	test_random_buffers(buf_start, buf_end, 32768,  50);
-	test_random_buffers(buf_start, buf_end, 262144, 25);
+	test_random_buffers(buf_start, buf_end, 262144, 50);
 
 	/*
 	 * Test Adler-32 overflow cases.  For example, given all 0xFF bytes and
