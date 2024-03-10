@@ -33,19 +33,19 @@
 /* SSE2 and AVX2 implementations.  Used on older CPUs. */
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 #  define adler32_x86_sse2	adler32_x86_sse2
-#  define SUFFIX		       _x86_sse2
+#  define SUFFIX			   _sse2
 #  define ATTRIBUTES		_target_attribute("sse2")
 #  define VL			16
 #  define USE_VNNI		0
-#  define USE_MASKING		0
+#  define USE_AVX512		0
 #  include "adler32_template.h"
 
 #  define adler32_x86_avx2	adler32_x86_avx2
-#  define SUFFIX		       _x86_avx2
+#  define SUFFIX			   _avx2
 #  define ATTRIBUTES		_target_attribute("avx2")
 #  define VL			32
 #  define USE_VNNI		0
-#  define USE_MASKING		0
+#  define USE_AVX512		0
 #  include "adler32_template.h"
 #endif
 
@@ -55,11 +55,11 @@
  */
 #if GCC_PREREQ(11, 1) || CLANG_PREREQ(12, 0, 13000000) || MSVC_PREREQ(1930)
 #  define adler32_x86_avx2_vnni	adler32_x86_avx2_vnni
-#  define SUFFIX		       _x86_avx2_vnni
+#  define SUFFIX			   _avx2_vnni
 #  define ATTRIBUTES		_target_attribute("avx2,avxvnni")
 #  define VL			32
 #  define USE_VNNI		1
-#  define USE_MASKING		0
+#  define USE_AVX512		0
 #  include "adler32_template.h"
 #endif
 
@@ -72,11 +72,11 @@
  * that support AVX10/256 but not AVX10/512.
  */
 #  define adler32_x86_avx512_vl256_vnni	adler32_x86_avx512_vl256_vnni
-#  define SUFFIX			       _x86_avx512_vl256_vnni
+#  define SUFFIX				   _avx512_vl256_vnni
 #  define ATTRIBUTES		_target_attribute("avx512bw,avx512vl,avx512vnni")
 #  define VL			32
 #  define USE_VNNI		1
-#  define USE_MASKING		1
+#  define USE_AVX512		1
 #  include "adler32_template.h"
 
 /*
@@ -85,11 +85,11 @@
  * the optimal implementation on CPUs that support AVX10/512.
  */
 #  define adler32_x86_avx512_vl512_vnni	adler32_x86_avx512_vl512_vnni
-#  define SUFFIX			       _x86_avx512_vl512_vnni
+#  define SUFFIX				   _avx512_vl512_vnni
 #  define ATTRIBUTES		_target_attribute("avx512bw,avx512vnni")
 #  define VL			64
 #  define USE_VNNI		1
-#  define USE_MASKING		1
+#  define USE_AVX512		1
 #  include "adler32_template.h"
 #endif
 

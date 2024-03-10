@@ -43,7 +43,7 @@
 #    endif
 #  endif
 #  include <arm_neon.h>
-static u32 ATTRIBUTES MAYBE_UNUSED
+static ATTRIBUTES MAYBE_UNUSED u32
 adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 {
 	static const u16 _aligned_attribute(16) mults[64] = {
@@ -225,7 +225,7 @@ adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 #    endif
 #  endif
 #  include <arm_neon.h>
-static u32 ATTRIBUTES
+static ATTRIBUTES u32
 adler32_arm_neon_dotprod(u32 adler, const u8 *p, size_t len)
 {
 	static const u8 _aligned_attribute(16) mults[64] = {

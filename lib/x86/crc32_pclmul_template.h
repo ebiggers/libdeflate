@@ -34,18 +34,22 @@
  * ATTRIBUTES:
  *	Target function attributes to use.  Must satisfy the dependencies of the
  *	other parameters as follows:
- *	   VL=16 && FOLD_LESSTHAN16BYTES=0: at least pclmul
- *	   VL=16 && FOLD_LESSTHAN16BYTES=1: at least pclmul,sse4.1
- *	   VL=32 && USE_TERNARYLOGIC=0: at least vpclmulqdq,pclmul,avx2
- *	   VL=32 && USE_TERNARYLOGIC=1: at least vpclmulqdq,pclmul,avx512vl
- *	   VL=64: at least vpclmulqdq,pclmul,avx512vl
+ *	   VL=16 && USE_SSE4_1=0 && USE_AVX512=0: at least pclmul
+ *	   VL=16 && USE_SSE4_1=1 && USE_AVX512=0: at least pclmul,sse4.1
+ *	   VL=32 && USE_SSE4_1=1 && USE_AVX512=0: at least vpclmulqdq,pclmul,avx2
+ *	   VL=32 && USE_SSE4_1=1 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512vl
+ *	   VL=64 && USE_SSE4_1=1 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512vl
+ *	   (Other combinations are not useful and have not been tested.)
  * VL:
- *	Vector length in bytes.  Supported values are 16, 32, and 64.
- * FOLD_LESSTHAN16BYTES:
- *	Use vector instructions to handle any partial blocks at the beginning
- *	and end, instead of falling back to scalar instructions for those parts.
- * USE_TERNARYLOGIC:
- *	Use the vpternlog instruction to do three-argument XORs.
+ *	Vector length in bytes.  Must be 16, 32, or 64.
+ * USE_SSE4_1:
+ *	If 1, take advantage of SSE4.1 instructions such as pblendvb.
+ *	If 0, assume that the CPU might not support SSE4.1.
+ * USE_AVX512:
+ *	If 1, take advantage of AVX-512 features such as masking and the
+ *	vpternlog instruction.  This doesn't enable the use of 512-bit vectors;
+ *	the vector length is controlled by VL.  If 0, assume that the CPU might
+ *	not support AVX-512.
  *
  * The overall algorithm used is CRC folding with carryless multiplication
  * instructions.  Note that the x86 crc32 instruction cannot be used, as it is
@@ -62,55 +66,10 @@
  * or AVX512VL, or four in combination with AVX512F.
  */
 
-#undef fold_vec128
-static forceinline ATTRIBUTES __m128i
-ADD_SUFFIX(fold_vec128)(__m128i src, __m128i dst, __m128i multipliers)
-{
-	dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, multipliers, 0x00));
-	dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, multipliers, 0x11));
-	return dst;
-}
-#define fold_vec128	ADD_SUFFIX(fold_vec128)
-
-#if VL >= 32
-#undef fold_vec256
-static forceinline ATTRIBUTES __m256i
-ADD_SUFFIX(fold_vec256)(__m256i src, __m256i dst, __m256i multipliers)
-{
-#if USE_TERNARYLOGIC
-	return _mm256_ternarylogic_epi32(
-			_mm256_clmulepi64_epi128(src, multipliers, 0x00),
-			_mm256_clmulepi64_epi128(src, multipliers, 0x11),
-			dst,
-			0x96);
-#else
-	return _mm256_xor_si256(
-			_mm256_xor_si256(dst,
-					 _mm256_clmulepi64_epi128(src, multipliers, 0x00)),
-			_mm256_clmulepi64_epi128(src, multipliers, 0x11));
-#endif
-}
-#define fold_vec256	ADD_SUFFIX(fold_vec256)
-#endif /* VL >= 32 */
-
-#if VL >= 64
-#undef fold_vec512
-static forceinline ATTRIBUTES __m512i
-ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i multipliers)
-{
-	return _mm512_ternarylogic_epi32(
-			_mm512_clmulepi64_epi128(src, multipliers, 0x00),
-			_mm512_clmulepi64_epi128(src, multipliers, 0x11),
-			dst,
-			0x96);
-}
-#define fold_vec512	ADD_SUFFIX(fold_vec512)
-#endif /* VL >= 64 */
-
 #if VL == 16
 #  define vec_t			__m128i
 #  define fold_vec		fold_vec128
-#  define VLOAD_UNALIGNED(p)	_mm_loadu_si128((const void *)(p))
+#  define VLOADU(p)		_mm_loadu_si128((const void *)(p))
 #  define VXOR(a, b)		_mm_xor_si128((a), (b))
 #  define M128I_TO_VEC(a)	a
 #  define MULTS_8V		_mm_set_epi64x(CRC32_X991_MODG, CRC32_X1055_MODG)
@@ -120,7 +79,7 @@ ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i multipliers)
 #elif VL == 32
 #  define vec_t			__m256i
 #  define fold_vec		fold_vec256
-#  define VLOAD_UNALIGNED(p)	_mm256_loadu_si256((const void *)(p))
+#  define VLOADU(p)		_mm256_loadu_si256((const void *)(p))
 #  define VXOR(a, b)		_mm256_xor_si256((a), (b))
 #  define M128I_TO_VEC(a)	_mm256_castsi128_si256(a)
 #  define MULTS(a, b)		_mm256_set_epi64x(a, b, a, b)
@@ -131,7 +90,7 @@ ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i multipliers)
 #elif VL == 64
 #  define vec_t			__m512i
 #  define fold_vec		fold_vec512
-#  define VLOAD_UNALIGNED(p)	_mm512_loadu_si512((const void *)(p))
+#  define VLOADU(p)		_mm512_loadu_si512((const void *)(p))
 #  define VXOR(a, b)		_mm512_xor_si512((a), (b))
 #  define M128I_TO_VEC(a)	_mm512_castsi128_si512(a)
 #  define MULTS(a, b)		_mm512_set_epi64(a, b, a, b, a, b, a, b)
@@ -143,7 +102,54 @@ ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i multipliers)
 #  error "unsupported vector length"
 #endif
 
-#if FOLD_LESSTHAN16BYTES
+#undef fold_vec128
+static forceinline ATTRIBUTES __m128i
+ADD_SUFFIX(fold_vec128)(__m128i src, __m128i dst, __m128i /* __v2du */ mults)
+{
+	dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, mults, 0x00));
+	dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, mults, 0x11));
+	return dst;
+}
+#define fold_vec128	ADD_SUFFIX(fold_vec128)
+
+#if VL >= 32
+#undef fold_vec256
+static forceinline ATTRIBUTES __m256i
+ADD_SUFFIX(fold_vec256)(__m256i src, __m256i dst, __m256i /* __v4du */ mults)
+{
+#if USE_AVX512
+	/* vpternlog with immediate 0x96 is a three-argument XOR. */
+	return _mm256_ternarylogic_epi32(
+			_mm256_clmulepi64_epi128(src, mults, 0x00),
+			_mm256_clmulepi64_epi128(src, mults, 0x11),
+			dst,
+			0x96);
+#else
+	return _mm256_xor_si256(
+			_mm256_xor_si256(dst,
+					 _mm256_clmulepi64_epi128(src, mults, 0x00)),
+			_mm256_clmulepi64_epi128(src, mults, 0x11));
+#endif
+}
+#define fold_vec256	ADD_SUFFIX(fold_vec256)
+#endif /* VL >= 32 */
+
+#if VL >= 64
+#undef fold_vec512
+static forceinline ATTRIBUTES __m512i
+ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i /* __v8du */ mults)
+{
+	/* vpternlog with immediate 0x96 is a three-argument XOR. */
+	return _mm512_ternarylogic_epi32(
+			_mm512_clmulepi64_epi128(src, mults, 0x00),
+			_mm512_clmulepi64_epi128(src, mults, 0x11),
+			dst,
+			0x96);
+}
+#define fold_vec512	ADD_SUFFIX(fold_vec512)
+#endif /* VL >= 64 */
+
+#if USE_SSE4_1
 /*
  * Given 'x' containing a 16-byte polynomial, and a pointer 'p' that points to
  * the next '1 <= len <= 15' data bytes, rearrange the concatenation of 'x' and
@@ -154,7 +160,7 @@ ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i multipliers)
 #undef fold_lessthan16bytes
 static forceinline ATTRIBUTES __m128i
 ADD_SUFFIX(fold_lessthan16bytes)(__m128i x, const u8 *p, size_t len,
-				 __m128i /* __v2du */ multipliers_128b)
+				 __m128i /* __v2du */ mults_128b)
 {
 	/*
 	 * pshufb(x, shift_tab[len..len+15]) left shifts x by 16-len bytes.
@@ -184,26 +190,31 @@ ADD_SUFFIX(fold_lessthan16bytes)(__m128i x, const u8 *p, size_t len,
 			     /* msb 0/1 of each byte selects byte from arg1/2 */
 			     rshift);
 
-	return fold_vec128(x0, x1, multipliers_128b);
+	return fold_vec128(x0, x1, mults_128b);
 }
 #define fold_lessthan16bytes	ADD_SUFFIX(fold_lessthan16bytes)
-#endif /* FOLD_LESSTHAN16BYTES */
+#endif /* USE_SSE4_1 */
 
-static u32 ATTRIBUTES
+static ATTRIBUTES u32
 ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 {
-	const vec_t multipliers_8v = MULTS_8V; /* 8 vecs */
-	const vec_t multipliers_4v = MULTS_4V; /* 4 vecs */
-	const vec_t multipliers_2v = MULTS_2V; /* 2 vecs */
-	const vec_t multipliers_1v = MULTS_1V; /* 1 vecs */
-	const __m128i /* __v2du */ multipliers_128b =
-		_mm_set_epi64x(CRC32_X95_MODG, CRC32_X159_MODG);
-	const __m128i /* __v2du */ final_multiplier =
-		_mm_set_epi64x(0, CRC32_X63_MODG);
+	/*
+	 * mults_{N}v are the vectors of multipliers for folding across N vec_t
+	 * vectors, i.e. N*VL*8 bits.  mults_128b are the two multipliers for
+	 * folding across 128 bits.  mults_128b differs from mults_1v when
+	 * VL != 16.  All multipliers are 64-bit, to match what pclmulqdq needs,
+	 * but since this is for CRC-32 only their low 32 bits are nonzero.
+	 * For more details, see scripts/gen_crc32_multipliers.c.
+	 */
+	const vec_t mults_8v = MULTS_8V;
+	const vec_t mults_4v = MULTS_4V;
+	const vec_t mults_2v = MULTS_2V;
+	const vec_t mults_1v = MULTS_1V;
+	const __m128i mults_128b = _mm_set_epi64x(CRC32_X95_MODG, CRC32_X159_MODG);
+	const __m128i final_mult = _mm_set_epi64x(0, CRC32_X63_MODG);
 	const __m128i mask32 = _mm_set_epi32(0, 0, 0, 0xFFFFFFFF);
-	const __m128i /* __v2du */ barrett_reduction_constants =
-		_mm_set_epi64x(CRC32_BARRETT_CONSTANT_2,
-			       CRC32_BARRETT_CONSTANT_1);
+	const __m128i barrett_reduction_constants =
+		_mm_set_epi64x(CRC32_BARRETT_CONSTANT_2, CRC32_BARRETT_CONSTANT_1);
 	vec_t v0, v1, v2, v3, v4, v5, v6, v7;
 	__m128i x0, x1;
 
@@ -218,50 +229,40 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 		if (len < VL)
 			return crc32_slice1(crc, p, len);
 
-		v0 = VXOR(VLOAD_UNALIGNED(p),
-			  M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
+		v0 = VXOR(VLOADU(p), M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
 		p += VL;
 
 		if (len >= 4*VL) {
-			v1 = VLOAD_UNALIGNED(p + 0*VL);
-			v2 = VLOAD_UNALIGNED(p + 1*VL);
-			v3 = VLOAD_UNALIGNED(p + 2*VL);
+			v1 = VLOADU(p + 0*VL);
+			v2 = VLOADU(p + 1*VL);
+			v3 = VLOADU(p + 2*VL);
 			p += 3*VL;
 			while (len >= 8*VL) {
-				v0 = fold_vec(v0, VLOAD_UNALIGNED(p + 0*VL),
-					      multipliers_4v);
-				v1 = fold_vec(v1, VLOAD_UNALIGNED(p + 1*VL),
-					      multipliers_4v);
-				v2 = fold_vec(v2, VLOAD_UNALIGNED(p + 2*VL),
-					      multipliers_4v);
-				v3 = fold_vec(v3, VLOAD_UNALIGNED(p + 3*VL),
-					      multipliers_4v);
+				v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_4v);
+				v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_4v);
+				v2 = fold_vec(v2, VLOADU(p + 2*VL), mults_4v);
+				v3 = fold_vec(v3, VLOADU(p + 3*VL), mults_4v);
 				p += 4*VL;
 				len -= 4*VL;
 			}
-			v0 = fold_vec(v0, v2, multipliers_2v);
-			v1 = fold_vec(v1, v3, multipliers_2v);
+			v0 = fold_vec(v0, v2, mults_2v);
+			v1 = fold_vec(v1, v3, mults_2v);
 			if (len & (2*VL)) {
-				v0 = fold_vec(v0, VLOAD_UNALIGNED(p + 0*VL),
-					      multipliers_2v);
-				v1 = fold_vec(v1, VLOAD_UNALIGNED(p + 1*VL),
-					      multipliers_2v);
+				v0 = fold_vec(v0, VLOADU(p + 0*VL), mults_2v);
+				v1 = fold_vec(v1, VLOADU(p + 1*VL), mults_2v);
 				p += 2*VL;
 			}
-			v0 = fold_vec(v0, v1, multipliers_1v);
+			v0 = fold_vec(v0, v1, mults_1v);
 			if (len & VL) {
-				v0 = fold_vec(v0, VLOAD_UNALIGNED(p),
-					      multipliers_1v);
+				v0 = fold_vec(v0, VLOADU(p), mults_1v);
 				p += VL;
 			}
 		} else {
 			if (len >= 2*VL) {
-				v0 = fold_vec(v0, VLOAD_UNALIGNED(p),
-					      multipliers_1v);
+				v0 = fold_vec(v0, VLOADU(p), mults_1v);
 				p += VL;
 				if (len >= 3*VL) {
-					v0 = fold_vec(v0, VLOAD_UNALIGNED(p),
-						      multipliers_1v);
+					v0 = fold_vec(v0, VLOADU(p), mults_1v);
 					p += VL;
 				}
 			}
@@ -276,19 +277,19 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 			v0 = VXOR(*vp++, M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
 		} else {
 			len -= align;
-		#if FOLD_LESSTHAN16BYTES
+		#if USE_SSE4_1
 			x0 = _mm_xor_si128(_mm_loadu_si128((const void *)p),
 					   _mm_cvtsi32_si128(crc));
 			p += 16;
 			if (align & 15) {
 				x0 = fold_lessthan16bytes(x0, p, align & 15,
-							  multipliers_128b);
+							  mults_128b);
 				p += align & 15;
 				align &= ~15;
 			}
 			while (align >= 16) {
 				x0 = fold_vec128(x0, *(const __m128i *)p,
-						 multipliers_128b);
+						 mults_128b);
 				p += 16;
 				align -= 16;
 			}
@@ -318,14 +319,14 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 		v6 = *vp++;
 		v7 = *vp++;
 		do {
-			v0 = fold_vec(v0, *vp++, multipliers_8v);
-			v1 = fold_vec(v1, *vp++, multipliers_8v);
-			v2 = fold_vec(v2, *vp++, multipliers_8v);
-			v3 = fold_vec(v3, *vp++, multipliers_8v);
-			v4 = fold_vec(v4, *vp++, multipliers_8v);
-			v5 = fold_vec(v5, *vp++, multipliers_8v);
-			v6 = fold_vec(v6, *vp++, multipliers_8v);
-			v7 = fold_vec(v7, *vp++, multipliers_8v);
+			v0 = fold_vec(v0, *vp++, mults_8v);
+			v1 = fold_vec(v1, *vp++, mults_8v);
+			v2 = fold_vec(v2, *vp++, mults_8v);
+			v3 = fold_vec(v3, *vp++, mults_8v);
+			v4 = fold_vec(v4, *vp++, mults_8v);
+			v5 = fold_vec(v5, *vp++, mults_8v);
+			v6 = fold_vec(v6, *vp++, mults_8v);
+			v7 = fold_vec(v7, *vp++, mults_8v);
 			len -= 8*VL;
 		} while (len >= 16*VL);
 
@@ -333,58 +334,57 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 		 * Reduce v0-v7 (length 8*VL bytes) to v0 (length VL bytes)
 		 * and fold in any VL-byte data segments that remain.
 		 */
-		v0 = fold_vec(v0, v4, multipliers_4v);
-		v1 = fold_vec(v1, v5, multipliers_4v);
-		v2 = fold_vec(v2, v6, multipliers_4v);
-		v3 = fold_vec(v3, v7, multipliers_4v);
+		v0 = fold_vec(v0, v4, mults_4v);
+		v1 = fold_vec(v1, v5, mults_4v);
+		v2 = fold_vec(v2, v6, mults_4v);
+		v3 = fold_vec(v3, v7, mults_4v);
 		if (len & (4*VL)) {
-			v0 = fold_vec(v0, *vp++, multipliers_4v);
-			v1 = fold_vec(v1, *vp++, multipliers_4v);
-			v2 = fold_vec(v2, *vp++, multipliers_4v);
-			v3 = fold_vec(v3, *vp++, multipliers_4v);
+			v0 = fold_vec(v0, *vp++, mults_4v);
+			v1 = fold_vec(v1, *vp++, mults_4v);
+			v2 = fold_vec(v2, *vp++, mults_4v);
+			v3 = fold_vec(v3, *vp++, mults_4v);
 		}
-		v0 = fold_vec(v0, v2, multipliers_2v);
-		v1 = fold_vec(v1, v3, multipliers_2v);
+		v0 = fold_vec(v0, v2, mults_2v);
+		v1 = fold_vec(v1, v3, mults_2v);
 		if (len & (2*VL)) {
-			v0 = fold_vec(v0, *vp++, multipliers_2v);
-			v1 = fold_vec(v1, *vp++, multipliers_2v);
+			v0 = fold_vec(v0, *vp++, mults_2v);
+			v1 = fold_vec(v1, *vp++, mults_2v);
 		}
-		v0 = fold_vec(v0, v1, multipliers_1v);
+		v0 = fold_vec(v0, v1, mults_1v);
 		if (len & VL)
-			v0 = fold_vec(v0, *vp++, multipliers_1v);
+			v0 = fold_vec(v0, *vp++, mults_1v);
 		p = (const u8 *)vp;
 	}
 
 	/*
-	 * Reduce v0 (length VL bytes) to x0 (length 16 bytes)
-	 * and fold in any 16-byte data segments that remain.
+	 * Fewer than VL bytes remain.  Reduce v0 (length VL bytes) to x0
+	 * (length 16 bytes) and fold in any 16-byte data segments that remain.
 	 */
 #if VL == 16
 	x0 = v0;
 #else
 	{
-#  if VL == 32
+	#if VL == 32
 		__m256i y0 = v0;
-#  else
-		const __m256i multipliers_256b =
+	#else
+		const __m256i mults_256b =
 			_mm256_set_epi64x(CRC32_X223_MODG, CRC32_X287_MODG,
 					  CRC32_X223_MODG, CRC32_X287_MODG);
 		__m256i y0 = fold_vec256(_mm512_extracti64x4_epi64(v0, 0),
 					 _mm512_extracti64x4_epi64(v0, 1),
-					 multipliers_256b);
+					 mults_256b);
 		if (len & 32) {
 			y0 = fold_vec256(y0, _mm256_loadu_si256((const void *)p),
-					 multipliers_256b);
+					 mults_256b);
 			p += 32;
 		}
-#  endif
+	#endif
 		x0 = fold_vec128(_mm256_extracti128_si256(y0, 0),
-				 _mm256_extracti128_si256(y0, 1),
-				 multipliers_128b);
+				 _mm256_extracti128_si256(y0, 1), mults_128b);
 	}
 	if (len & 16) {
 		x0 = fold_vec128(x0, _mm_loadu_si128((const void *)p),
-				 multipliers_128b);
+				 mults_128b);
 		p += 16;
 	}
 #endif
@@ -394,9 +394,9 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	 * If fold_lessthan16bytes() is available, handle any remainder
 	 * of 1 to 15 bytes now, before reducing to 32 bits.
 	 */
-#if FOLD_LESSTHAN16BYTES
+#if USE_SSE4_1
 	if (len)
-		x0 = fold_lessthan16bytes(x0, p, len, multipliers_128b);
+		x0 = fold_lessthan16bytes(x0, p, len, mults_128b);
 #endif
 
 	/*
@@ -405,12 +405,12 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	 * the CRC is defined as M(x)*x^32 mod G(x), not just M(x) mod G(x).
 	 */
 	x0 = _mm_xor_si128(_mm_srli_si128(x0, 8),
-			   _mm_clmulepi64_si128(x0, multipliers_128b, 0x10));
+			   _mm_clmulepi64_si128(x0, mults_128b, 0x10));
 
 	/* Fold 96 => 64 bits. */
 	x0 = _mm_xor_si128(_mm_srli_si128(x0, 4),
 			   _mm_clmulepi64_si128(_mm_and_si128(x0, mask32),
-						final_multiplier, 0x00));
+						final_mult, 0x00));
 
 	/*
 	 * Reduce 64 => 32 bits using Barrett reduction.
@@ -459,7 +459,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	x1 = _mm_clmulepi64_si128(_mm_and_si128(x1, mask32),
 				  barrett_reduction_constants, 0x10);
 	x0 = _mm_xor_si128(x0, x1);
-#if FOLD_LESSTHAN16BYTES
+#if USE_SSE4_1
 	crc = _mm_extract_epi32(x0, 1);
 #else
 	crc = _mm_cvtsi128_si32(_mm_shuffle_epi32(x0, 0x01));
@@ -471,7 +471,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 
 #undef vec_t
 #undef fold_vec
-#undef VLOAD_UNALIGNED
+#undef VLOADU
 #undef VXOR
 #undef M128I_TO_VEC
 #undef MULTS
@@ -483,5 +483,5 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 #undef SUFFIX
 #undef ATTRIBUTES
 #undef VL
-#undef FOLD_LESSTHAN16BYTES
-#undef USE_TERNARYLOGIC
+#undef USE_SSE4_1
+#undef USE_AVX512
