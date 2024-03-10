@@ -113,7 +113,7 @@ combine_crcs_slow(u32 crc0, u32 crc1, u32 crc2, u32 crc3)
 }
 
 #define crc32_arm_crc	crc32_arm_crc
-static u32 ATTRIBUTES MAYBE_UNUSED
+static ATTRIBUTES MAYBE_UNUSED u32
 crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 {
 	if (len >= 64) {
@@ -289,7 +289,7 @@ combine_crcs_fast(u32 crc0, u32 crc1, u32 crc2, u32 crc3, size_t i)
 }
 
 #define crc32_arm_crc_pmullcombine	crc32_arm_crc_pmullcombine
-static u32 ATTRIBUTES MAYBE_UNUSED
+static ATTRIBUTES MAYBE_UNUSED u32
 crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 {
 	const size_t align = -(uintptr_t)p & 7;
@@ -470,7 +470,7 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 #  define ENABLE_EOR3		0
 #  include "crc32_pmull_helpers.h"
 
-static u32 ATTRIBUTES MAYBE_UNUSED
+static ATTRIBUTES MAYBE_UNUSED u32
 crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 {
 	static const u64 _aligned_attribute(16) mults[3][2] = {

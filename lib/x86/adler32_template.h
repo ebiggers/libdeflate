@@ -41,7 +41,7 @@
  *	   VL=64 && USE_VNNI=1 && USE_MASKING=1: at least avx512bw,avx512vnni
  *	   (Other combinations are not useful and have not been tested.)
  * VL:
- *	Vector length in bytes.  Must be 16, 32, and 64.
+ *	Vector length in bytes.  Must be 16, 32, or 64.
  * USE_VNNI:
  *	If 1, use the VNNI dot product based algorithm.
  *	If 0, use the legacy SSE2 and AVX2 compatible algorithm.
@@ -68,12 +68,12 @@
 #  define VMASKZ_LOADU(mask, p) _mm_maskz_loadu_epi8((mask), (p))
 #  define VMULLO32(a, b)	_mm_mullo_epi32((a), (b))
 #  define VSAD8(a, b)		_mm_sad_epu8((a), (b))
-#  define VSET1_32(a)		_mm_set1_epi32(a)
 #  define VSET1_8(a)		_mm_set1_epi8(a)
+#  define VSET1_32(a)		_mm_set1_epi32(a)
 #  define VSETZERO()		_mm_setzero_si128()
 #  define VSLL32(a, b)		_mm_slli_epi32((a), (b))
-#  define VUNPACKHI8(a, b)	_mm_unpackhi_epi8((a), (b))
 #  define VUNPACKLO8(a, b)	_mm_unpacklo_epi8((a), (b))
+#  define VUNPACKHI8(a, b)	_mm_unpackhi_epi8((a), (b))
 #elif VL == 32
 #  define vec_t			__m256i
 #  define mask_t		u32
@@ -92,27 +92,32 @@
 #  define VMASKZ_LOADU(mask, p) _mm256_maskz_loadu_epi8((mask), (p))
 #  define VMULLO32(a, b)	_mm256_mullo_epi32((a), (b))
 #  define VSAD8(a, b)		_mm256_sad_epu8((a), (b))
-#  define VSET1_32(a)		_mm256_set1_epi32(a)
 #  define VSET1_8(a)		_mm256_set1_epi8(a)
+#  define VSET1_32(a)		_mm256_set1_epi32(a)
 #  define VSETZERO()		_mm256_setzero_si256()
 #  define VSLL32(a, b)		_mm256_slli_epi32((a), (b))
-#  define VUNPACKHI8(a, b)	_mm256_unpackhi_epi8((a), (b))
 #  define VUNPACKLO8(a, b)	_mm256_unpacklo_epi8((a), (b))
+#  define VUNPACKHI8(a, b)	_mm256_unpackhi_epi8((a), (b))
 #elif VL == 64
 #  define vec_t			__m512i
 #  define mask_t		u64
 #  define LOG2_VL		6
 #  define VADD8(a, b)		_mm512_add_epi8((a), (b))
+#  define VADD16(a, b)		_mm512_add_epi16((a), (b))
 #  define VADD32(a, b)		_mm512_add_epi32((a), (b))
 #  define VDPBUSD(a, b, c)	_mm512_dpbusd_epi32((a), (b), (c))
 #  define VLOAD(p)		_mm512_load_si512((const void *)(p))
 #  define VLOADU(p)		_mm512_loadu_si512((const void *)(p))
+#  define VMADD16(a, b)		_mm512_madd_epi16((a), (b))
 #  define VMASKZ_LOADU(mask, p) _mm512_maskz_loadu_epi8((mask), (p))
 #  define VMULLO32(a, b)	_mm512_mullo_epi32((a), (b))
-#  define VSET1_32(a)		_mm512_set1_epi32(a)
+#  define VSAD8(a, b)		_mm512_sad_epu8((a), (b))
 #  define VSET1_8(a)		_mm512_set1_epi8(a)
+#  define VSET1_32(a)		_mm512_set1_epi32(a)
 #  define VSETZERO()		_mm512_setzero_si512()
 #  define VSLL32(a, b)		_mm512_slli_epi32((a), (b))
+#  define VUNPACKLO8(a, b)	_mm512_unpacklo_epi8((a), (b))
+#  define VUNPACKHI8(a, b)	_mm512_unpackhi_epi8((a), (b))
 #else
 #  error "unsupported vector length"
 #endif
@@ -173,8 +178,8 @@ ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p)
 }
 #define reduce_to_32bits	ADD_SUFFIX(reduce_to_32bits)
 
-static u32 ATTRIBUTES
-ADD_SUFFIX(adler32)(u32 adler, const u8 *p, size_t len)
+static ATTRIBUTES u32
+ADD_SUFFIX(adler32_x86)(u32 adler, const u8 *p, size_t len)
 {
 #if USE_VNNI
 	/* This contains the bytes [VL, VL-1, VL-2, ..., 1]. */
@@ -235,7 +240,7 @@ ADD_SUFFIX(adler32)(u32 adler, const u8 *p, size_t len)
 
 #if USE_VNNI
 	/*
-	 * This is Adler-32 using the vpdpbusd instruction from AVX512-VNNI or
+	 * This is Adler-32 using the vpdpbusd instruction from AVX512VNNI or
 	 * AVX-VNNI.  vpdpbusd multiplies the unsigned bytes of one vector by
 	 * the signed bytes of another vector and adds the sums in groups of 4
 	 * to the 32-bit elements of a third vector.  We use it in two ways:
@@ -414,7 +419,7 @@ ADD_SUFFIX(adler32)(u32 adler, const u8 *p, size_t len)
 		 * v_byte_sums_* counter is guaranteed to not exceed INT16_MAX.
 		 * It's INT16_MAX, not UINT16_MAX, because v_byte_sums_* are
 		 * used with pmaddwd which does signed multiplication.  In the
-		 * SSE2 case this limits chunks to 4096 bytes instead of 5504.
+		 * SSE2 case this limits chunks to 4096 bytes instead of 5536.
 		 */
 		size_t n = MIN(len, MIN(2 * VL * (INT16_MAX / UINT8_MAX),
 					MAX_CHUNK_LEN) & ~(2*VL - 1));
@@ -502,8 +507,8 @@ ADD_SUFFIX(adler32)(u32 adler, const u8 *p, size_t len)
 #undef VSET1_32
 #undef VSETZERO
 #undef VSLL32
-#undef VUNPACKHI8
 #undef VUNPACKLO8
+#undef VUNPACKHI8
 
 #undef SUFFIX
 #undef ATTRIBUTES

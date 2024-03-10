@@ -49,7 +49,7 @@
  * non-destructive VEX-encoded instructions.  Second, AVX support implies SSSE3
  * and SSE4.1 support, and we can use SSSE3 and SSE4.1 intrinsics for efficient
  * handling of partial blocks.  (We *could* compile a variant with
- * PCLMULQDQ+SSE4.1 without AVX, but for simplicity we don't currently bother.)
+ * PCLMULQDQ+SSE4.1 without AVX, but for simplicity we currently don't bother.)
  */
 #  define crc32_x86_pclmulqdq_avx	crc32_x86_pclmulqdq_avx
 #  define SUFFIX				 _pclmulqdq_avx
@@ -61,11 +61,12 @@
 #endif
 
 /*
- * VPCLMULQDQ/AVX2 implementation.  Uses 256-bit vectors.
+ * VPCLMULQDQ/AVX2 implementation.  This is used on CPUs that have AVX2 and
+ * VPCLMULQDQ but don't have AVX-512, for example Intel Alder Lake.
  *
  * Currently this can't be enabled with MSVC because MSVC has a bug where it
  * incorrectly assumes that VPCLMULQDQ implies AVX-512:
- * https://developercommunity.visualstudio.com/t/Compiler-incorrectly-assumes-VAES-and-VP/10578785?space=62&q=AVX512&sort=newest
+ * https://developercommunity.visualstudio.com/t/Compiler-incorrectly-assumes-VAES-and-VP/10578785
  */
 #if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000)
 #  define crc32_x86_vpclmulqdq_avx2	crc32_x86_vpclmulqdq_avx2
@@ -79,9 +80,11 @@
 
 #if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)
 /*
- * VPCLMULQDQ/AVX512 implementation with 256-bit vectors.  This takes advantage
- * of some AVX-512 instructions but uses 256-bit vectors rather than 512-bit.
- * This can be useful on CPUs where 512-bit vectors cause downclocking.
+ * VPCLMULQDQ/AVX512 implementation using 256-bit vectors.  This is very similar
+ * to the VPCLMULQDQ/AVX2 implementation but takes advantage of the vpternlog
+ * instruction and more registers.  This is used on CPUs that support AVX-512
+ * but where using 512-bit vectors causes downclocking.  This should also be the
+ * optimal implementation on CPUs that support AVX10/256 but not AVX10/512.
  */
 #  define crc32_x86_vpclmulqdq_avx512_vl256  crc32_x86_vpclmulqdq_avx512_vl256
 #  define SUFFIX				      _vpclmulqdq_avx512_vl256
@@ -91,7 +94,11 @@
 #  define USE_TERNARYLOGIC	1
 #  include "crc32_pclmul_template.h"
 
-/* VPCLMULQDQ/AVX512 implementation with 512-bit vectors */
+/*
+ * VPCLMULQDQ/AVX512 implementation using 512-bit vectors.  This is used on CPUs
+ * that have a good AVX-512 implementation including VPCLMULQDQ.  This should
+ * also be the optimal implementation on CPUs that support AVX10/512.
+ */
 #  define crc32_x86_vpclmulqdq_avx512_vl512  crc32_x86_vpclmulqdq_avx512_vl512
 #  define SUFFIX				      _vpclmulqdq_avx512_vl512
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512vl")
