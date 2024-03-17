@@ -544,11 +544,8 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
  *
  * This like crc32_arm_pmullx12_crc(), but it adds the eor3 instruction (from
  * the sha3 extension) for even better performance.
- *
- * Note: we require HAVE_SHA3_TARGET rather than HAVE_SHA3_INTRIN, as we have an
- * inline asm fallback for eor3.
  */
-#if HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && HAVE_SHA3_TARGET
+#if HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && HAVE_SHA3_INTRIN
 #  define crc32_arm_pmullx12_crc_eor3	crc32_arm_pmullx12_crc_eor3
 #  define SUFFIX				 _pmullx12_crc_eor3
 #  ifdef __clang__

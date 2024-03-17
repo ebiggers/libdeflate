@@ -91,18 +91,10 @@ static forceinline ATTRIBUTES uint8x16_t
 ADD_SUFFIX(eor3)(uint8x16_t a, uint8x16_t b, uint8x16_t c)
 {
 #if ENABLE_EOR3
-#if HAVE_SHA3_INTRIN
 	return veor3q_u8(a, b, c);
 #else
-	uint8x16_t res;
-
-	__asm__("eor3 %0.16b, %1.16b, %2.16b, %3.16b"
-		: "=w" (res) : "w" (a), "w" (b), "w" (c));
-	return res;
-#endif
-#else /* ENABLE_EOR3 */
 	return veorq_u8(veorq_u8(a, b), c);
-#endif /* !ENABLE_EOR3 */
+#endif
 }
 #define eor3	ADD_SUFFIX(eor3)
 
