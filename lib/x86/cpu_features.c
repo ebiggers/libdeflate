@@ -44,10 +44,7 @@ cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c, u32 *d)
 	*c = result[2];
 	*d = result[3];
 #else
-	__asm__ volatile(".ifnc %%ebx, %1; mov  %%ebx, %1; .endif\n"
-			 "cpuid                                  \n"
-			 ".ifnc %%ebx, %1; xchg %%ebx, %1; .endif\n"
-			 : "=a" (*a), "=b" (*b), "=c" (*c), "=d" (*d)
+	__asm__ volatile("cpuid" : "=a" (*a), "=b" (*b), "=c" (*c), "=d" (*d)
 			 : "a" (leaf), "c" (subleaf));
 #endif
 }
