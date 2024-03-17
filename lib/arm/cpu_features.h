@@ -78,7 +78,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #endif /* !HAVE_DYNAMIC_ARM_CPU_FEATURES */
 
 /* NEON */
-#if defined(__ARM_NEON) || defined(ARCH_ARM64)
+#if defined(__ARM_NEON) || (defined(_MSC_VER) && defined(ARCH_ARM64))
 #  define HAVE_NEON_NATIVE	1
 #else
 #  define HAVE_NEON_NATIVE	0
