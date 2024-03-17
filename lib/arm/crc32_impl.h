@@ -47,27 +47,10 @@
 #if HAVE_CRC32_INTRIN
 #  if HAVE_CRC32_NATIVE
 #    define ATTRIBUTES
+#  elif defined(__clang__)
+#    define ATTRIBUTES	_target_attribute("crc")
 #  else
-#    ifdef ARCH_ARM32
-#      ifdef __clang__
-#        define ATTRIBUTES	_target_attribute("armv8-a,crc")
-#      elif defined(__ARM_PCS_VFP)
-	 /*
-	  * +simd is needed to avoid a "selected architecture lacks an FPU"
-	  * error with Debian arm-linux-gnueabihf-gcc when -mfpu is not
-	  * explicitly specified on the command line.
-	  */
-#        define ATTRIBUTES	_target_attribute("arch=armv8-a+crc+simd")
-#      else
-#        define ATTRIBUTES	_target_attribute("arch=armv8-a+crc")
-#      endif
-#    else
-#      ifdef __clang__
-#        define ATTRIBUTES	_target_attribute("crc")
-#      else
-#        define ATTRIBUTES	_target_attribute("+crc")
-#      endif
-#    endif
+#    define ATTRIBUTES	_target_attribute("+crc")
 #  endif
 
 #ifndef _MSC_VER
@@ -245,16 +228,10 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 #if HAVE_CRC32_INTRIN && HAVE_PMULL_INTRIN
 #  if HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
 #    define ATTRIBUTES
+#  elif defined(__clang__)
+#    define ATTRIBUTES	_target_attribute("crc,aes")
 #  else
-#    ifdef ARCH_ARM32
-#      define ATTRIBUTES	_target_attribute("arch=armv8-a+crc,fpu=crypto-neon-fp-armv8")
-#    else
-#      ifdef __clang__
-#        define ATTRIBUTES	_target_attribute("crc,aes")
-#      else
-#        define ATTRIBUTES	_target_attribute("+crc,+crypto")
-#      endif
-#    endif
+#    define ATTRIBUTES	_target_attribute("+crc,+crypto")
 #  endif
 
 #ifndef _MSC_VER
@@ -447,25 +424,19 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 #  define SUFFIX			 _pmullx4
 #  if HAVE_PMULL_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
 #    define ATTRIBUTES
+#  elif defined(__clang__)
+     /*
+      * This used to use "crypto", but that stopped working with clang 16.
+      * Now only "aes" works.  "aes" works with older versions too, so use
+      * that.  No "+" prefix; clang 15 and earlier doesn't accept that.
+      */
+#    define ATTRIBUTES  _target_attribute("aes")
 #  else
-#    ifdef ARCH_ARM32
-#      define ATTRIBUTES    _target_attribute("fpu=crypto-neon-fp-armv8")
-#    else
-#      ifdef __clang__
-	 /*
-	  * This used to use "crypto", but that stopped working with clang 16.
-	  * Now only "aes" works.  "aes" works with older versions too, so use
-	  * that.  No "+" prefix; clang 15 and earlier doesn't accept that.
-	  */
-#        define ATTRIBUTES  _target_attribute("aes")
-#      else
-	 /*
-	  * With gcc, only "+crypto" works.  Both the "+" prefix and the
-	  * "crypto" (not "aes") are essential...
-	  */
-#        define ATTRIBUTES  _target_attribute("+crypto")
-#      endif
-#    endif
+     /*
+      * With gcc, only "+crypto" works.  Both the "+" prefix and the
+      * "crypto" (not "aes") are essential...
+      */
+#    define ATTRIBUTES  _target_attribute("+crypto")
 #  endif
 #  define ENABLE_EOR3		0
 #  include "crc32_pmull_helpers.h"
@@ -571,7 +542,7 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
  *
  * See crc32_pmull_wide.h for explanation.
  */
-#if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN
+#if HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN
 #  define crc32_arm_pmullx12_crc	crc32_arm_pmullx12_crc
 #  define SUFFIX				 _pmullx12_crc
 #  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
@@ -596,7 +567,7 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
  * Note: we require HAVE_SHA3_TARGET (or HAVE_SHA3_NATIVE) rather than
  * HAVE_SHA3_INTRIN, as we have an inline asm fallback for eor3.
  */
-#if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
+#if HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
 	(HAVE_SHA3_TARGET || HAVE_SHA3_NATIVE)
 #  define crc32_arm_pmullx12_crc_eor3	crc32_arm_pmullx12_crc_eor3
 #  define SUFFIX				 _pmullx12_crc_eor3

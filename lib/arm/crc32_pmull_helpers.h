@@ -73,7 +73,7 @@ ADD_SUFFIX(clmul_low)(uint8x16_t a, poly64x2_t b)
 static forceinline ATTRIBUTES uint8x16_t
 ADD_SUFFIX(clmul_high)(uint8x16_t a, poly64x2_t b)
 {
-#if defined(__clang__) && defined(ARCH_ARM64)
+#ifdef __clang__
 	/*
 	 * Use inline asm to ensure that pmull2 is really used.  This works
 	 * around clang bug https://github.com/llvm/llvm-project/issues/52868.
@@ -119,24 +119,6 @@ ADD_SUFFIX(fold_vec)(uint8x16_t src, uint8x16_t dst, poly64x2_t multipliers)
 }
 #define fold_vec	ADD_SUFFIX(fold_vec)
 
-#undef vtbl
-static forceinline ATTRIBUTES uint8x16_t
-ADD_SUFFIX(vtbl)(uint8x16_t table, uint8x16_t indices)
-{
-#ifdef ARCH_ARM64
-	return vqtbl1q_u8(table, indices);
-#else
-	uint8x8x2_t tab2;
-
-	tab2.val[0] = vget_low_u8(table);
-	tab2.val[1] = vget_high_u8(table);
-
-	return vcombine_u8(vtbl2_u8(tab2, vget_low_u8(indices)),
-			   vtbl2_u8(tab2, vget_high_u8(indices)));
-#endif
-}
-#define vtbl	ADD_SUFFIX(vtbl)
-
 /*
  * Given v containing a 16-byte polynomial, and a pointer 'p' that points to the
  * next '1 <= len <= 15' data bytes, rearrange the concatenation of v and the
@@ -150,8 +132,8 @@ ADD_SUFFIX(fold_partial_vec)(uint8x16_t v, const u8 *p, size_t len,
 			     poly64x2_t multipliers_1)
 {
 	/*
-	 * vtbl(v, shift_tab[len..len+15]) left shifts v by 16-len bytes.
-	 * vtbl(v, shift_tab[len+16..len+31]) right shifts v by len bytes.
+	 * vqtbl1q_u8(v, shift_tab[len..len+15]) left shifts v by 16-len bytes.
+	 * vqtbl1q_u8(v, shift_tab[len+16..len+31]) right shifts v by len bytes.
 	 */
 	static const u8 shift_tab[48] = {
 		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -166,7 +148,7 @@ ADD_SUFFIX(fold_partial_vec)(uint8x16_t v, const u8 *p, size_t len,
 	uint8x16_t x0, x1, bsl_mask;
 
 	/* x0 = v left-shifted by '16 - len' bytes */
-	x0 = vtbl(v, lshift);
+	x0 = vqtbl1q_u8(v, lshift);
 
 	/* Create a vector of '16 - len' 0x00 bytes, then 'len' 0xff bytes. */
 	bsl_mask = vreinterpretq_u8_s8(
@@ -177,7 +159,7 @@ ADD_SUFFIX(fold_partial_vec)(uint8x16_t v, const u8 *p, size_t len,
 	 * bytes) followed by the remaining data.
 	 */
 	x1 = vbslq_u8(bsl_mask /* 0 bits select from arg3, 1 bits from arg2 */,
-		      vld1q_u8(p + len - 16), vtbl(v, rshift));
+		      vld1q_u8(p + len - 16), vqtbl1q_u8(v, rshift));
 
 	return fold_vec(x0, x1, multipliers_1);
 }

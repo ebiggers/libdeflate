@@ -101,17 +101,10 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #else
 #  define HAVE_PMULL_NATIVE	0
 #endif
-#if HAVE_PMULL_NATIVE || \
-	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	 HAVE_NEON_INTRIN /* needed to exclude soft float arm32 case */ && \
-	 (GCC_PREREQ(6, 1) || defined(__clang__) || defined(_MSC_VER)) && \
-	  /*
-	   * On arm32 with clang, the crypto intrinsics (which include pmull)
-	   * are not defined, even when using -mfpu=crypto-neon-fp-armv8,
-	   * because clang's <arm_neon.h> puts their definitions behind
-	   * __aarch64__.
-	   */ \
-	 !(defined(ARCH_ARM32) && defined(__clang__)))
+#if defined(ARCH_ARM64) && \
+	(HAVE_PMULL_NATIVE || \
+	 (HAVE_DYNAMIC_ARM_CPU_FEATURES && \
+	  (GCC_PREREQ(6, 1) || defined(__clang__) || defined(_MSC_VER))))
 #  define HAVE_PMULL_INTRIN	CPU_IS_LITTLE_ENDIAN() /* untested on big endian */
    /* Work around MSVC's vmull_p64() taking poly64x1_t instead of poly64_t */
 #  ifdef _MSC_VER
@@ -152,43 +145,10 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #else
 #  define HAVE_CRC32_NATIVE	0
 #endif
-#undef HAVE_CRC32_INTRIN
-#if HAVE_CRC32_NATIVE
+#if defined(ARCH_ARM64) && (HAVE_CRC32_NATIVE || defined(__GNUC__) || \
+			    defined(__clang__) || defined(_MSC_VER))
 #  define HAVE_CRC32_INTRIN	1
-#elif HAVE_DYNAMIC_ARM_CPU_FEATURES
-#  if GCC_PREREQ(1, 0)
-    /*
-     * Support for ARM CRC32 intrinsics when CRC32 instructions are not enabled
-     * in the main target has been affected by two gcc bugs, which we must avoid
-     * by only allowing gcc versions that have the corresponding fixes.  First,
-     * gcc commit 943766d37ae4 ("[arm] Fix use of CRC32 intrinsics with Armv8-a
-     * and hard-float"), i.e. gcc 8.4+, 9.3+, 10.1+, or 11+, is needed.  Second,
-     * gcc commit c1cdabe3aab8 ("arm: reorder assembler architecture directives
-     * [PR101723]"), i.e. gcc 9.5+, 10.4+, 11.3+, or 12+, is needed when
-     * binutils is 2.34 or later, due to
-     * https://gcc.gnu.org/bugzilla/show_bug.cgi?id=104439.  We use the second
-     * set of prerequisites, as they are stricter and we have no way to detect
-     * the binutils version directly from a C source file.
-     *
-     * Also exclude the cases where the main target arch is armv6kz or armv7e-m.
-     * In those cases, gcc doesn't let functions that use the main arch be
-     * inlined into functions that are targeted to armv8-a+crc.  (armv8-a is
-     * necessary for crc to be accepted at all.)  That causes build errors.
-     * This issue happens for these specific sub-archs because they are not a
-     * subset of armv8-a.  Note: clang does not have this limitation.
-     */
-#    if (GCC_PREREQ(11, 3) || \
-	 (GCC_PREREQ(10, 4) && !GCC_PREREQ(11, 0)) || \
-	 (GCC_PREREQ(9, 5) && !GCC_PREREQ(10, 0))) && \
-	!defined(__ARM_ARCH_6KZ__) && \
-	!defined(__ARM_ARCH_7EM__)
-#      define HAVE_CRC32_INTRIN	1
-#    endif
-#  elif defined(__clang__) || defined(_MSC_VER)
-#    define HAVE_CRC32_INTRIN	1
-#  endif
-#endif
-#ifndef HAVE_CRC32_INTRIN
+#else
 #  define HAVE_CRC32_INTRIN	0
 #endif
 
@@ -239,8 +199,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  * defined, though, so work around this by temporarily defining the
  * corresponding __ARM_FEATURE_* macros while including the headers.
  */
-#if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && \
-	(defined(__clang__) || defined(ARCH_ARM32))
+#if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && defined(__clang__)
 #  define __ARM_FEATURE_CRC32	1
 #endif
 #if HAVE_SHA3_INTRIN && !HAVE_SHA3_NATIVE && defined(__clang__)
@@ -249,8 +208,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #if HAVE_DOTPROD_INTRIN && !HAVE_DOTPROD_NATIVE && defined(__clang__)
 #  define __ARM_FEATURE_DOTPROD	1
 #endif
-#if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && \
-	(defined(__clang__) || defined(ARCH_ARM32))
+#if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && defined(__clang__)
 #  include <arm_acle.h>
 #  undef __ARM_FEATURE_CRC32
 #endif

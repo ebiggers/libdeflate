@@ -113,10 +113,6 @@ static u32 query_arm_cpu_features(void)
 	STATIC_ASSERT(sizeof(long) == 4);
 	if (hwcap & (1 << 12))	/* HWCAP_NEON */
 		features |= ARM_CPU_FEATURE_NEON;
-	if (hwcap2 & (1 << 1))	/* HWCAP2_PMULL */
-		features |= ARM_CPU_FEATURE_PMULL;
-	if (hwcap2 & (1 << 4))	/* HWCAP2_CRC32 */
-		features |= ARM_CPU_FEATURE_CRC32;
 #else
 	STATIC_ASSERT(sizeof(long) == 8);
 	if (hwcap & (1 << 1))	/* HWCAP_ASIMD */
