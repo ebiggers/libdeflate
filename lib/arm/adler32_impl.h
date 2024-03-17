@@ -32,15 +32,19 @@
 
 /* Regular NEON implementation */
 #if HAVE_NEON_INTRIN && CPU_IS_LITTLE_ENDIAN()
-#  define adler32_arm_neon		adler32_arm_neon
+#  define adler32_arm_neon	adler32_arm_neon
 #  if HAVE_NEON_NATIVE
+     /*
+      * Use no attributes if none are needed, to support old versions of clang
+      * that don't accept the simd target attribute.
+      */
 #    define ATTRIBUTES
+#  elif defined(ARCH_ARM32)
+#    define ATTRIBUTES	_target_attribute("fpu=neon")
+#  elif defined(__clang__)
+#    define ATTRIBUTES	_target_attribute("simd")
 #  else
-#    ifdef ARCH_ARM32
-#      define ATTRIBUTES	_target_attribute("fpu=neon")
-#    else
-#      define ATTRIBUTES	_target_attribute("+simd")
-#    endif
+#    define ATTRIBUTES	_target_attribute("+simd")
 #  endif
 #  include <arm_neon.h>
 static ATTRIBUTES MAYBE_UNUSED u32
@@ -208,21 +212,17 @@ adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 /* NEON+dotprod implementation */
 #if HAVE_DOTPROD_INTRIN && CPU_IS_LITTLE_ENDIAN()
 #  define adler32_arm_neon_dotprod	adler32_arm_neon_dotprod
-#  if HAVE_DOTPROD_NATIVE
-#    define ATTRIBUTES
+#  ifdef __clang__
+#    define ATTRIBUTES	_target_attribute("dotprod")
+   /*
+    * With gcc, arch=armv8.2-a is needed for dotprod intrinsics, unless the
+    * default target is armv8.3-a or later in which case it must be omitted.
+    * armv8.3-a or later can be detected by checking for __ARM_FEATURE_JCVT.
+    */
+#  elif defined(__ARM_FEATURE_JCVT)
+#    define ATTRIBUTES	_target_attribute("+dotprod")
 #  else
-#    ifdef __clang__
-#      define ATTRIBUTES  _target_attribute("dotprod")
-     /*
-      * With gcc, arch=armv8.2-a is needed for dotprod intrinsics, unless the
-      * default target is armv8.3-a or later in which case it must be omitted.
-      * armv8.3-a or later can be detected by checking for __ARM_FEATURE_JCVT.
-      */
-#    elif defined(__ARM_FEATURE_JCVT)
-#      define ATTRIBUTES  _target_attribute("+dotprod")
-#    else
-#      define ATTRIBUTES  _target_attribute("arch=armv8.2-a+dotprod")
-#    endif
+#    define ATTRIBUTES	_target_attribute("arch=armv8.2-a+dotprod")
 #  endif
 #  include <arm_neon.h>
 static ATTRIBUTES u32

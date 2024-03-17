@@ -115,29 +115,6 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #else
 #  define HAVE_PMULL_INTRIN	0
 #endif
-/*
- * Set USE_PMULL_TARGET_EVEN_IF_NATIVE if a workaround for a gcc bug that was
- * fixed by commit 11a113d501ff ("aarch64: Simplify feature definitions") in gcc
- * 13 is needed.  A minimal program that fails to build due to this bug when
- * compiled with -mcpu=emag, at least with gcc 10 through 12, is:
- *
- *    static inline __attribute__((always_inline,target("+crypto"))) void f() {}
- *    void g() { f(); }
- *
- * The error is:
- *
- *    error: inlining failed in call to ‘always_inline’ ‘f’: target specific option mismatch
- *
- * The workaround is to explicitly add the crypto target to the non-inline
- * function g(), even though this should not be required due to -mcpu=emag
- * enabling 'crypto' natively and causing __ARM_FEATURE_CRYPTO to be defined.
- */
-#if HAVE_PMULL_NATIVE && defined(ARCH_ARM64) && \
-		GCC_PREREQ(6, 1) && !GCC_PREREQ(13, 1)
-#  define USE_PMULL_TARGET_EVEN_IF_NATIVE	1
-#else
-#  define USE_PMULL_TARGET_EVEN_IF_NATIVE	0
-#endif
 
 /* CRC32 */
 #ifdef __ARM_FEATURE_CRC32
