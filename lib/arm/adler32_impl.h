@@ -332,7 +332,7 @@ adler32_arm_neon_dotprod(u32 adler, const u8 *p, size_t len)
 #undef ATTRIBUTES
 #endif /* NEON+dotprod implementation */
 
-#if defined(adler32_arm_neon_dotprod) && HAVE_DOTPROD_NATIVE
+#if defined(adler32_arm_neon_dotprod) && defined(__ARM_FEATURE_DOTPROD)
 #define DEFAULT_IMPL	adler32_arm_neon_dotprod
 #else
 static inline adler32_func_t

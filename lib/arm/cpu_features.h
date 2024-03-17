@@ -55,12 +55,6 @@
 #define ARM_CPU_FEATURE_SHA3		(1 << 4)
 #define ARM_CPU_FEATURE_DOTPROD		(1 << 5)
 
-#define HAVE_NEON(features)	(HAVE_NEON_NATIVE    || ((features) & ARM_CPU_FEATURE_NEON))
-#define HAVE_PMULL(features)	(HAVE_PMULL_NATIVE   || ((features) & ARM_CPU_FEATURE_PMULL))
-#define HAVE_CRC32(features)	(HAVE_CRC32_NATIVE   || ((features) & ARM_CPU_FEATURE_CRC32))
-#define HAVE_SHA3(features)	(HAVE_SHA3_NATIVE    || ((features) & ARM_CPU_FEATURE_SHA3))
-#define HAVE_DOTPROD(features)	(HAVE_DOTPROD_NATIVE || ((features) & ARM_CPU_FEATURE_DOTPROD))
-
 #if HAVE_DYNAMIC_ARM_CPU_FEATURES
 #define ARM_CPU_FEATURES_KNOWN		(1U << 31)
 extern volatile u32 libdeflate_arm_cpu_features;
@@ -79,8 +73,10 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 
 /* NEON */
 #if defined(__ARM_NEON) || (defined(_MSC_VER) && defined(ARCH_ARM64))
+#  define HAVE_NEON(features)	1
 #  define HAVE_NEON_NATIVE	1
 #else
+#  define HAVE_NEON(features)	((features) & ARM_CPU_FEATURE_NEON)
 #  define HAVE_NEON_NATIVE	0
 #endif
 /*
@@ -98,9 +94,9 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 
 /* PMULL */
 #ifdef __ARM_FEATURE_CRYPTO
-#  define HAVE_PMULL_NATIVE	1
+#  define HAVE_PMULL(features)	1
 #else
-#  define HAVE_PMULL_NATIVE	0
+#  define HAVE_PMULL(features)	((features) & ARM_CPU_FEATURE_PMULL)
 #endif
 #if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
 	(GCC_PREREQ(6, 1) || defined(__clang__) || defined(_MSC_VER)) && \
@@ -118,9 +114,9 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 
 /* CRC32 */
 #ifdef __ARM_FEATURE_CRC32
-#  define HAVE_CRC32_NATIVE	1
+#  define HAVE_CRC32(features)	1
 #else
-#  define HAVE_CRC32_NATIVE	0
+#  define HAVE_CRC32(features)	((features) & ARM_CPU_FEATURE_CRC32)
 #endif
 #if defined(ARCH_ARM64) && \
 	(defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER))
@@ -166,9 +162,9 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 
 /* SHA3 (needed for the eor3 instruction) */
 #ifdef __ARM_FEATURE_SHA3
-#  define HAVE_SHA3_NATIVE	1
+#  define HAVE_SHA3(features)	1
 #else
-#  define HAVE_SHA3_NATIVE	0
+#  define HAVE_SHA3(features)	((features) & ARM_CPU_FEATURE_SHA3)
 #endif
 #if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
 	(GCC_PREREQ(9, 1) /* r268049 */ || \
@@ -194,9 +190,9 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 
 /* dotprod */
 #ifdef __ARM_FEATURE_DOTPROD
-#  define HAVE_DOTPROD_NATIVE	1
+#  define HAVE_DOTPROD(features)	1
 #else
-#  define HAVE_DOTPROD_NATIVE	0
+#  define HAVE_DOTPROD(features)	((features) & ARM_CPU_FEATURE_DOTPROD)
 #endif
 #if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
 	(GCC_PREREQ(8, 1) || CLANG_PREREQ(7, 0, 10010000) || defined(_MSC_VER))
