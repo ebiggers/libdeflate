@@ -226,9 +226,15 @@ arm*)
 	fi
 	;;
 aarch*)
+	EXTRA_CFLAGS=("-march=armv8-a")
+	if have_cpu_features asimd asimddp; then
+		do_benchmark "DOTPROD"
+		disable_cpu_feature dotprod
+	fi
 	if have_cpu_features asimd; then
 		do_benchmark "NEON"
-		disable_cpu_feature neon "-march=armv8-a+nosimd"
+		disable_cpu_feature neon
+		EXTRA_CFLAGS=("-march=armv8-a+nosimd")
 	fi
 	;;
 esac
