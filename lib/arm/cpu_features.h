@@ -88,8 +88,8 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  * NEON enabled already.  Exception: with gcc 6.1 and later (r230411 for arm32,
  * r226563 for arm64), hardware floating point support is sufficient.
  */
-#if HAVE_NEON_NATIVE || \
-	(HAVE_DYNAMIC_ARM_CPU_FEATURES && GCC_PREREQ(6, 1) && defined(__ARM_FP))
+#if (defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)) && \
+	(HAVE_NEON_NATIVE || (GCC_PREREQ(6, 1) && defined(__ARM_FP)))
 #  define HAVE_NEON_INTRIN	1
 #else
 #  define HAVE_NEON_INTRIN	0
@@ -101,11 +101,10 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #else
 #  define HAVE_PMULL_NATIVE	0
 #endif
-#if defined(ARCH_ARM64) && \
-	(HAVE_PMULL_NATIVE || \
-	 (HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	  (GCC_PREREQ(6, 1) || defined(__clang__) || defined(_MSC_VER))))
-#  define HAVE_PMULL_INTRIN	CPU_IS_LITTLE_ENDIAN() /* untested on big endian */
+#if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
+	(GCC_PREREQ(6, 1) || defined(__clang__) || defined(_MSC_VER)) && \
+	CPU_IS_LITTLE_ENDIAN() /* untested on big endian */
+#  define HAVE_PMULL_INTRIN	1
    /* Work around MSVC's vmull_p64() taking poly64x1_t instead of poly64_t */
 #  ifdef _MSC_VER
 #    define compat_vmull_p64(a, b)  vmull_p64(vcreate_p64(a), vcreate_p64(b))
@@ -122,50 +121,44 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #else
 #  define HAVE_CRC32_NATIVE	0
 #endif
-#if defined(ARCH_ARM64) && (HAVE_CRC32_NATIVE || defined(__GNUC__) || \
-			    defined(__clang__) || defined(_MSC_VER))
+#if defined(ARCH_ARM64) && \
+	(defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER))
 #  define HAVE_CRC32_INTRIN	1
 #else
 #  define HAVE_CRC32_INTRIN	0
 #endif
 
 /* SHA3 (needed for the eor3 instruction) */
-#if defined(ARCH_ARM64) && !defined(_MSC_VER)
-#  ifdef __ARM_FEATURE_SHA3
-#    define HAVE_SHA3_NATIVE	1
-#  else
-#    define HAVE_SHA3_NATIVE	0
-#  endif
-#  define HAVE_SHA3_TARGET	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-				 (GCC_PREREQ(8, 1) /* r256478 */ || \
-				  CLANG_PREREQ(7, 0, 10010463) /* r338010 */))
-#  define HAVE_SHA3_INTRIN	(HAVE_NEON_INTRIN && \
-				 (HAVE_SHA3_NATIVE || HAVE_SHA3_TARGET) && \
-				 (GCC_PREREQ(9, 1) /* r268049 */ || \
-				  CLANG_PREREQ(13, 0, 13160000)))
+#ifdef __ARM_FEATURE_SHA3
+#  define HAVE_SHA3_NATIVE	1
 #else
 #  define HAVE_SHA3_NATIVE	0
+#endif
+#if defined(ARCH_ARM64) && \
+	(GCC_PREREQ(8, 1) /* r256478 */ || \
+	 CLANG_PREREQ(7, 0, 10010463) /* r338010 */)
+#  define HAVE_SHA3_TARGET	1
+#else
 #  define HAVE_SHA3_TARGET	0
+#endif
+#if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
+	(GCC_PREREQ(9, 1) /* r268049 */ || \
+	 CLANG_PREREQ(13, 0, 13160000))
+#  define HAVE_SHA3_INTRIN	1
+#else
 #  define HAVE_SHA3_INTRIN	0
 #endif
 
 /* dotprod */
-#ifdef ARCH_ARM64
-#  ifdef __ARM_FEATURE_DOTPROD
-#    define HAVE_DOTPROD_NATIVE	1
-#  else
-#    define HAVE_DOTPROD_NATIVE	0
-#  endif
-#  if HAVE_DOTPROD_NATIVE || \
-	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	 (GCC_PREREQ(8, 1) || CLANG_PREREQ(7, 0, 10010000) || \
-	  defined(_MSC_VER)))
-#    define HAVE_DOTPROD_INTRIN	1
-#  else
-#    define HAVE_DOTPROD_INTRIN	0
-#  endif
+#ifdef __ARM_FEATURE_DOTPROD
+#  define HAVE_DOTPROD_NATIVE	1
 #else
 #  define HAVE_DOTPROD_NATIVE	0
+#endif
+#if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
+	(GCC_PREREQ(8, 1) || CLANG_PREREQ(7, 0, 10010000) || defined(_MSC_VER))
+#  define HAVE_DOTPROD_INTRIN	1
+#else
 #  define HAVE_DOTPROD_INTRIN	0
 #endif
 
