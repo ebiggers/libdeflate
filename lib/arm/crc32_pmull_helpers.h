@@ -37,8 +37,6 @@
  *	Use the eor3 instruction (from the sha3 extension).
  */
 
-#include <arm_neon.h>
-
 /* Create a vector with 'a' in the first 4 bytes, and the rest zeroed out. */
 #undef u32_to_bytevec
 static forceinline ATTRIBUTES uint8x16_t

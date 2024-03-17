@@ -51,10 +51,6 @@
 #    define ATTRIBUTES	_target_attribute("+crc")
 #  endif
 
-#ifndef _MSC_VER
-#  include <arm_acle.h>
-#endif
-
 /*
  * Combine the CRCs for 4 adjacent chunks of length L = CRC32_FIXED_CHUNK_LEN
  * bytes each by computing:
@@ -229,11 +225,6 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 #  else
 #    define ATTRIBUTES	_target_attribute("+crc,+crypto")
 #  endif
-
-#ifndef _MSC_VER
-#  include <arm_acle.h>
-#endif
-#include <arm_neon.h>
 
 /* Do carryless multiplication of two 32-bit values. */
 static forceinline ATTRIBUTES u64

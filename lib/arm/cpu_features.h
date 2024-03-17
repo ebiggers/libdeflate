@@ -185,16 +185,21 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #if HAVE_DOTPROD_INTRIN && !HAVE_DOTPROD_NATIVE && defined(__clang__)
 #  define __ARM_FEATURE_DOTPROD	1
 #endif
-#if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && defined(__clang__)
+
+#if HAVE_CRC32_INTRIN && (defined(__GNUC__) || defined(__clang__))
 #  include <arm_acle.h>
+#endif
+#if HAVE_NEON_INTRIN
+#  include <arm_neon.h>
+#endif
+
+#if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && defined(__clang__)
 #  undef __ARM_FEATURE_CRC32
 #endif
 #if HAVE_SHA3_INTRIN && !HAVE_SHA3_NATIVE && defined(__clang__)
-#  include <arm_neon.h>
 #  undef __ARM_FEATURE_SHA3
 #endif
 #if HAVE_DOTPROD_INTRIN && !HAVE_DOTPROD_NATIVE && defined(__clang__)
-#  include <arm_neon.h>
 #  undef __ARM_FEATURE_DOTPROD
 #endif
 

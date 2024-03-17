@@ -31,7 +31,6 @@
 #include "cpu_features.h"
 
 #if HAVE_NEON_NATIVE
-#  include <arm_neon.h>
 static forceinline void
 matchfinder_init_neon(mf_pos_t *data, size_t size)
 {

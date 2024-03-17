@@ -46,7 +46,6 @@
 #  else
 #    define ATTRIBUTES	_target_attribute("+simd")
 #  endif
-#  include <arm_neon.h>
 static ATTRIBUTES MAYBE_UNUSED u32
 adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 {
@@ -224,7 +223,6 @@ adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 #  else
 #    define ATTRIBUTES	_target_attribute("arch=armv8.2-a+dotprod")
 #  endif
-#  include <arm_neon.h>
 static ATTRIBUTES u32
 adler32_arm_neon_dotprod(u32 adler, const u8 *p, size_t len)
 {

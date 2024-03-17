@@ -45,11 +45,6 @@
  * Apple M1 processor is an example of such a CPU.
  */
 
-#ifndef _MSC_VER
-#  include <arm_acle.h>
-#endif
-#include <arm_neon.h>
-
 #include "crc32_pmull_helpers.h"
 
 static ATTRIBUTES u32
