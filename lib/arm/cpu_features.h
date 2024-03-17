@@ -45,9 +45,15 @@
 
 #define ARM_CPU_FEATURE_NEON		(1 << 0)
 #define ARM_CPU_FEATURE_PMULL		(1 << 1)
-#define ARM_CPU_FEATURE_CRC32		(1 << 2)
-#define ARM_CPU_FEATURE_SHA3		(1 << 3)
-#define ARM_CPU_FEATURE_DOTPROD		(1 << 4)
+/*
+ * PREFER_PMULL indicates that the CPU has very high pmull throughput, and so
+ * the 12x wide pmull-based CRC-32 implementation is likely to be faster than an
+ * implementation based on the crc32 instructions.
+ */
+#define ARM_CPU_FEATURE_PREFER_PMULL	(1 << 2)
+#define ARM_CPU_FEATURE_CRC32		(1 << 3)
+#define ARM_CPU_FEATURE_SHA3		(1 << 4)
+#define ARM_CPU_FEATURE_DOTPROD		(1 << 5)
 
 #define HAVE_NEON(features)	(HAVE_NEON_NATIVE    || ((features) & ARM_CPU_FEATURE_NEON))
 #define HAVE_PMULL(features)	(HAVE_PMULL_NATIVE   || ((features) & ARM_CPU_FEATURE_PMULL))

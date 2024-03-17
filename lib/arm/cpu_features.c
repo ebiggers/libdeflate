@@ -138,6 +138,7 @@ static u32 query_arm_cpu_features(void)
 
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#include <TargetConditionals.h>
 
 static const struct {
 	const char *name;
@@ -192,6 +193,7 @@ static u32 query_arm_cpu_features(void)
 static const struct cpu_feature arm_cpu_feature_table[] = {
 	{ARM_CPU_FEATURE_NEON,		"neon"},
 	{ARM_CPU_FEATURE_PMULL,		"pmull"},
+	{ARM_CPU_FEATURE_PREFER_PMULL,  "prefer_pmull"},
 	{ARM_CPU_FEATURE_CRC32,		"crc32"},
 	{ARM_CPU_FEATURE_SHA3,		"sha3"},
 	{ARM_CPU_FEATURE_DOTPROD,	"dotprod"},
@@ -202,6 +204,19 @@ volatile u32 libdeflate_arm_cpu_features = 0;
 void libdeflate_init_arm_cpu_features(void)
 {
 	u32 features = query_arm_cpu_features();
+
+	/*
+	 * On the Apple M1 processor, crc32 instructions max out at about 25.5
+	 * GB/s in the best case of using a 3-way or greater interleaved chunked
+	 * implementation, whereas a pmull-based implementation achieves 68 GB/s
+	 * provided that the stride length is large enough (about 10+ vectors
+	 * with eor3, or 12+ without).
+	 *
+	 * Assume that crc32 instructions are preferable in other cases.
+	 */
+#if (defined(__APPLE__) && TARGET_OS_OSX) || defined(TEST_SUPPORT__DO_NOT_USE)
+	features |= ARM_CPU_FEATURE_PREFER_PMULL;
+#endif
 
 	disable_cpu_features_for_testing(&features, arm_cpu_feature_table,
 					 ARRAY_LEN(arm_cpu_feature_table));

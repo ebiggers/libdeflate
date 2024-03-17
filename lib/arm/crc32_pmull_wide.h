@@ -52,7 +52,7 @@
 
 #include "crc32_pmull_helpers.h"
 
-static ATTRIBUTES MAYBE_UNUSED u32
+static ATTRIBUTES u32
 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len)
 {
 	uint8x16_t v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11;

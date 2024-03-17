@@ -113,7 +113,7 @@ combine_crcs_slow(u32 crc0, u32 crc1, u32 crc2, u32 crc3)
 }
 
 #define crc32_arm_crc	crc32_arm_crc
-static ATTRIBUTES MAYBE_UNUSED u32
+static ATTRIBUTES u32
 crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 {
 	if (len >= 64) {
@@ -289,7 +289,7 @@ combine_crcs_fast(u32 crc0, u32 crc1, u32 crc2, u32 crc3, size_t i)
 }
 
 #define crc32_arm_crc_pmullcombine	crc32_arm_crc_pmullcombine
-static ATTRIBUTES MAYBE_UNUSED u32
+static ATTRIBUTES u32
 crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 {
 	const size_t align = -(uintptr_t)p & 7;
@@ -470,7 +470,7 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 #  define ENABLE_EOR3		0
 #  include "crc32_pmull_helpers.h"
 
-static ATTRIBUTES MAYBE_UNUSED u32
+static ATTRIBUTES u32
 crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 {
 	static const u64 _aligned_attribute(16) mults[3][2] = {
@@ -621,45 +621,19 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #  include "crc32_pmull_wide.h"
 #endif
 
-/*
- * On the Apple M1 processor, crc32 instructions max out at about 25.5 GB/s in
- * the best case of using a 3-way or greater interleaved chunked implementation,
- * whereas a pmull-based implementation achieves 68 GB/s provided that the
- * stride length is large enough (about 10+ vectors with eor3, or 12+ without).
- *
- * For now we assume that crc32 instructions are preferable in other cases.
- */
-#define PREFER_PMULL_TO_CRC	0
-#ifdef __APPLE__
-#  include <TargetConditionals.h>
-#  if TARGET_OS_OSX
-#    undef PREFER_PMULL_TO_CRC
-#    define PREFER_PMULL_TO_CRC	1
-#  endif
-#endif
-
-/*
- * If the best implementation is statically available, use it unconditionally.
- * Otherwise choose the best implementation at runtime.
- */
-#if PREFER_PMULL_TO_CRC && defined(crc32_arm_pmullx12_crc_eor3) && \
-	HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE
-#  define DEFAULT_IMPL	crc32_arm_pmullx12_crc_eor3
-#elif !PREFER_PMULL_TO_CRC && defined(crc32_arm_crc_pmullcombine) && \
-	HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE
-#  define DEFAULT_IMPL	crc32_arm_crc_pmullcombine
-#else
 static inline crc32_func_t
 arch_select_crc32_func(void)
 {
 	const u32 features MAYBE_UNUSED = get_arm_cpu_features();
 
-#if PREFER_PMULL_TO_CRC && defined(crc32_arm_pmullx12_crc_eor3)
-	if (HAVE_PMULL(features) && HAVE_CRC32(features) && HAVE_SHA3(features))
+#ifdef crc32_arm_pmullx12_crc_eor3
+	if ((features & ARM_CPU_FEATURE_PREFER_PMULL) &&
+	    HAVE_PMULL(features) && HAVE_CRC32(features) && HAVE_SHA3(features))
 		return crc32_arm_pmullx12_crc_eor3;
 #endif
-#if PREFER_PMULL_TO_CRC && defined(crc32_arm_pmullx12_crc)
-	if (HAVE_PMULL(features) && HAVE_CRC32(features))
+#ifdef crc32_arm_pmullx12_crc
+	if ((features & ARM_CPU_FEATURE_PREFER_PMULL) &&
+	    HAVE_PMULL(features) && HAVE_CRC32(features))
 		return crc32_arm_pmullx12_crc;
 #endif
 #ifdef crc32_arm_crc_pmullcombine
@@ -677,6 +651,5 @@ arch_select_crc32_func(void)
 	return NULL;
 }
 #define arch_select_crc32_func	arch_select_crc32_func
-#endif
 
 #endif /* LIB_ARM_CRC32_IMPL_H */

@@ -173,14 +173,24 @@ i386|x86_64)
 		disable_cpu_feature pclmulqdq "-mno-pclmul"
 	fi
 	;;
-arm*|aarch*)
+aarch*)
+	EXTRA_CFLAGS=("-march=armv8-a")
+	if have_cpu_features pmull crc32 sha3; then
+		do_benchmark "pmullx12_crc_eor3"
+		disable_cpu_feature sha3
+	fi
+	if have_cpu_features pmull crc32; then
+		do_benchmark "pmullx12_crc"
+		disable_cpu_feature prefer_pmull
+		do_benchmark "crc_pmullcombine"
+	fi
 	if have_cpu_features crc32; then
-		do_benchmark "ARM"
-		disable_cpu_feature crc32 "-march=armv8-a+nocrc"
+		do_benchmark "crc"
+		disable_cpu_feature crc32
 	fi
 	if have_cpu_features pmull; then
-		do_benchmark "PMULL"
-		disable_cpu_feature pmull "-march=armv8-a+nocrc+nocrypto"
+		do_benchmark "pmull4x"
+		disable_cpu_feature pmull
 	fi
 	;;
 esac
