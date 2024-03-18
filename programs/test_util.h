@@ -32,13 +32,7 @@
 
 #include <zlib.h> /* for comparison purposes */
 
-#if defined(__GNUC__) || __has_attribute(noreturn)
-# define _noreturn __attribute__((noreturn))
-#else
-# define _noreturn
-#endif
-
-void _noreturn
+NORETURN void
 assertion_failed(const char *expr, const char *file, int line);
 
 #define ASSERT(expr) { if (unlikely(!(expr))) \

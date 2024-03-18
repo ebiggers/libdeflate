@@ -42,7 +42,7 @@
 #endif
 
 /* Abort with an error message */
-_noreturn void
+NORETURN void
 assertion_failed(const char *expr, const char *file, int line)
 {
 	msg("Assertion failed: %s at %s:%d", expr, file, line);

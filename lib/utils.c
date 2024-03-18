@@ -132,7 +132,7 @@ memcmp(const void *s1, const void *s2, size_t n)
 #ifdef LIBDEFLATE_ENABLE_ASSERTIONS
 #include <stdio.h>
 #include <stdlib.h>
-void
+NORETURN void
 libdeflate_assertion_failed(const char *expr, const char *file, int line)
 {
 	fprintf(stderr, "Assertion failed: %s at %s:%d\n", expr, file, line);

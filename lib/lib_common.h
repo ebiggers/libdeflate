@@ -76,7 +76,14 @@ int memcmp(const void *s1, const void *s2, size_t n);
 
 #undef LIBDEFLATE_ENABLE_ASSERTIONS
 #else
-#include <string.h>
+#  include <string.h>
+   /*
+    * To prevent false positive static analyzer warnings, ensure that assertions
+    * are visible to the static analyzer.
+    */
+#  ifdef __clang_analyzer__
+#    define LIBDEFLATE_ENABLE_ASSERTIONS
+#  endif
 #endif
 
 /*
@@ -84,7 +91,8 @@ int memcmp(const void *s1, const void *s2, size_t n);
  * hurt performance significantly.
  */
 #ifdef LIBDEFLATE_ENABLE_ASSERTIONS
-void libdeflate_assertion_failed(const char *expr, const char *file, int line);
+NORETURN void
+libdeflate_assertion_failed(const char *expr, const char *file, int line);
 #define ASSERT(expr) { if (unlikely(!(expr))) \
 	libdeflate_assertion_failed(#expr, __FILE__, __LINE__); }
 #else

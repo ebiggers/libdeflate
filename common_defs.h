@@ -204,6 +204,13 @@ typedef size_t machine_word_t;
 #  define MAYBE_UNUSED
 #endif
 
+/* NORETURN - mark a function as never returning, e.g. due to calling abort() */
+#if defined(__GNUC__) || __has_attribute(noreturn)
+#  define NORETURN		__attribute__((noreturn))
+#else
+#  define NORETURN
+#endif
+
 /*
  * restrict - hint that writes only occur through the given pointer.
  *
