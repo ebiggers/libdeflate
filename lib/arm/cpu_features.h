@@ -30,18 +30,7 @@
 
 #include "../lib_common.h"
 
-#define HAVE_DYNAMIC_ARM_CPU_FEATURES	0
-
 #if defined(ARCH_ARM32) || defined(ARCH_ARM64)
-
-#if !defined(FREESTANDING) && \
-    (defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)) && \
-    (defined(__linux__) || \
-     (defined(__APPLE__) && defined(ARCH_ARM64)) || \
-     (defined(_WIN32) && defined(ARCH_ARM64)))
-#  undef HAVE_DYNAMIC_ARM_CPU_FEATURES
-#  define HAVE_DYNAMIC_ARM_CPU_FEATURES	1
-#endif
 
 #define ARM_CPU_FEATURE_NEON		(1 << 0)
 #define ARM_CPU_FEATURE_PMULL		(1 << 1)
@@ -55,8 +44,13 @@
 #define ARM_CPU_FEATURE_SHA3		(1 << 4)
 #define ARM_CPU_FEATURE_DOTPROD		(1 << 5)
 
-#if HAVE_DYNAMIC_ARM_CPU_FEATURES
-#define ARM_CPU_FEATURES_KNOWN		(1U << 31)
+#if !defined(FREESTANDING) && \
+    (defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)) && \
+    (defined(__linux__) || \
+     (defined(__APPLE__) && defined(ARCH_ARM64)) || \
+     (defined(_WIN32) && defined(ARCH_ARM64)))
+/* Runtime ARM CPU feature detection is supported. */
+#  define ARM_CPU_FEATURES_KNOWN	(1U << 31)
 extern volatile u32 libdeflate_arm_cpu_features;
 
 void libdeflate_init_arm_cpu_features(void);
@@ -67,9 +61,9 @@ static inline u32 get_arm_cpu_features(void)
 		libdeflate_init_arm_cpu_features();
 	return libdeflate_arm_cpu_features;
 }
-#else /* HAVE_DYNAMIC_ARM_CPU_FEATURES */
+#else
 static inline u32 get_arm_cpu_features(void) { return 0; }
-#endif /* !HAVE_DYNAMIC_ARM_CPU_FEATURES */
+#endif
 
 /* NEON */
 #if defined(__ARM_NEON) || (defined(_MSC_VER) && defined(ARCH_ARM64))

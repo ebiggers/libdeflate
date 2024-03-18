@@ -39,7 +39,8 @@
 #include "../cpu_features_common.h" /* must be included first */
 #include "cpu_features.h"
 
-#if HAVE_DYNAMIC_ARM_CPU_FEATURES
+#ifdef ARM_CPU_FEATURES_KNOWN
+/* Runtime ARM CPU feature detection is supported. */
 
 #ifdef __linux__
 /*
@@ -220,4 +221,4 @@ void libdeflate_init_arm_cpu_features(void)
 	libdeflate_arm_cpu_features = features | ARM_CPU_FEATURES_KNOWN;
 }
 
-#endif /* HAVE_DYNAMIC_ARM_CPU_FEATURES */
+#endif /* ARM_CPU_FEATURES_KNOWN */
