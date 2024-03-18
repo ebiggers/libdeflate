@@ -1474,6 +1474,8 @@ deflate_get_offset_slot(u32 offset)
 	 */
 	unsigned n = (256 - offset) >> 29;
 
+	ASSERT(offset >= 1 && offset <= 32768);
+
 	return deflate_offset_slot[(offset - 1) >> n] + (n << 1);
 }
 
