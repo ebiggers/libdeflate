@@ -1,5 +1,27 @@
 # libdeflate release notes
 
+## Version 1.20
+
+* Improved CRC-32 performance on recent x86 CPUs by adding
+  VPCLMULQDQ-accelerated implementations using 256-bit and 512-bit vectors.
+
+* Improved Adler-32 performance on recent x86 CPUs by adding
+  VNNI-accelerated implementations using 256-bit and 512-bit vectors.
+
+* Improved CRC-32 and Adler-32 performance on short inputs.
+
+* Optimized the portable implementation of Adler-32.
+
+* Added some basic optimizations for RISC-V.
+
+* Dropped support for gcc versions older than v4.9 (released in 2014)
+  and clang versions older than v3.9 (released in 2016).
+
+* Dropped support for CRC-32 acceleration on 32-bit ARM using the ARMv8 pmull or
+  crc32 instructions.  This code only worked on CPUs that also have a 64-bit
+  mode, and it was already disabled on many compiler versions due to compiler
+  limitations.  CRC-32 acceleration remains fully supported on 64-bit ARM.
+
 ## Version 1.19
 
 * Added new functions `libdeflate_alloc_compressor_ex()` and
