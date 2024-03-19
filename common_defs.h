@@ -640,6 +640,16 @@ bsr64(u64 v)
 
 	_BitScanReverse64(&i, v);
 	return i;
+#elif defined(_MSC_VER)
+	unsigned long i;
+
+	if ((u32)(v >> 32)) {
+		_BitScanReverse(&i, (u32)(v >> 32));
+		return i + 32;
+	} else {
+		_BitScanReverse(&i, (u32)v);
+		return i;
+	}
 #else
 	unsigned i = 0;
 
@@ -694,6 +704,16 @@ bsf64(u64 v)
 
 	_BitScanForward64(&i, v);
 	return i;
+#elif defined(_MSC_VER)
+	unsigned long i;
+
+	if ((u32)v) {
+		_BitScanForward(&i, (u32)v);
+		return i;
+	} else {
+		_BitScanForward(&i, (u32)(v >> 32));
+		return i + 32;
+	}
 #else
 	unsigned i = 0;
 
