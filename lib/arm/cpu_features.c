@@ -179,7 +179,12 @@ static u32 query_arm_cpu_features(void)
 	if (IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE))
 		features |= ARM_CPU_FEATURE_CRC32;
 
-	/* FIXME: detect SHA3 and DOTPROD support too. */
+#ifdef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
+	if (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE))
+		features |= ARM_CPU_FEATURE_DOTPROD;
+#endif
+
+	/* FIXME: detect SHA3 support too. */
 
 	return features;
 }
