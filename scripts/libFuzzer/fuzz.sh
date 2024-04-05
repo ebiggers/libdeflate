@@ -103,6 +103,6 @@ if [ ! -e "$TARGET/fuzz.c" ]; then
 	exit 1
 fi
 run_cmd clang -g -O1 -fsanitize=fuzzer$EXTRA_SANITIZERS \
-	-Wall -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS=1 \
+	-Wall -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS=1 -I ../../ \
 	../../lib/*{,/*}.c "$TARGET/fuzz.c" -o "$TARGET/fuzz"
 run_cmd "$TARGET/fuzz" "${EXTRA_FUZZER_ARGS[@]}" "$TARGET/corpus"
