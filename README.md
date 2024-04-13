@@ -10,7 +10,7 @@ The supported formats are:
 - gzip (a.k.a. DEFLATE with a gzip wrapper)
 
 libdeflate is heavily optimized.  It is significantly faster than the zlib
-library, both for compression and decompression, and especially on x86
+library, both for compression and decompression, and especially on x86 and ARM
 processors.  In addition, libdeflate provides optional high compression modes
 that provide a better compression ratio than the zlib's "level 9".
 
