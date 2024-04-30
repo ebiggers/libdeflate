@@ -551,11 +551,13 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #  ifdef __clang__
 #    define ATTRIBUTES	_target_attribute("aes,crc,sha3")
    /*
-    * With gcc, arch=armv8.2-a is needed for the sha3 intrinsics, unless the
-    * default target is armv8.3-a or later in which case it must be omitted.
-    * armv8.3-a or later can be detected by checking for __ARM_FEATURE_JCVT.
+    * With gcc 13.1 and earlier (before gcc commit 73d3bc348190 or 9aac37ab8a7b,
+    * "aarch64: Remove architecture dependencies from intrinsics"),
+    * arch=armv8.2-a is needed for the sha3 intrinsics, unless the default
+    * target is armv8.3-a or later in which case it must be omitted.  armv8.3-a
+    * or later can be detected by checking for __ARM_FEATURE_JCVT.
     */
-#  elif defined(__ARM_FEATURE_JCVT)
+#  elif GCC_PREREQ(13, 2) || defined(__ARM_FEATURE_JCVT)
 #    define ATTRIBUTES	_target_attribute("+crypto,+crc,+sha3")
 #  else
 #    define ATTRIBUTES	_target_attribute("arch=armv8.2-a+crypto+crc+sha3")
