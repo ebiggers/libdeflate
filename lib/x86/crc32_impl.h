@@ -80,8 +80,11 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
  * Currently this can't be enabled with MSVC because MSVC has a bug where it
  * incorrectly assumes that VPCLMULQDQ implies AVX-512:
  * https://developercommunity.visualstudio.com/t/Compiler-incorrectly-assumes-VAES-and-VP/10578785
+ *
+ * gcc 8.1 and 8.2 had a similar bug where they assumed that
+ * _mm256_clmulepi64_epi128() always needed AVX512.  It's fixed in gcc 8.3.
  */
-#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000)
+#if GCC_PREREQ(8, 3) || CLANG_PREREQ(6, 0, 10000000)
 #  define crc32_x86_vpclmulqdq_avx2	crc32_x86_vpclmulqdq_avx2
 #  define SUFFIX				 _vpclmulqdq_avx2
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx2")
