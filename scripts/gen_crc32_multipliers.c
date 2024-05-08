@@ -81,9 +81,10 @@ compute_x64_div_G(void)
 	u64 quotient = 0;
 	u64 dividend = 0x1;
 
-	for (int i = 0; i < 64 - 32 + 1; i++) {
-		if ((dividend >> i) & 1) {
-			quotient |= (u64)1 << i;
+	for (unsigned i = 0; i < 64 - 32 + 1; i++) {
+		u64 mask = (u64)1 << i;
+		if (dividend & mask) {
+			quotient |= mask;
 			dividend ^= CRCPOLY_FULL << i;
 		}
 	}
