@@ -93,7 +93,7 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #  define HAVE_PMULL(features)	((features) & ARM_CPU_FEATURE_PMULL)
 #endif
 #if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
-	(GCC_PREREQ(6, 1) || defined(__clang__) || defined(_MSC_VER)) && \
+	(GCC_PREREQ(7, 1) || defined(__clang__) || defined(_MSC_VER)) && \
 	CPU_IS_LITTLE_ENDIAN() /* untested on big endian */
 #  define HAVE_PMULL_INTRIN	1
    /* Work around MSVC's vmull_p64() taking poly64x1_t instead of poly64_t */
