@@ -1,5 +1,18 @@
 # libdeflate release notes
 
+## Version 1.21
+
+* Fixed build error on x86 with gcc 8.1 and gcc 8.2.
+
+* Fixed build error on x86 when gcc 11 is paired with a binutils version that
+  doesn't support AVX-VNNI, e.g. as it is on RHEL 9.
+
+* Fixed build error on arm64 with gcc 6.
+
+* Fixed build error on arm64 with gcc 13.1 and later with some -mcpu options.
+
+* Enabled detection of dotprod support in Windows ARM64 builds.
+
 ## Version 1.20
 
 * Improved CRC-32 performance on recent x86 CPUs by adding
