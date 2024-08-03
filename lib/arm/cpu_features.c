@@ -170,6 +170,10 @@ static u32 query_arm_cpu_features(void)
 
 #include <windows.h>
 
+#ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE /* added in Windows SDK 20348 */
+#  define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
+#endif
+
 static u32 query_arm_cpu_features(void)
 {
 	u32 features = ARM_CPU_FEATURE_NEON;
@@ -178,11 +182,8 @@ static u32 query_arm_cpu_features(void)
 		features |= ARM_CPU_FEATURE_PMULL;
 	if (IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE))
 		features |= ARM_CPU_FEATURE_CRC32;
-
-#ifdef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
 	if (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE))
 		features |= ARM_CPU_FEATURE_DOTPROD;
-#endif
 
 	/* FIXME: detect SHA3 support too. */
 
