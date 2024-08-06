@@ -257,6 +257,53 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *decompressor,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret);
 
+/* ctrl libdeflate_deflate_decompress_block() stop condition */
+enum libdeflate_decompress_stop_by {
+	LIBDEFLATE_STOP_BY_FINAL_BLOCK                = 0,
+	LIBDEFLATE_STOP_BY_ANY_BLOCK                  = 1,
+	LIBDEFLATE_STOP_BY_ANY_BLOCK_AND_FULL_INPUT   = 2,
+	LIBDEFLATE_STOP_BY_ANY_BLOCK_AND_FULL_OUTPUT  = 3,
+	LIBDEFLATE_STOP_BY_ANY_BLOCK_AND_FULL_OUTPUT_AND_IN_BYTE_ALIGN = 4,
+};
+
+/*
+ * Large stream data can be decompress by calling libdeflate_deflate_decompress_block() 
+ * multiple times.  Each time call this function, 'out_block_with_in_dict' have 
+ * 'in_dict_nbytes' repeat of the last called's tail outputed uncompressed data as 
+ * dictionary data, and 'out_block_nbytes' new uncompressed data want be decompressed;
+ * The dictionary data size in_dict_nbytes<=32k, if it is greater than 32k, the extra
+ * part of the previous part of the dictionary data is invalid.
+ * libdeflate_deflate_compress_bound_block(out_block_nbytes) can got the upper limit
+ *  of 'in_part' required space 'in_part_nbytes_bound'.
+ * 'is_final_block_ret' can NULL.
+ * 
+ * WARNING: This function must decompressed one full DEFLATE block before stop;
+ * so 'in_part_nbytes_bound' must possess a block end flag, and "out_block_nbytes"
+ * must be able to store uncompressed data of this block decompressed;
+ * This feature is not compatible with the DEFLATE stream decoding standard,
+ * this function can't support a single DEFLATE block that may have any length.
+ */
+LIBDEFLATEAPI enum libdeflate_result
+libdeflate_deflate_decompress_block(struct libdeflate_decompressor *decompressor,
+				 const void *in_part, size_t in_part_nbytes_bound,
+				 void *out_block_with_in_dict,size_t in_dict_nbytes, size_t out_block_nbytes,
+				 size_t *actual_in_nbytes_ret,size_t *actual_out_nbytes_ret,
+				 enum libdeflate_decompress_stop_by stop_type,int* is_final_block_ret);
+
+
+LIBDEFLATEAPI uint16_t libdeflate_deflate_decompress_get_state(struct libdeflate_decompressor *decompressor);
+LIBDEFLATEAPI void libdeflate_deflate_decompress_set_state(struct libdeflate_decompressor *decompressor,uint16_t state);
+
+/*
+ * Clear the state saved between calls libdeflate_deflate_decompress_block();
+ * if you know the next block does not depend on the inputed data of the previous 
+ * block, you can call this function reset 'decompressor';
+ * Note: if next block depend on the inputed data of the previous block, reset will
+ * cause libdeflate_deflate_decompress_block() to fail.
+ */
+LIBDEFLATEAPI void
+libdeflate_deflate_decompress_block_reset(struct libdeflate_decompressor *decompressor);
+
 /*
  * Like libdeflate_deflate_decompress(), but assumes the zlib wrapper format
  * instead of raw DEFLATE.
