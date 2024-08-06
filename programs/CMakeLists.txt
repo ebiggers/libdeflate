@@ -42,7 +42,7 @@ endif()
 
 # Build and install libdeflate-gzip and its alias libdeflate-gunzip.
 if(LIBDEFLATE_BUILD_GZIP)
-    add_executable(libdeflate-gzip gzip.c)
+    add_executable(libdeflate-gzip gzip.c gzip_decompress_by_stream.c)
     target_link_libraries(libdeflate-gzip PRIVATE libdeflate_prog_utils)
     install(TARGETS libdeflate-gzip DESTINATION ${CMAKE_INSTALL_BINDIR})
     if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.14")
