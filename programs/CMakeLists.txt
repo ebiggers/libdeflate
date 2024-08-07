@@ -61,7 +61,7 @@ if(LIBDEFLATE_BUILD_GZIP)
     else()
         # The cmake version is too old to support file(CREATE_LINK).
         # Just compile gzip.c again to build libdeflate-gunzip.
-        add_executable(libdeflate-gunzip gzip.c)
+        add_executable(libdeflate-gunzip gzip.c gzip_decompress_by_stream.c)
         target_link_libraries(libdeflate-gunzip PRIVATE libdeflate_prog_utils)
         install(TARGETS libdeflate-gunzip DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()

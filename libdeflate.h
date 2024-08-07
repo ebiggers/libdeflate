@@ -290,7 +290,11 @@ libdeflate_deflate_decompress_block(struct libdeflate_decompressor *decompressor
 				 size_t *actual_in_nbytes_ret,size_t *actual_out_nbytes_ret,
 				 enum libdeflate_decompress_stop_by stop_type,int* is_final_block_ret);
 
-
+/*
+ * You can get (save) & set (restore) the decompressor's state;
+ * If the data inputed is not enough or ouput space full, you can restore the state of 
+ * the decompressor and provide more data or space to continue attempt decompress.
+ */
 LIBDEFLATEAPI uint16_t libdeflate_deflate_decompress_get_state(struct libdeflate_decompressor *decompressor);
 LIBDEFLATEAPI void libdeflate_deflate_decompress_set_state(struct libdeflate_decompressor *decompressor,uint16_t state);
 

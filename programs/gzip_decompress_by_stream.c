@@ -91,7 +91,7 @@ static int _gzip_decompress_by_stream(struct libdeflate_decompressor *d,
             _read_code_from_file();
 
         size_t actual_out_nbytes_ret;
-        const size_t dec_state=libdeflate_deflate_decompress_get_state(d);
+        const uint16_t dec_state=libdeflate_deflate_decompress_get_state(d);
         ret=libdeflate_deflate_decompress_block(d,code_buf+code_cur,code_buf_size-code_cur,
                 data_buf+data_cur-kDictSize,kDictSize,data_buf_size-data_cur,
                 &actual_in_nbytes_ret,&actual_out_nbytes_ret,
@@ -165,6 +165,7 @@ static int _gzip_decompress_by_stream(struct libdeflate_decompressor *d,
         *_actual_out_nbytes_ret=out_cur;
 
 _out:
+    libdeflate_deflate_decompress_block_reset(d);
     if (data_buf) free(data_buf);
     if (code_buf) free(code_buf);
     if (_dict_buf_back) free(_dict_buf_back);

@@ -38,12 +38,6 @@
 #  include <utime.h>
 #endif
 
-#define GZIP_MIN_HEADER_SIZE	10
-#define GZIP_FOOTER_SIZE	8
-#define GZIP_MIN_OVERHEAD	(GZIP_MIN_HEADER_SIZE + GZIP_FOOTER_SIZE)
-#define GZIP_ID1		0x1F
-#define GZIP_ID2		0x8B
-
 struct options {
 	bool to_stdout;
 	bool decompress;
