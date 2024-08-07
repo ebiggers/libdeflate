@@ -214,13 +214,19 @@ adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 #  ifdef __clang__
 #    define ATTRIBUTES	_target_attribute("dotprod")
    /*
-    * With gcc 13.1 and earlier (before gcc commit 73d3bc348190 or 9aac37ab8a7b,
-    * "aarch64: Remove architecture dependencies from intrinsics"),
-    * arch=armv8.2-a is needed for the dotprod intrinsics, unless the default
-    * target is armv8.3-a or later in which case it must be omitted.  armv8.3-a
-    * or later can be detected by checking for __ARM_FEATURE_JCVT.
+    * Both gcc and binutils originally considered dotprod to depend on
+    * arch=armv8.2-a or later.  This was fixed in gcc 13.2 by commit
+    * 9aac37ab8a7b ("aarch64: Remove architecture dependencies from intrinsics")
+    * and in binutils 2.41 by commit 205e4380c800 ("aarch64: Remove version
+    * dependencies from features").  Unfortunately, always using arch=armv8.2-a
+    * causes build errors with some compiler options because it may reduce the
+    * arch rather than increase it.  Therefore we try to omit the arch whenever
+    * possible.  If gcc is 14 or later, then both gcc and binutils are probably
+    * fixed, so we omit the arch.  We also omit the arch if a feature that
+    * depends on armv8.2-a or later (in gcc 13.1 and earlier) is present.
     */
-#  elif GCC_PREREQ(13, 2) || defined(__ARM_FEATURE_JCVT)
+#  elif GCC_PREREQ(14, 0) || defined(__ARM_FEATURE_JCVT) \
+			  || defined(__ARM_FEATURE_DOTPROD)
 #    define ATTRIBUTES	_target_attribute("+dotprod")
 #  else
 #    define ATTRIBUTES	_target_attribute("arch=armv8.2-a+dotprod")
