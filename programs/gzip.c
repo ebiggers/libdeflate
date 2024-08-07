@@ -26,6 +26,7 @@
  */
 
 #include "prog_util.h"
+#include "gzip_compress_by_stream.h"
 #include "gzip_decompress_by_stream.h"
 
 #include <errno.h>
@@ -139,44 +140,6 @@ append_suffix(const tchar *path, const tchar *suffix)
 	tmemcpy(suffixed_path, path, path_len);
 	tmemcpy(&suffixed_path[path_len], suffix, suffix_len + 1);
 	return suffixed_path;
-}
-
-static int
-do_compress(struct libdeflate_compressor *compressor,
-	    struct file_stream *in, struct file_stream *out)
-{
-	const void *uncompressed_data = in->mmap_mem;
-	size_t uncompressed_size = in->mmap_size;
-	void *compressed_data;
-	size_t actual_compressed_size;
-	size_t max_compressed_size;
-	int ret;
-
-	max_compressed_size = libdeflate_gzip_compress_bound(compressor,
-							     uncompressed_size);
-	compressed_data = xmalloc(max_compressed_size);
-	if (compressed_data == NULL) {
-		msg("%"TS": file is probably too large to be processed by this "
-		    "program", in->name);
-		ret = -1;
-		goto out;
-	}
-
-	actual_compressed_size = libdeflate_gzip_compress(compressor,
-							  uncompressed_data,
-							  uncompressed_size,
-							  compressed_data,
-							  max_compressed_size);
-	if (actual_compressed_size == 0) {
-		msg("Bug in libdeflate_gzip_compress_bound()!");
-		ret = -1;
-		goto out;
-	}
-
-	ret = full_write(out, compressed_data, actual_compressed_size);
-out:
-	free(compressed_data);
-	return ret;
 }
 
 static int
@@ -354,7 +317,7 @@ out_free_paths:
 }
 
 static int
-compress_file(struct libdeflate_compressor *compressor, const tchar *path,
+compress_file(int compression_level, const tchar *path,
 	      const struct options *options)
 {
 	tchar *newpath = NULL;
@@ -395,14 +358,11 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 		goto out_close_out;
 	}
 
-	/* TODO: need a streaming-friendly solution */
-	ret = map_file_contents(&in, stbuf.st_size);
-	if (ret != 0)
+	ret = gzip_compress_by_stream(compression_level, &in, stbuf.st_size,&out, NULL);
+	if (ret != 0){
+		msg("\nERROR: gzip_compress_by_stream() error code %d\n\n",ret);
 		goto out_close_out;
-
-	ret = do_compress(compressor, &in, &out);
-	if (ret != 0)
-		goto out_close_out;
+	}
 
 	if (path != NULL && newpath != NULL)
 		restore_metadata(&out, newpath, &stbuf);
@@ -535,16 +495,8 @@ tmain(int argc, tchar *argv[])
 
 		libdeflate_free_decompressor(d);
 	} else {
-		struct libdeflate_compressor *c;
-
-		c = alloc_compressor(options.compression_level);
-		if (c == NULL)
-			return 1;
-
 		for (i = 0; i < argc; i++)
-			ret |= -compress_file(c, argv[i], &options);
-
-		libdeflate_free_compressor(c);
+			ret |= -compress_file(options.compression_level, argv[i], &options);
 	}
 
 	switch (ret) {
