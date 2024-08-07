@@ -205,7 +205,6 @@ ht_matchfinder_skip_bytes(struct ht_matchfinder * const mf,
 	s32 cur_pos = in_next - *in_base_p;
 	u32 hash;
 	u32 remaining = count;
-	int i;
 
 	if (unlikely(count + HT_MATCHFINDER_REQUIRED_NBYTES > in_end - in_next))
 		return;
@@ -218,8 +217,15 @@ ht_matchfinder_skip_bytes(struct ht_matchfinder * const mf,
 
 	hash = *next_hash;
 	do {
+#if   HT_MATCHFINDER_BUCKET_SIZE == 1
+#elif HT_MATCHFINDER_BUCKET_SIZE == 2
+		mf->hash_tab[hash][1] = mf->hash_tab[hash][0];
+#else
+	/* Generic version for HT_MATCHFINDER_BUCKET_SIZE > 2 */
+		int i;
 		for (i = HT_MATCHFINDER_BUCKET_SIZE - 1; i > 0; i--)
 			mf->hash_tab[hash][i] = mf->hash_tab[hash][i - 1];
+#endif
 		mf->hash_tab[hash][0] = cur_pos;
 
 		hash = lz_hash(get_unaligned_le32(++in_next),
