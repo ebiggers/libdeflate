@@ -57,7 +57,7 @@
 #  pragma message("UNSAFE DECOMPRESSION IS ENABLED. THIS MUST ONLY BE USED IF THE DECOMPRESSOR INPUT WILL ALWAYS BE TRUSTED!")
 #  define SAFETY_CHECK(expr)	(void)(expr)
 #else
-#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return LIBDEFLATE_BAD_DATA
+#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) goto _on_bad_data;
 #endif
 
 /*****************************************************************************
