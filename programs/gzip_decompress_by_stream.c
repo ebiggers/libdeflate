@@ -73,7 +73,7 @@ static int _gzip_decompress_by_stream(struct libdeflate_decompressor *d,
         {//gzip head
             if (code_cur+GZIP_MIN_OVERHEAD>code_buf_size)
                 _read_code_from_file();
-            ret=libdeflate_gzip_decompress_head(code_buf,code_buf_size-code_cur,&actual_in_nbytes_ret);
+            ret=libdeflate_gzip_decompress_head(code_buf+code_cur,code_buf_size-code_cur,&actual_in_nbytes_ret);
             _check_d(ret);
             code_cur+=actual_in_nbytes_ret;
         }
