@@ -37,6 +37,7 @@ For the release notes, see the [NEWS file](NEWS.md).
 - [Building](#building)
   - [Using CMake](#using-cmake)
   - [Directly integrating the library sources](#directly-integrating-the-library-sources)
+  - [Supported compilers](#supported-compilers)
 - [API](#api)
 - [Bindings for other programming languages](#bindings-for-other-programming-languages)
 - [DEFLATE vs. zlib vs. gzip](#deflate-vs-zlib-vs-gzip)
