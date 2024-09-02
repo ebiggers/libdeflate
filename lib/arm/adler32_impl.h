@@ -209,7 +209,8 @@ adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 #endif /* Regular NEON implementation */
 
 /* NEON+dotprod implementation */
-#if HAVE_DOTPROD_INTRIN && CPU_IS_LITTLE_ENDIAN()
+#if HAVE_DOTPROD_INTRIN && CPU_IS_LITTLE_ENDIAN() && \
+	!defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_DOTPROD)
 #  define adler32_arm_neon_dotprod	adler32_arm_neon_dotprod
 #  ifdef __clang__
 #    define ATTRIBUTES	_target_attribute("dotprod")

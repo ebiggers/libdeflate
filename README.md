@@ -99,6 +99,19 @@ for release builds.  `-O3` is fine too, but often `-O2` actually gives better
 results.  It's unnecessary to add flags such as `-mavx2` or `/arch:AVX2`, though
 you can do so if you want to.  Most of the relevant optimized functions are
 built regardless of such flags, and appropriate ones are selected at runtime.
+For the same reason, flags like `-mno-avx2` do *not* cause all code using the
+corresponding instruction set extension to be omitted from the binary; this is
+working as intended due to the use of runtime CPU feature detection.
+
+If using gcc, your gcc should always be paired with a binutils version that is
+not much older than itself, to avoid problems where the compiler generates
+instructions the assembler cannot assemble.  Usually systems have their gcc and
+binutils paired properly, but rarely a mismatch can arise in cases such as the
+user installing a newer gcc version without a proper binutils alongside it.
+Since libdeflate v1.22, the CMake-based build system will detect incompatible
+binutils versions and disable some optimized code accordingly.  In older
+versions of libdeflate, or if CMake is not being used, a too-old binutils can
+cause build errors like "no such instruction" from the assembler.
 
 # API
 

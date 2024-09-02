@@ -90,6 +90,55 @@ if(LIBDEFLATE_FREESTANDING)
     add_definitions(-DFREESTANDING)
 endif()
 
+# Check for cases where the compiler supports an instruction set extension but
+# the assembler does not, and in those cases print a warning and add an
+# appropriate -DLIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_* flag.  libdeflate's C
+# source files already check the compiler version before using the corresponding
+# intrinsics, but in the rare case of gcc being paired with a binutils much
+# older than itself those checks are insufficient.  There is no way to check the
+# assembler version from C.  The proper fix for too-old binutils is for the user
+# to upgrade binutils.  Unfortunately, as libdeflate has started using newer
+# instructions, binutils incompatibilities have started being seen more
+# frequently.  Hence these checks for assembler support here in CMakeLists.txt
+# to provide a fallback for users who may be unable to fix their toolchain.
+# These don't solve the problem for users not using CMake, though such users can
+# add specific -DLIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_* flags they need.
+function(check_assembler_support  feature assembly_code)
+    execute_process(COMMAND echo "${assembly_code}"
+                    COMMAND ${CMAKE_C_COMPILER} -c -x assembler -o /dev/null -
+                    RESULT_VARIABLE result
+                    ERROR_QUIET)
+    if(NOT ${result} EQUAL 0)
+        add_definitions(-DLIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_${feature})
+        message(STATUS "Your gcc supports ${feature} instructions but it is paired with an assembler that does not.  Upgrading binutils is recommended.")
+    endif()
+endfunction()
+if(UNIX AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpmachine
+                    OUTPUT_VARIABLE machine)
+    if(${machine} MATCHES "^(x86_64|i[3-6]86)")
+        if(${CMAKE_C_COMPILER_VERSION} VERSION_GREATER_EQUAL 8.1)
+            # Set LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX512VNNI if needed.
+            check_assembler_support(AVX512_VNNI "vpdpbusd %zmm0, %zmm0, %zmm0")
+            # Set LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_VPCLMULQDQ if needed.
+            check_assembler_support(VPCLMULQDQ "vpclmulqdq $0, %zmm0, %zmm0, %zmm0")
+        endif()
+        if(${CMAKE_C_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.1)
+            # Set LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX_VNNI if needed.
+            check_assembler_support(AVX_VNNI "{vex} vpdpbusd %ymm0, %ymm0, %ymm0")
+        endif()
+    elseif(${machine} MATCHES "^aarch64")
+        if(${CMAKE_C_COMPILER_VERSION} VERSION_GREATER_EQUAL 8.1)
+            # Set LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_DOTPROD if needed.
+            check_assembler_support(DOTPROD ".arch armv8.2-a+dotprod\nudot v0.4s, v0.16b, v0.16b")
+        endif()
+        if(${CMAKE_C_COMPILER_VERSION} VERSION_GREATER_EQUAL 9.1)
+            # Set LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_SHA3 if needed.
+            check_assembler_support(SHA3 ".arch armv8.2-a+sha3\neor3 v0.16b, v0.16b, v0.16b, v0.16b")
+        endif()
+    endif()
+endif()
+
 # Determine the list of source files and the list of compiler options that will
 # be used for both the static library and the shared library.
 

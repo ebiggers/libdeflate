@@ -84,7 +84,8 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
  * gcc 8.1 and 8.2 had a similar bug where they assumed that
  * _mm256_clmulepi64_epi128() always needed AVX512.  It's fixed in gcc 8.3.
  */
-#if GCC_PREREQ(8, 3) || CLANG_PREREQ(6, 0, 10000000)
+#if (GCC_PREREQ(8, 3) || CLANG_PREREQ(6, 0, 10000000)) && \
+	!defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_VPCLMULQDQ)
 #  define crc32_x86_vpclmulqdq_avx2	crc32_x86_vpclmulqdq_avx2
 #  define SUFFIX				 _vpclmulqdq_avx2
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx2")
@@ -94,7 +95,8 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 #  include "crc32_pclmul_template.h"
 #endif
 
-#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)
+#if (GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)) && \
+	!defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_VPCLMULQDQ)
 /*
  * VPCLMULQDQ/AVX512 implementation using 256-bit vectors.  This is very similar
  * to the VPCLMULQDQ/AVX2 implementation but takes advantage of the vpternlog
