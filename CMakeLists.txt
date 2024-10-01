@@ -119,7 +119,7 @@ if(UNIX AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
     if(${machine} MATCHES "^(x86_64|i[3-6]86)")
         if(${CMAKE_C_COMPILER_VERSION} VERSION_GREATER_EQUAL 8.1)
             # Set LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX512VNNI if needed.
-            check_assembler_support(AVX512_VNNI "vpdpbusd %zmm0, %zmm0, %zmm0")
+            check_assembler_support(AVX512VNNI "vpdpbusd %zmm0, %zmm0, %zmm0")
             # Set LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_VPCLMULQDQ if needed.
             check_assembler_support(VPCLMULQDQ "vpclmulqdq $0, %zmm0, %zmm0, %zmm0")
         endif()
