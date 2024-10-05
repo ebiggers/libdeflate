@@ -1,5 +1,10 @@
 # libdeflate release notes
 
+## Version 1.22
+
+* The CMake-based build system now implements a workaround for gcc being paired
+  with a too-old binutils version.  This can prevent build errors.
+
 ## Version 1.21
 
 * Fixed build error on x86 with gcc 8.1 and gcc 8.2.
