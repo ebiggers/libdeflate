@@ -119,7 +119,7 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
  */
 #  define crc32_x86_vpclmulqdq_avx512_vl512  crc32_x86_vpclmulqdq_avx512_vl512
 #  define SUFFIX				      _vpclmulqdq_avx512_vl512
-#  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512bw,avx512vl")
+#  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,evex512,avx512bw,avx512vl")
 #  define VL			64
 #  define USE_SSE4_1		1
 #  define USE_AVX512		1
