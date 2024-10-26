@@ -34,17 +34,13 @@
  * ATTRIBUTES:
  *	Target function attributes to use.  Must satisfy the dependencies of the
  *	other parameters as follows:
- *	   VL=16 && USE_SSE4_1=0 && USE_AVX512=0: at least pclmul
- *	   VL=16 && USE_SSE4_1=1 && USE_AVX512=0: at least pclmul,sse4.1
- *	   VL=32 && USE_SSE4_1=1 && USE_AVX512=0: at least vpclmulqdq,pclmul,avx2
- *	   VL=32 && USE_SSE4_1=1 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512bw,avx512vl
- *	   VL=64 && USE_SSE4_1=1 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512bw,avx512vl
+ *	   VL=16 && USE_AVX512=0: at least pclmul,sse4.1
+ *	   VL=32 && USE_AVX512=0: at least vpclmulqdq,pclmul,avx2
+ *	   VL=32 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512bw,avx512vl
+ *	   VL=64 && USE_AVX512=1: at least vpclmulqdq,pclmul,avx512bw,avx512vl
  *	   (Other combinations are not useful and have not been tested.)
  * VL:
  *	Vector length in bytes.  Must be 16, 32, or 64.
- * USE_SSE4_1:
- *	If 1, take advantage of SSE4.1 instructions such as pblendvb.
- *	If 0, assume that the CPU might not support SSE4.1.
  * USE_AVX512:
  *	If 1, take advantage of AVX-512 features such as masking and the
  *	vpternlog instruction.  This doesn't enable the use of 512-bit vectors;
@@ -149,7 +145,6 @@ ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i /* __v8du */ mults)
 #define fold_vec512	ADD_SUFFIX(fold_vec512)
 #endif /* VL >= 64 */
 
-#if USE_SSE4_1
 /*
  * Given 'x' containing a 16-byte polynomial, and a pointer 'p' that points to
  * the next '1 <= len <= 15' data bytes, rearrange the concatenation of 'x' and
@@ -181,7 +176,6 @@ ADD_SUFFIX(fold_lessthan16bytes)(__m128i x, const u8 *p, size_t len,
 	return fold_vec128(x0, x1, mults_128b);
 }
 #define fold_lessthan16bytes	ADD_SUFFIX(fold_lessthan16bytes)
-#endif /* USE_SSE4_1 */
 
 static ATTRIBUTES u32
 ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
@@ -273,7 +267,6 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 			size_t align = -(uintptr_t)p & (VL-1);
 
 			len -= align;
-		#if USE_SSE4_1
 			x0 = _mm_xor_si128(_mm_loadu_si128((const void *)p), x0);
 			p += 16;
 			if (align & 15) {
@@ -296,11 +289,6 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 			v0 = _mm512_inserti64x4(v0, *(const __m256i *)(p + 16), 1);
 		#  endif
 			p -= 16;
-		#else
-			crc = crc32_slice1(crc, p, align);
-			p += align;
-			v0 = VXOR(VLOADU(p), M128I_TO_VEC(_mm_cvtsi32_si128(crc)));
-		#endif
 		} else {
 			v0 = VXOR(VLOADU(p), M128I_TO_VEC(x0));
 		}
@@ -395,14 +383,9 @@ less_than_vl_remaining:
 less_than_16_remaining:
 	len &= 15;
 
-	/*
-	 * If fold_lessthan16bytes() is available, handle any remainder
-	 * of 1 to 15 bytes now, before reducing to 32 bits.
-	 */
-#if USE_SSE4_1
+	/* Handle any remainder of 1 to 15 bytes. */
 	if (len)
 		x0 = fold_lessthan16bytes(x0, p, len, mults_128b);
-#endif
 #if USE_AVX512
 reduce_x0:
 #endif
@@ -467,14 +450,7 @@ reduce_x0:
 	x1 = _mm_clmulepi64_si128(_mm_and_si128(x1, mask32),
 				  barrett_reduction_constants, 0x10);
 	x0 = _mm_xor_si128(x0, x1);
-#if USE_SSE4_1
-	crc = _mm_extract_epi32(x0, 1);
-#else
-	crc = _mm_cvtsi128_si32(_mm_shuffle_epi32(x0, 0x01));
-	/* Process up to 15 bytes left over at the end. */
-	crc = crc32_slice1(crc, p, len);
-#endif
-	return crc;
+	return _mm_extract_epi32(x0, 1);
 }
 
 #undef vec_t
@@ -491,5 +467,4 @@ reduce_x0:
 #undef SUFFIX
 #undef ATTRIBUTES
 #undef VL
-#undef USE_SSE4_1
 #undef USE_AVX512

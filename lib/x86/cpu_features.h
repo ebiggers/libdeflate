@@ -108,7 +108,8 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_SSE2_NATIVE		0
 #endif
 
-#if defined(__PCLMUL__) || (defined(_MSC_VER) && defined(__AVX2__))
+#if (defined(__PCLMUL__) && defined(__SSE4_1__)) || \
+	(defined(_MSC_VER) && defined(__AVX2__))
 #  define HAVE_PCLMULQDQ(features)	1
 #else
 #  define HAVE_PCLMULQDQ(features)	((features) & X86_CPU_FEATURE_PCLMULQDQ)

@@ -140,7 +140,12 @@ void libdeflate_init_x86_cpu_features(void)
 		family += (a >> 20) & 0xff;
 	if (d & (1 << 26))
 		features |= X86_CPU_FEATURE_SSE2;
-	if (c & (1 << 1))
+	/*
+	 * No known CPUs have pclmulqdq without sse4.1, so in practice code
+	 * targeting pclmulqdq can use sse4.1 instructions.  But to be safe,
+	 * explicitly check for both the pclmulqdq and sse4.1 bits.
+	 */
+	if ((c & (1 << 1)) && (c & (1 << 19)))
 		features |= X86_CPU_FEATURE_PCLMULQDQ;
 	if (c & (1 << 27))
 		xcr0 = read_xcr(0);

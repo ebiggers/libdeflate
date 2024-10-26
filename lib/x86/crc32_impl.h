@@ -44,31 +44,26 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 };
 
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
-/* PCLMULQDQ implementation */
+/*
+ * PCLMULQDQ implementation.  This targets PCLMULQDQ+SSE4.1, since in practice
+ * all CPUs that support PCLMULQDQ also support SSE4.1.
+ */
 #  define crc32_x86_pclmulqdq	crc32_x86_pclmulqdq
 #  define SUFFIX			 _pclmulqdq
-#  define ATTRIBUTES		_target_attribute("pclmul")
+#  define ATTRIBUTES		_target_attribute("pclmul,sse4.1")
 #  define VL			16
-#  define USE_SSE4_1		0
 #  define USE_AVX512		0
 #  include "crc32_pclmul_template.h"
 
 /*
- * PCLMULQDQ/AVX implementation.  Compared to the regular PCLMULQDQ
- * implementation, this still uses 128-bit vectors, but it has two potential
- * benefits.  First, simply compiling against the AVX target can improve
- * performance significantly (e.g. 10100 MB/s to 16700 MB/s on Skylake) without
- * actually using any AVX intrinsics, probably due to the availability of
- * non-destructive VEX-encoded instructions.  Second, AVX support implies SSSE3
- * and SSE4.1 support, and we can use SSSE3 and SSE4.1 intrinsics for efficient
- * handling of partial blocks.  (We *could* compile a variant with
- * PCLMULQDQ+SSE4.1 without AVX, but for simplicity we currently don't bother.)
+ * PCLMULQDQ/AVX implementation.  Same as above, but this is compiled with AVX
+ * enabled so that the compiler can generate VEX-coded instructions which can be
+ * slightly more efficient.  It still uses 128-bit vectors.
  */
 #  define crc32_x86_pclmulqdq_avx	crc32_x86_pclmulqdq_avx
 #  define SUFFIX				 _pclmulqdq_avx
 #  define ATTRIBUTES		_target_attribute("pclmul,avx")
 #  define VL			16
-#  define USE_SSE4_1		1
 #  define USE_AVX512		0
 #  include "crc32_pclmul_template.h"
 #endif
@@ -90,7 +85,6 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 #  define SUFFIX				 _vpclmulqdq_avx2
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx2")
 #  define VL			32
-#  define USE_SSE4_1		1
 #  define USE_AVX512		0
 #  include "crc32_pclmul_template.h"
 #endif
@@ -108,7 +102,6 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 #  define SUFFIX				      _vpclmulqdq_avx512_vl256
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512bw,avx512vl" NO_EVEX512)
 #  define VL			32
-#  define USE_SSE4_1		1
 #  define USE_AVX512		1
 #  include "crc32_pclmul_template.h"
 
@@ -121,7 +114,6 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 #  define SUFFIX				      _vpclmulqdq_avx512_vl512
 #  define ATTRIBUTES		_target_attribute("vpclmulqdq,pclmul,avx512bw,avx512vl" EVEX512)
 #  define VL			64
-#  define USE_SSE4_1		1
 #  define USE_AVX512		1
 #  include "crc32_pclmul_template.h"
 #endif
