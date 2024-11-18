@@ -74,17 +74,28 @@ compute_xD_modG(size_t D)
 	return remainder;
 }
 
-/* Compute floor(x^64 / G(x)) */
+/* Compute floor(x^95 / G(x)) */
 static u64
-compute_x64_div_G(void)
+compute_x95_div_G(void)
 {
+	/* The quotient, max order 95 - 32 = 63. */
 	u64 quotient = 0;
-	u64 dividend = 0x1;
 
-	for (int i = 0; i < 64 - 32 + 1; i++) {
-		if ((dividend >> i) & 1) {
-			quotient |= (u64)1 << i;
-			dividend ^= CRCPOLY_FULL << i;
+	/*
+	 * The x^32 through x^95 terms of the remainder.  This starts at x^95
+	 * and is updated through long division.  At the end only the
+	 * x^0 through x^31 terms will be nonzero, but those are unneeded.
+	 */
+	u64 remainder = 0x1;
+
+	for (int i = 0; i < 64; i++) {
+		/*
+		 * If the x^(95-i) term of remainder is nonzero, add
+		 * x^(63-i) * G(x) to cancel it out.  (G(x) has order 32.)
+		 */
+		if (remainder & (1ULL << i)) {
+			quotient |= 1ULL << i;
+			remainder ^= (u64)CRCPOLY_FULL << i;
 		}
 	}
 
@@ -123,20 +134,11 @@ gen_vec_folding_constants(void)
 		printf("\n");
 	}
 
-	/* Multiplier for final 96 => 64 bit fold */
-	printf("#define CRC32_X63_MODG 0x%08"PRIx32" /* x^63 mod G(x) */\n",
-	       compute_xD_modG(63));
-
-	/*
-	 * Constants for final 64 => 32 bit reduction.  These constants are the
-	 * odd ones out, as this final reduction step can't use the regular CRC
-	 * folding described above.  It uses Barrett reduction instead.
-	 */
-	printf("#define CRC32_BARRETT_CONSTANT_1 0x%016"PRIx64"ULL /* floor(x^64 / G(x)) */\n",
-	       compute_x64_div_G());
+	/* Constants for the final 128 => 32 bit reduction */
+	printf("#define CRC32_BARRETT_CONSTANT_1 0x%016"PRIx64"ULL /* floor(x^95 / G(x)) */\n",
+	       compute_x95_div_G());
 	printf("#define CRC32_BARRETT_CONSTANT_2 0x%016"PRIx64"ULL /* G(x) */\n",
 	       CRCPOLY_FULL);
-	printf("#define CRC32_BARRETT_CONSTANTS { CRC32_BARRETT_CONSTANT_1, CRC32_BARRETT_CONSTANT_2 }\n");
 }
 
 /* Multipliers for combining the CRCs of separate chunks */

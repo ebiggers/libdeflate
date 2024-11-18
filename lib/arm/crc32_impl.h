@@ -434,13 +434,13 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 		{ CRC32_X543_MODG, CRC32_X479_MODG }, /* 4 vecs */
 		{ CRC32_X287_MODG, CRC32_X223_MODG }, /* 2 vecs */
 	};
-	static const u64 _aligned_attribute(16) final_mults[3][2] = {
-		{ CRC32_X63_MODG, 0 },
-		{ CRC32_BARRETT_CONSTANT_1, 0 },
-		{ CRC32_BARRETT_CONSTANT_2, 0 },
+	static const u64 _aligned_attribute(16) barrett_consts[2][2] = {
+		{ CRC32_BARRETT_CONSTANT_1, CRC32_BARRETT_CONSTANT_1 },
+		{ CRC32_BARRETT_CONSTANT_2, CRC32_BARRETT_CONSTANT_2 },
 	};
-	const uint8x16_t zeroes = vdupq_n_u8(0);
-	const uint8x16_t mask32 = vreinterpretq_u8_u64(vdupq_n_u64(0xFFFFFFFF));
+	static const u32 _aligned_attribute(16) mask32[4] = {
+		0, 0, 0xffffffff, 0
+	};
 	const poly64x2_t multipliers_1 = load_multipliers(mults[0]);
 	uint8x16_t v0, v1, v2, v3;
 
@@ -497,24 +497,13 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 	if (len)
 		v0 = fold_partial_vec(v0, p, len, multipliers_1);
 
-	/*
-	 * Fold 128 => 96 bits.  This also implicitly appends 32 zero bits,
-	 * which is equivalent to multiplying by x^32.  This is needed because
-	 * the CRC is defined as M(x)*x^32 mod G(x), not just M(x) mod G(x).
-	 */
-
-	v0 = veorq_u8(vextq_u8(v0, zeroes, 8),
-		      clmul_high(vextq_u8(zeroes, v0, 8), multipliers_1));
-
-	/* Fold 96 => 64 bits. */
-	v0 = veorq_u8(vextq_u8(v0, zeroes, 4),
-		      clmul_low(vandq_u8(v0, mask32),
-				load_multipliers(final_mults[0])));
-
-	/* Reduce 64 => 32 bits using Barrett reduction. */
-	v1 = clmul_low(vandq_u8(v0, mask32), load_multipliers(final_mults[1]));
-	v1 = clmul_low(vandq_u8(v1, mask32), load_multipliers(final_mults[2]));
-	return vgetq_lane_u32(vreinterpretq_u32_u8(veorq_u8(v0, v1)), 1);
+	/* Reduce to 32 bits, following lib/x86/crc32_pclmul_template.h */
+	v1 = clmul_low(v0, load_multipliers(barrett_consts[0]));
+	v1 = clmul_low(v1, load_multipliers(barrett_consts[1]));
+	v0 = veorq_u8(v0, vandq_u8(v1, vreinterpretq_u8_u32(vld1q_u32(mask32))));
+	v0 = clmul_high(v0, load_multipliers(barrett_consts[0]));
+	v0 = clmul_low(v0, load_multipliers(barrett_consts[1]));
+	return vgetq_lane_u32(vreinterpretq_u32_u8(v0), 2);
 }
 #undef SUFFIX
 #undef ATTRIBUTES
