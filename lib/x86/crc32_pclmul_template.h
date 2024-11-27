@@ -80,7 +80,7 @@
 #  define fold_vec		fold_vec256
 #  define VLOADU(p)		_mm256_loadu_si256((const void *)(p))
 #  define VXOR(a, b)		_mm256_xor_si256((a), (b))
-#  define M128I_TO_VEC(a)	_mm256_castsi128_si256(a)
+#  define M128I_TO_VEC(a)	_mm256_zextsi128_si256(a)
 #  define MULTS(a, b)		_mm256_set_epi64x(a, b, a, b)
 #  define MULTS_8V		MULTS(CRC32_X2015_MODG, CRC32_X2079_MODG)
 #  define MULTS_4V		MULTS(CRC32_X991_MODG, CRC32_X1055_MODG)
@@ -91,7 +91,7 @@
 #  define fold_vec		fold_vec512
 #  define VLOADU(p)		_mm512_loadu_si512((const void *)(p))
 #  define VXOR(a, b)		_mm512_xor_si512((a), (b))
-#  define M128I_TO_VEC(a)	_mm512_castsi128_si512(a)
+#  define M128I_TO_VEC(a)	_mm512_zextsi128_si512(a)
 #  define MULTS(a, b)		_mm512_set_epi64(a, b, a, b, a, b, a, b)
 #  define MULTS_8V		MULTS(CRC32_X4063_MODG, CRC32_X4127_MODG)
 #  define MULTS_4V		MULTS(CRC32_X2015_MODG, CRC32_X2079_MODG)

@@ -78,8 +78,10 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
  *
  * gcc 8.1 and 8.2 had a similar bug where they assumed that
  * _mm256_clmulepi64_epi128() always needed AVX512.  It's fixed in gcc 8.3.
+ *
+ * _mm256_zextsi128_si256() requires gcc 10.
  */
-#if (GCC_PREREQ(8, 3) || CLANG_PREREQ(6, 0, 10000000)) && \
+#if (GCC_PREREQ(10, 1) || CLANG_PREREQ(6, 0, 10000000)) && \
 	!defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_VPCLMULQDQ)
 #  define crc32_x86_vpclmulqdq_avx2	crc32_x86_vpclmulqdq_avx2
 #  define SUFFIX				 _vpclmulqdq_avx2
@@ -89,7 +91,7 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 #  include "crc32_pclmul_template.h"
 #endif
 
-#if (GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)) && \
+#if (GCC_PREREQ(10, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)) && \
 	!defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_VPCLMULQDQ)
 /*
  * VPCLMULQDQ/AVX512 implementation using 256-bit vectors.  This is very similar
@@ -97,6 +99,8 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
  * instruction and more registers.  This is used on CPUs that support AVX-512
  * but where using 512-bit vectors causes downclocking.  This should also be the
  * optimal implementation on CPUs that support AVX10/256 but not AVX10/512.
+ *
+ * _mm256_zextsi128_si256() requires gcc 10.
  */
 #  define crc32_x86_vpclmulqdq_avx512_vl256  crc32_x86_vpclmulqdq_avx512_vl256
 #  define SUFFIX				      _vpclmulqdq_avx512_vl256
@@ -109,6 +113,8 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
  * VPCLMULQDQ/AVX512 implementation using 512-bit vectors.  This is used on CPUs
  * that have a good AVX-512 implementation including VPCLMULQDQ.  This should
  * also be the optimal implementation on CPUs that support AVX10/512.
+ *
+ * _mm512_zextsi128_si512() requires gcc 10.
  */
 #  define crc32_x86_vpclmulqdq_avx512_vl512  crc32_x86_vpclmulqdq_avx512_vl512
 #  define SUFFIX				      _vpclmulqdq_avx512_vl512
