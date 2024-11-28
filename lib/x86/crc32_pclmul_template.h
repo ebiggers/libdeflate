@@ -51,7 +51,7 @@
  * instructions.  Note that the x86 crc32 instruction cannot be used, as it is
  * for a different polynomial, not the gzip one.  For an explanation of CRC
  * folding with carryless multiplication instructions, see
- * scripts/gen_crc32_multipliers.c and the following blog posts and papers:
+ * scripts/gen-crc32-consts.py and the following blog posts and papers:
  *
  *	"An alternative exposition of crc32_4k_pclmulqdq"
  *	https://www.corsix.org/content/alternative-exposition-crc32_4k_pclmulqdq
@@ -189,7 +189,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	 * folding across 128 bits.  mults_128b differs from mults_1v when
 	 * VL != 16.  All multipliers are 64-bit, to match what pclmulqdq needs,
 	 * but since this is for CRC-32 only their low 32 bits are nonzero.
-	 * For more details, see scripts/gen_crc32_multipliers.c.
+	 * For more details, see scripts/gen-crc32-consts.py.
 	 */
 	const vec_t mults_8v = MULTS_8V;
 	const vec_t mults_4v = MULTS_4V;
