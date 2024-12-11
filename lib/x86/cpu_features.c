@@ -88,6 +88,27 @@ static const struct cpu_feature x86_cpu_feature_table[] = {
 
 volatile u32 libdeflate_x86_cpu_features = 0;
 
+static inline bool
+os_supports_avx512(u64 xcr0)
+{
+#ifdef __APPLE__
+	/*
+	 * The Darwin kernel had a bug where it could corrupt the opmask
+	 * registers.  See
+	 * https://community.intel.com/t5/Software-Tuning-Performance/MacOS-Darwin-kernel-bug-clobbers-AVX-512-opmask-register-state/m-p/1327259
+	 * Darwin also does not initially set the XCR0 bits for AVX512, but they
+	 * are set if the thread tries to use AVX512 anyway.  Thus, to safely
+	 * and consistently use AVX512 on macOS we'd need to check the kernel
+	 * version as well as detect AVX512 support using a macOS-specific
+	 * method.  We don't bother with this, especially given Apple's
+	 * transition to arm64.
+	 */
+	return false;
+#else
+	return (xcr0 & 0xe6) == 0xe6;
+#endif
+}
+
 /*
  * Don't use 512-bit vectors on Intel CPUs before Rocket Lake and Sapphire
  * Rapids, due to the downclocking penalty.
@@ -157,21 +178,24 @@ void libdeflate_init_x86_cpu_features(void)
 
 	/* EAX=7, ECX=0: Extended Features */
 	cpuid(7, 0, &a, &b, &c, &d);
-	if ((b & (1 << 5)) && ((xcr0 & 0x6) == 0x6))
-		features |= X86_CPU_FEATURE_AVX2;
 	if (b & (1 << 8))
 		features |= X86_CPU_FEATURE_BMI2;
-	if (((xcr0 & 0xe6) == 0xe6) &&
-	    allow_512bit_vectors(manufacturer, family, model))
-		features |= X86_CPU_FEATURE_ZMM;
-	if ((b & (1 << 30)) && ((xcr0 & 0xe6) == 0xe6))
-		features |= X86_CPU_FEATURE_AVX512BW;
-	if ((b & (1U << 31)) && ((xcr0 & 0xe6) == 0xe6))
-		features |= X86_CPU_FEATURE_AVX512VL;
-	if ((c & (1 << 10)) && ((xcr0 & 0x6) == 0x6))
-		features |= X86_CPU_FEATURE_VPCLMULQDQ;
-	if ((c & (1 << 11)) && ((xcr0 & 0xe6) == 0xe6))
-		features |= X86_CPU_FEATURE_AVX512VNNI;
+	if ((xcr0 & 0x6) == 0x6) {
+		if (b & (1 << 5))
+			features |= X86_CPU_FEATURE_AVX2;
+		if (c & (1 << 10))
+			features |= X86_CPU_FEATURE_VPCLMULQDQ;
+	}
+	if (os_supports_avx512(xcr0)) {
+		if (allow_512bit_vectors(manufacturer, family, model))
+			features |= X86_CPU_FEATURE_ZMM;
+		if (b & (1 << 30))
+			features |= X86_CPU_FEATURE_AVX512BW;
+		if (b & (1U << 31))
+			features |= X86_CPU_FEATURE_AVX512VL;
+		if (c & (1 << 11))
+			features |= X86_CPU_FEATURE_AVX512VNNI;
+	}
 
 	/* EAX=7, ECX=1: Extended Features */
 	cpuid(7, 1, &a, &b, &c, &d);
