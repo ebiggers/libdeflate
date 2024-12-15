@@ -27,16 +27,13 @@
 
 #include "deflate_compress.h"
 #include "gzip_constants.h"
+#include "gzip_overhead.h"
 
-LIBDEFLATEAPI size_t
-libdeflate_gzip_compress(struct libdeflate_compressor *c,
-			 const void *in, size_t in_nbytes,
+size_t libdeflate_gzip_compress_head(unsigned compression_level,size_t in_nbytes,
 			 void *out, size_t out_nbytes_avail)
 {
 	u8 *out_next = out;
-	unsigned compression_level;
 	u8 xfl;
-	size_t deflate_size;
 
 	if (out_nbytes_avail <= GZIP_MIN_OVERHEAD)
 		return 0;
@@ -54,7 +51,6 @@ libdeflate_gzip_compress(struct libdeflate_compressor *c,
 	out_next += 4;
 	/* XFL */
 	xfl = 0;
-	compression_level = libdeflate_get_compression_level(c);
 	if (compression_level < 2)
 		xfl |= GZIP_XFL_FASTEST_COMPRESSION;
 	else if (compression_level >= 8)
@@ -63,15 +59,41 @@ libdeflate_gzip_compress(struct libdeflate_compressor *c,
 	/* OS */
 	*out_next++ = GZIP_OS_UNKNOWN;	/* OS  */
 
-	/* Compressed data  */
-	deflate_size = libdeflate_deflate_compress(c, in, in_nbytes, out_next,
-					out_nbytes_avail - GZIP_MIN_OVERHEAD);
-	if (deflate_size == 0)
+	return out_next - (u8 *)out;
+}
+
+#define _do_compress_step(_call_compress) {	\
+	deflate_size=_call_compress;	\
+	if (deflate_size == 0)		\
+		return 0;				\
+	out_next += deflate_size;	\
+	out_nbytes_avail -= deflate_size;	\
+}
+
+size_t libdeflate_gzip_compress(struct libdeflate_compressor *c,
+			 const void *in, size_t in_nbytes,
+			 void *out, size_t out_nbytes_avail)
+{
+	u8 *out_next = out;
+	size_t deflate_size;
+
+	_do_compress_step(libdeflate_gzip_compress_head(libdeflate_get_compression_level(c),
+									in_nbytes,out_next,out_nbytes_avail));
+	_do_compress_step(libdeflate_deflate_compress(c, in, in_nbytes, out_next,
+									out_nbytes_avail));
+	_do_compress_step(libdeflate_gzip_compress_foot(libdeflate_crc32(0, in, in_nbytes),
+									in_nbytes,out_next,out_nbytes_avail));
+	return out_next - (u8 *)out;
+}
+
+size_t libdeflate_gzip_compress_foot(uint32_t in_crc, size_t in_nbytes, void *out, size_t out_nbytes_avail)
+{
+	u8 *out_next = out;
+	if (out_nbytes_avail <= GZIP_FOOTER_SIZE)
 		return 0;
-	out_next += deflate_size;
 
 	/* CRC32 */
-	put_unaligned_le32(libdeflate_crc32(0, in, in_nbytes), out_next);
+	put_unaligned_le32(in_crc, out_next);
 	out_next += 4;
 
 	/* ISIZE */
