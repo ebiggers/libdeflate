@@ -72,7 +72,7 @@ single_file()
 	local include_old=false
 
 	usize=$(stat -c "%s" "$file")
-	: ${NUM_ITERATIONS:=3}
+	: "${NUM_ITERATIONS:=3}"
 
 	if [ -e "$topdir/benchmark-old" ]; then
 		include_old=true
