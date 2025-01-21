@@ -434,12 +434,10 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 		{ CRC32_X543_MODG, CRC32_X479_MODG }, /* 4 vecs */
 		{ CRC32_X287_MODG, CRC32_X223_MODG }, /* 2 vecs */
 	};
-	static const u64 _aligned_attribute(16) barrett_consts[2][2] = {
-		{ CRC32_BARRETT_CONSTANT_1, CRC32_BARRETT_CONSTANT_1 },
-		{ CRC32_BARRETT_CONSTANT_2, CRC32_BARRETT_CONSTANT_2 },
-	};
-	static const u32 _aligned_attribute(16) mask32[4] = {
-		0, 0, 0xffffffff, 0
+	static const u64 _aligned_attribute(16) barrett_consts[3][2] = {
+		{ CRC32_X95_MODG, },
+		{ CRC32_BARRETT_CONSTANT_1, },
+		{ CRC32_BARRETT_CONSTANT_2, },
 	};
 	const poly64x2_t multipliers_1 = load_multipliers(mults[0]);
 	uint8x16_t v0, v1, v2, v3;
@@ -498,11 +496,11 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 		v0 = fold_partial_vec(v0, p, len, multipliers_1);
 
 	/* Reduce to 32 bits, following lib/x86/crc32_pclmul_template.h */
-	v1 = clmul_low(v0, load_multipliers(barrett_consts[0]));
-	v1 = clmul_low(v1, load_multipliers(barrett_consts[1]));
-	v0 = veorq_u8(v0, vandq_u8(v1, vreinterpretq_u8_u32(vld1q_u32(mask32))));
-	v0 = clmul_high(v0, load_multipliers(barrett_consts[0]));
-	v0 = clmul_low(v0, load_multipliers(barrett_consts[1]));
+	v0 = veorq_u8(clmul_low(v0, load_multipliers(barrett_consts[0])),
+		      vextq_u8(v0, vdupq_n_u8(0), 8));
+	v1 = clmul_low(v0, load_multipliers(barrett_consts[1]));
+	v1 = clmul_low(v1, load_multipliers(barrett_consts[2]));
+	v0 = veorq_u8(v0, v1);
 	return vgetq_lane_u32(vreinterpretq_u32_u8(v0), 2);
 }
 #undef SUFFIX
