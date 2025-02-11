@@ -198,7 +198,6 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	const __m128i mults_128b = _mm_set_epi64x(CRC32_X95_MODG, CRC32_X159_MODG);
 	const __m128i barrett_reduction_constants =
 		_mm_set_epi64x(CRC32_BARRETT_CONSTANT_2, CRC32_BARRETT_CONSTANT_1);
-	const __m128i mask32 = _mm_set_epi32(0, 0xFFFFFFFF, 0, 0);
 	vec_t v0, v1, v2, v3, v4, v5, v6, v7;
 	__m128i x0 = _mm_cvtsi32_si128(crc);
 	__m128i x1;
@@ -392,61 +391,52 @@ less_than_16_remaining:
 reduce_x0:
 #endif
 	/*
-	 * Generate the final n-bit CRC from the 128-bit x0 = A as follows:
+	 * Compute the final CRC 'A * x^32 mod G', where A denotes the 128-bit
+	 * polynomial stored in x0 and G denotes the CRC's generator polynomial.
 	 *
-	 *	crc = x^n * A mod G
-	 *	    = x^n * (x^64*A_H + A_L) mod G
-	 *	    = x^n * (x^(64-n)*(x^n*A_H mod G) + A_L) mod G
-	 *
-	 * I.e.:
-	 *	crc := 0
-	 *	crc := x^n * (x^(64-n)*crc + A_H) mod G
-	 *	crc := x^n * (x^(64-n)*crc + A_L) mod G
-	 *
-	 * A_H and A_L denote the high and low 64 polynomial coefficients in A.
-	 *
-	 * Using Barrett reduction to do the 'mod G', this becomes:
-	 *
-	 *	crc := floor((A_H * floor(x^(m+n) / G)) / x^m) * G mod x^n
-	 *	A_L := x^(64-n)*crc + A_L
-	 *	crc := floor((A_L * floor(x^(m+n) / G)) / x^m) * G mod x^n
-	 *
-	 * For the gzip crc, n = 32 and the bit order is LSB (least significant
-	 * bit) first.  'm' must be an integer >= 63 (the max degree of A_L and
-	 * A_H) for sufficient precision to be carried through the calculation.
-	 * As the gzip crc is LSB-first we use m == 63, which results in
-	 * floor(x^(m+n) / G) being 64-bit which is the most pclmulqdq can
-	 * accept.  The multiplication with floor(x^(63+n) / G) then produces a
-	 * 127-bit product, and the floored division by x^63 just takes the
-	 * first qword.
+	 * Careful: this is a least-significant-bit (LSB) first CRC, so the
+	 * mapping between bits and polynomial coefficients is reversed!
 	 */
 
-	/* tmp := floor((A_H * floor(x^(63+n) / G)) / x^63) */
+	/*
+	 * First, multiply by x^32 and reduce to 96 bits:
+	 *
+	 *	t0 := (x * (x^95 mod G) * floor(A / x^64)) + (x^32 * (A mod x^64))
+	 *
+	 * Store the resulting 96-bit polynomial t0 in the physically low 96
+	 * bits of an xmm register.
+	 */
+	x0 = _mm_xor_si128(_mm_clmulepi64_si128(x0, mults_128b, 0x10),
+			   _mm_bsrli_si128(x0, 8));
+
+	/*
+	 * Next, compute floor(t0 / G).  This is the polynomial by which G needs
+	 * to be multiplied to cancel out the x^32 and higher terms of t0.  Do:
+	 *
+	 *	t1 := floor(x^95 / G) * floor(t0 / x^32)
+	 *
+	 * Then the desired value floor(t0 / G) is floor(t1 / x^63).
+	 *
+	 * The multiplication is of two 64-bit values producing a 127-bit result
+	 * t1 in bits 0..126 of x1 using LSB-first order; the physically low
+	 * qword of x1 then contains the desired value floor(t1 / x^63).
+	 */
 	x1 = _mm_clmulepi64_si128(x0, barrett_reduction_constants, 0x00);
-	/* tmp is in bits [0:64) of x1. */
 
-	/* crc := tmp * G mod x^n */
+	/*
+	 * Cancel out the x^32 and higher terms of t0 by subtracting the needed
+	 * multiple of G.  This gives the final CRC:
+	 *
+	 *	crc := t0 - (G * floor(t1 / x^63))
+	 *
+	 * As mentioned above, floor(t1 / x^63) is in bits 0..63 of x1.
+	 * Multiplying by the 33-bit constant G produces a 96-bit polynomial in
+	 * bits 0..95 of an xmm register, aligned with t0 which is also a 96-bit
+	 * polynomial in bits 0..95 of an xmm register.  XOR'ing these cancels
+	 * out the x^32 and higher terms, leaving the final CRC in bits 64..95.
+	 */
 	x1 = _mm_clmulepi64_si128(x1, barrett_reduction_constants, 0x10);
-	/* crc is in bits [64:64+n) of x1. */
-
-	/*
-	 * A_L := x^(64-n)*crc + A_L
-	 * crc is already aligned to add (XOR) it directly to A_L, after
-	 * selecting it using a mask.
-	 */
-#if USE_AVX512
-	x0 = _mm_ternarylogic_epi32(x0, x1, mask32, 0x78);
-#else
-	x0 = _mm_xor_si128(x0, _mm_and_si128(x1, mask32));
-#endif
-	/*
-	 * crc := floor((A_L * floor(x^(m+n) / G)) / x^m) * G mod x^n
-	 * Same as previous but uses the low-order 64 coefficients of A.
-	 */
-	x0 = _mm_clmulepi64_si128(x0, barrett_reduction_constants, 0x01);
-	x0 = _mm_clmulepi64_si128(x0, barrett_reduction_constants, 0x10);
-
-	/* Extract the CRC from bits [64:64+n) of x0. */
+	x0 = _mm_xor_si128(x0, x1);
 	return _mm_extract_epi32(x0, 2);
 }
 
