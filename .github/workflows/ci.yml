@@ -139,7 +139,7 @@ jobs:
     name: Build (Windows, Visual Studio ${{matrix.toolset}}, ${{matrix.platform}})
     strategy:
       matrix:
-        platform: [ARM64]
+        platform: [ARM64, ARM64EC]
         toolset: [v143, ClangCL]
     runs-on: windows-latest
     steps:
