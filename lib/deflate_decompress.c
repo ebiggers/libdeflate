@@ -57,7 +57,7 @@
 #  pragma message("UNSAFE DECOMPRESSION IS ENABLED. THIS MUST ONLY BE USED IF THE DECOMPRESSOR INPUT WILL ALWAYS BE TRUSTED!")
 #  define SAFETY_CHECK(expr)	(void)(expr)
 #else
-#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return LIBDEFLATE_BAD_DATA
+#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) goto _on_bad_data;
 #endif
 
 /*****************************************************************************
@@ -669,12 +669,19 @@ struct libdeflate_decompressor {
 	/* used only during build_decode_table() */
 	u16 sorted_syms[DEFLATE_MAX_NUM_SYMS];
 
+    u32         bitsleft_back;
+	bitbuf_t    bitbuf_back;
 	bool static_codes_loaded;
 	unsigned litlen_tablebits;
 
 	/* The free() function for this struct, chosen at allocation time */
 	free_func_t free_func;
 };
+
+static forceinline void _decompress_block_init(struct libdeflate_decompressor* d){
+	d->bitbuf_back=0;
+	d->bitsleft_back=0;
+}
 
 /*
  * Build a table for fast decoding of symbols from a Huffman code.  As input,
@@ -1072,8 +1079,9 @@ build_offset_decode_table(struct libdeflate_decompressor *d,
 typedef enum libdeflate_result (*decompress_func_t)
 	(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
-	 void * restrict out, size_t out_nbytes_avail,
-	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
+	 void * restrict out, size_t in_dict_nbytes, size_t out_nbytes_avail,
+	 size_t *actual_in_nbytes_ret,size_t *actual_out_nbytes_ret,
+	 enum libdeflate_decompress_stop_by stop_type,int* is_final_block_ret);
 
 #define FUNCNAME deflate_decompress_default
 #undef ATTRIBUTES
@@ -1096,8 +1104,9 @@ typedef enum libdeflate_result (*decompress_func_t)
 static enum libdeflate_result
 dispatch_decomp(struct libdeflate_decompressor *d,
 		const void *in, size_t in_nbytes,
-		void *out, size_t out_nbytes_avail,
-		size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
+		void *out, size_t in_dict_nbytes, size_t out_nbytes_avail,
+		size_t *actual_in_nbytes_ret,size_t *actual_out_nbytes_ret,
+		enum libdeflate_decompress_stop_by stop_type,int* is_final_block_ret);
 
 static volatile decompress_func_t decompress_impl = dispatch_decomp;
 
@@ -1105,8 +1114,9 @@ static volatile decompress_func_t decompress_impl = dispatch_decomp;
 static enum libdeflate_result
 dispatch_decomp(struct libdeflate_decompressor *d,
 		const void *in, size_t in_nbytes,
-		void *out, size_t out_nbytes_avail,
-		size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret)
+		void *out, size_t in_dict_nbytes, size_t out_nbytes_avail,
+		size_t *actual_in_nbytes_ret,size_t *actual_out_nbytes_ret,
+		enum libdeflate_decompress_stop_by stop_type,int* is_final_block_ret)
 {
 	decompress_func_t f = arch_select_decompress_func();
 
@@ -1114,13 +1124,41 @@ dispatch_decomp(struct libdeflate_decompressor *d,
 		f = DEFAULT_IMPL;
 
 	decompress_impl = f;
-	return f(d, in, in_nbytes, out, out_nbytes_avail,
-		 actual_in_nbytes_ret, actual_out_nbytes_ret);
+	return f(d, in, in_nbytes, out,in_dict_nbytes, out_nbytes_avail,
+		 	 actual_in_nbytes_ret, actual_out_nbytes_ret, stop_type, is_final_block_ret);
 }
 #else
 /* The best implementation is statically known, so call it directly. */
 #  define decompress_impl DEFAULT_IMPL
 #endif
+
+
+LIBDEFLATEAPI enum libdeflate_result
+libdeflate_deflate_decompress_block(struct libdeflate_decompressor *d,
+				 const void *in_part, size_t in_part_nbytes_bound,
+				 void *out_block_with_in_dict,size_t in_dict_nbytes, size_t out_block_nbytes,
+				 size_t *actual_in_nbytes_ret,size_t *actual_out_nbytes_ret,
+				 enum libdeflate_decompress_stop_by stop_type,int* is_final_block_ret){
+	return decompress_impl(d, in_part, in_part_nbytes_bound, 
+						   out_block_with_in_dict, in_dict_nbytes, out_block_nbytes,
+						   actual_in_nbytes_ret, actual_out_nbytes_ret, stop_type, is_final_block_ret);
+}
+
+LIBDEFLATEAPI uint16_t libdeflate_deflate_decompress_get_state(struct libdeflate_decompressor *d){
+	ASSERT(d->bitsleft_back<=7);
+	ASSERT(d->bitbuf_back==(uint16_t)(d->bitbuf_back<<3>>3));
+	return (d->bitbuf_back<<3) | d->bitsleft_back;
+}
+
+LIBDEFLATEAPI void libdeflate_deflate_decompress_set_state(struct libdeflate_decompressor *d,uint16_t state){
+	d->bitsleft_back=state&7;
+	d->bitbuf_back=state>>3;
+}
+
+LIBDEFLATEAPI void
+libdeflate_deflate_decompress_block_reset(struct libdeflate_decompressor *d){
+    _decompress_block_init(d);
+}
 
 /*
  * This is the main DEFLATE decompression routine.  See libdeflate.h for the
@@ -1137,8 +1175,10 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret)
 {
-	return decompress_impl(d, in, in_nbytes, out, out_nbytes_avail,
-			       actual_in_nbytes_ret, actual_out_nbytes_ret);
+	_decompress_block_init(d);
+	return decompress_impl(d,in,in_nbytes,out,0,out_nbytes_avail,
+						   actual_in_nbytes_ret,actual_out_nbytes_ret,
+						   LIBDEFLATE_STOP_BY_FINAL_BLOCK,NULL);
 }
 
 LIBDEFLATEAPI enum libdeflate_result
@@ -1147,9 +1187,10 @@ libdeflate_deflate_decompress(struct libdeflate_decompressor *d,
 			      void *out, size_t out_nbytes_avail,
 			      size_t *actual_out_nbytes_ret)
 {
-	return libdeflate_deflate_decompress_ex(d, in, in_nbytes,
-						out, out_nbytes_avail,
-						NULL, actual_out_nbytes_ret);
+	_decompress_block_init(d);
+	return decompress_impl(d,in,in_nbytes,out,0,out_nbytes_avail,
+						   NULL,actual_out_nbytes_ret,
+						   LIBDEFLATE_STOP_BY_FINAL_BLOCK,NULL);
 }
 
 LIBDEFLATEAPI struct libdeflate_decompressor *
