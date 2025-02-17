@@ -1,8 +1,7 @@
 task:
   freebsd_instance:
     matrix:
-      - image_family: freebsd-13-3
-      - image_family: freebsd-14-0
+      - image_family: freebsd-14-2
   install_script: pkg install -y cmake
   script:
     - cmake -B build -DLIBDEFLATE_BUILD_TESTS=1
