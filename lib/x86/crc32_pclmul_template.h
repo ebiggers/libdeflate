@@ -198,7 +198,6 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 	const __m128i mults_128b = _mm_set_epi64x(CRC32_X95_MODG, CRC32_X159_MODG);
 	const __m128i barrett_reduction_constants =
 		_mm_set_epi64x(CRC32_BARRETT_CONSTANT_2, CRC32_BARRETT_CONSTANT_1);
-	const __m128i mask32 = _mm_set_epi32(0, 0xFFFFFFFF, 0, 0);
 	vec_t v0, v1, v2, v3, v4, v5, v6, v7;
 	__m128i x0 = _mm_cvtsi32_si128(crc);
 	__m128i x1;
@@ -392,61 +391,19 @@ less_than_16_remaining:
 reduce_x0:
 #endif
 	/*
-	 * Generate the final n-bit CRC from the 128-bit x0 = A as follows:
+	 * Multiply the remaining 128-bit message polynomial 'x0' by x^32, then
+	 * reduce it modulo the generator polynomial G.  This gives the CRC.
 	 *
-	 *	crc = x^n * A mod G
-	 *	    = x^n * (x^64*A_H + A_L) mod G
-	 *	    = x^n * (x^(64-n)*(x^n*A_H mod G) + A_L) mod G
-	 *
-	 * I.e.:
-	 *	crc := 0
-	 *	crc := x^n * (x^(64-n)*crc + A_H) mod G
-	 *	crc := x^n * (x^(64-n)*crc + A_L) mod G
-	 *
-	 * A_H and A_L denote the high and low 64 polynomial coefficients in A.
-	 *
-	 * Using Barrett reduction to do the 'mod G', this becomes:
-	 *
-	 *	crc := floor((A_H * floor(x^(m+n) / G)) / x^m) * G mod x^n
-	 *	A_L := x^(64-n)*crc + A_L
-	 *	crc := floor((A_L * floor(x^(m+n) / G)) / x^m) * G mod x^n
-	 *
-	 * For the gzip crc, n = 32 and the bit order is LSB (least significant
-	 * bit) first.  'm' must be an integer >= 63 (the max degree of A_L and
-	 * A_H) for sufficient precision to be carried through the calculation.
-	 * As the gzip crc is LSB-first we use m == 63, which results in
-	 * floor(x^(m+n) / G) being 64-bit which is the most pclmulqdq can
-	 * accept.  The multiplication with floor(x^(63+n) / G) then produces a
-	 * 127-bit product, and the floored division by x^63 just takes the
-	 * first qword.
+	 * This implementation matches that used in crc-pclmul-template.S from
+	 * https://lore.kernel.org/r/20250210174540.161705-4-ebiggers@kernel.org/
+	 * with the parameters n=32 and LSB_CRC=1 (what the gzip CRC uses).  See
+	 * there for a detailed explanation of the math used here.
 	 */
-
-	/* tmp := floor((A_H * floor(x^(63+n) / G)) / x^63) */
+	x0 = _mm_xor_si128(_mm_clmulepi64_si128(x0, mults_128b, 0x10),
+			   _mm_bsrli_si128(x0, 8));
 	x1 = _mm_clmulepi64_si128(x0, barrett_reduction_constants, 0x00);
-	/* tmp is in bits [0:64) of x1. */
-
-	/* crc := tmp * G mod x^n */
 	x1 = _mm_clmulepi64_si128(x1, barrett_reduction_constants, 0x10);
-	/* crc is in bits [64:64+n) of x1. */
-
-	/*
-	 * A_L := x^(64-n)*crc + A_L
-	 * crc is already aligned to add (XOR) it directly to A_L, after
-	 * selecting it using a mask.
-	 */
-#if USE_AVX512
-	x0 = _mm_ternarylogic_epi32(x0, x1, mask32, 0x78);
-#else
-	x0 = _mm_xor_si128(x0, _mm_and_si128(x1, mask32));
-#endif
-	/*
-	 * crc := floor((A_L * floor(x^(m+n) / G)) / x^m) * G mod x^n
-	 * Same as previous but uses the low-order 64 coefficients of A.
-	 */
-	x0 = _mm_clmulepi64_si128(x0, barrett_reduction_constants, 0x01);
-	x0 = _mm_clmulepi64_si128(x0, barrett_reduction_constants, 0x10);
-
-	/* Extract the CRC from bits [64:64+n) of x0. */
+	x0 = _mm_xor_si128(x0, x1);
 	return _mm_extract_epi32(x0, 2);
 }
 
