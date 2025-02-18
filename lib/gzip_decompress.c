@@ -25,22 +25,15 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "lib_common.h"
+#include "gzip_overhead.h"
 #include "gzip_constants.h"
 
-LIBDEFLATEAPI enum libdeflate_result
-libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *d,
-			      const void *in, size_t in_nbytes,
-			      void *out, size_t out_nbytes_avail,
-			      size_t *actual_in_nbytes_ret,
-			      size_t *actual_out_nbytes_ret)
+int libdeflate_gzip_decompress_head(const void *in, size_t in_nbytes,
+			      size_t *actual_in_nbytes_ret)
 {
 	const u8 *in_next = in;
 	const u8 * const in_end = in_next + in_nbytes;
 	u8 flg;
-	size_t actual_in_nbytes;
-	size_t actual_out_nbytes;
-	enum libdeflate_result result;
 
 	if (in_nbytes < GZIP_MIN_OVERHEAD)
 		return LIBDEFLATE_BAD_DATA;
@@ -99,31 +92,78 @@ libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *d,
 			return LIBDEFLATE_BAD_DATA;
 	}
 
+	if (actual_in_nbytes_ret)
+		*actual_in_nbytes_ret = in_next - (u8 *)in;
+
+	return LIBDEFLATE_SUCCESS;
+}
+
+
+#define _do_decompress_step(_call_decompress) {	\
+	result=_call_decompress; 			\
+	if (result != LIBDEFLATE_SUCCESS)	\
+		return result;					\
+	in_next += actual_in_nbytes;		\
+}
+
+LIBDEFLATEAPI enum libdeflate_result
+libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *d,
+			      const void *in, size_t in_nbytes,
+			      void *out, size_t out_nbytes_avail,
+			      size_t *actual_in_nbytes_ret,
+			      size_t *actual_out_nbytes_ret)
+{
+	const u8 *in_next = in;
+	const u8 * const in_end = in_next + in_nbytes;
+	size_t actual_in_nbytes;
+	size_t actual_out_nbytes;
+	enum libdeflate_result result;
+	u32  saved_crc;
+	u32  saved_uncompress_nbytes;
+
+	_do_decompress_step(libdeflate_gzip_decompress_head(in_next,
+					in_end - in_next, &actual_in_nbytes));
+	
 	/* Compressed data  */
-	result = libdeflate_deflate_decompress_ex(d, in_next,
+	_do_decompress_step(libdeflate_deflate_decompress_ex(d, in_next,
 					in_end - GZIP_FOOTER_SIZE - in_next,
 					out, out_nbytes_avail,
 					&actual_in_nbytes,
-					actual_out_nbytes_ret);
-	if (result != LIBDEFLATE_SUCCESS)
-		return result;
-
+					&actual_out_nbytes));
 	if (actual_out_nbytes_ret)
-		actual_out_nbytes = *actual_out_nbytes_ret;
-	else
-		actual_out_nbytes = out_nbytes_avail;
+		*actual_out_nbytes_ret=actual_out_nbytes;
 
-	in_next += actual_in_nbytes;
+	_do_decompress_step(libdeflate_gzip_decompress_foot(in_next, in_end - in_next,
+					&saved_crc, &saved_uncompress_nbytes, &actual_in_nbytes));
+	
+	/* CRC32 */
+	if (libdeflate_crc32(0, out, actual_out_nbytes) != saved_crc)
+		return LIBDEFLATE_BAD_DATA;
+
+	/* ISIZE */
+	if ((u32)actual_out_nbytes != saved_uncompress_nbytes)
+		return LIBDEFLATE_BAD_DATA;
+
+	if (actual_in_nbytes_ret)
+		*actual_in_nbytes_ret = in_next - (u8 *)in;
+
+	return LIBDEFLATE_SUCCESS;
+}
+
+int libdeflate_gzip_decompress_foot(const void *in, size_t in_nbytes,
+				  u32* saved_crc,u32* saved_uncompress_nbytes,
+				  size_t *actual_in_nbytes_ret)
+{
+	const u8 *in_next = in;
+	if (in_nbytes < GZIP_FOOTER_SIZE)
+		return LIBDEFLATE_BAD_DATA;
 
 	/* CRC32 */
-	if (libdeflate_crc32(0, out, actual_out_nbytes) !=
-	    get_unaligned_le32(in_next))
-		return LIBDEFLATE_BAD_DATA;
+	*saved_crc=get_unaligned_le32(in_next);
 	in_next += 4;
 
 	/* ISIZE */
-	if ((u32)actual_out_nbytes != get_unaligned_le32(in_next))
-		return LIBDEFLATE_BAD_DATA;
+	*saved_uncompress_nbytes=get_unaligned_le32(in_next);
 	in_next += 4;
 
 	if (actual_in_nbytes_ret)

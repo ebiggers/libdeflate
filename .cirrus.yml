@@ -8,4 +8,4 @@ task:
     - cmake --build build
     - ctest --test-dir build
     # Direct compilation without official build system
-    - cc -O2 -Wall -Werror lib/*.c lib/*/*.c programs/gzip.c programs/prog_util.c programs/tgetopt.c -o libdeflate-gzip
+    - cc -O2 -Wall -Werror lib/*.c lib/*/*.c programs/gzip.c programs/gzip_compress_by_stream.c programs/gzip_decompress_by_stream.c programs/prog_util.c programs/tgetopt.c -o libdeflate-gzip

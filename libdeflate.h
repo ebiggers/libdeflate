@@ -115,6 +115,58 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *compressor,
 				  size_t in_nbytes);
 
 /*
+ * Large stream data can be compress by calling libdeflate_deflate_compress_block() 
+ * multiple times.  Each time call this function, 'in_block_with_dict' have 
+ * 'dict_nbytes' repeat of the last called's tail data as dictionary data, and 
+ * 'in_block_nbytes' new data will be compressed; The dictionary data size 
+ * dict_nbytes<=32k, if it is greater than 32k, the extra part of the previous
+ * part of the dictionary data is invalid.
+ * libdeflate_deflate_compress_bound_block() can got the upper limit
+ * of 'out_part' required space 'out_part_nbytes_avail'.
+ * If (in_is_final_block!=0) means input data is the end block of the stream data, 
+ * the process of multiple calling will finished.
+ * if (out_is_flush_to_byte_align!=0) means requires output DEFLATE bit stream must
+ * flushed to a byte-aligned position; Note: this request will increase output 
+ * length slightly, will output some empty block bits data;  The feature can be   
+ * used in multi-thread compression, the compressed part encoding for each thread 
+ *  can be legally spliced into the final compressed encoding stream.
+ *
+ * If compression is successful, return the new compressed part data's byte length;
+ * else if fail, return 0.
+ */
+LIBDEFLATEAPI size_t
+libdeflate_deflate_compress_block(struct libdeflate_compressor *compressor,
+			    const void *in_block_with_dict,size_t dict_nbytes,size_t in_block_nbytes,int in_is_final_block,
+			    void *out_part, size_t out_part_nbytes_avail,int out_is_flush_to_byte_align);
+
+/*
+ * Similar to libdeflate_deflate_compress_block(), but the data is encoded to 
+ * output stream with uncompressed manner.
+ */
+LIBDEFLATEAPI size_t
+libdeflate_deflate_compress_block_uncompressed(struct libdeflate_compressor *compressor,
+				const void *in_block,size_t in_block_nbytes,int in_is_final_block,
+			    void *out_part, size_t out_part_nbytes_avail);
+
+/*
+ * Large stream data can be compress by calling libdeflate_deflate_compress_block() 
+ * multiple times. 
+ * libdeflate_deflate_compress_bound_block(in_block_nbytes) can got the upper limit of 
+ * out_part required space 'out_part_nbytes_avail'.
+ */
+LIBDEFLATEAPI size_t
+libdeflate_deflate_compress_bound_block(size_t in_block_nbytes);
+
+/*
+ * Large stream data can be compress by calling libdeflate_deflate_compress_block() 
+ * multiple times. 
+ * libdeflate_deflate_compress_bound_blocks(in_stream_nbytes) can got the upper limit of 
+ * compressed data sum byte length.
+ */
+LIBDEFLATEAPI uint64_t
+libdeflate_deflate_compress_bound_blocks(uint64_t in_stream_nbytes,size_t in_block_nbytes);
+
+/*
  * Like libdeflate_deflate_compress(), but uses the zlib wrapper format instead
  * of raw DEFLATE.
  */
@@ -256,6 +308,57 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *decompressor,
 				 void *out, size_t out_nbytes_avail,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret);
+
+/* ctrl libdeflate_deflate_decompress_block() stop condition */
+enum libdeflate_decompress_stop_by {
+	LIBDEFLATE_STOP_BY_FINAL_BLOCK                = 0,
+	LIBDEFLATE_STOP_BY_ANY_BLOCK                  = 1,
+	LIBDEFLATE_STOP_BY_ANY_BLOCK_AND_FULL_INPUT   = 2,
+	LIBDEFLATE_STOP_BY_ANY_BLOCK_AND_FULL_OUTPUT  = 3,
+	LIBDEFLATE_STOP_BY_ANY_BLOCK_AND_FULL_OUTPUT_AND_IN_BYTE_ALIGN = 4,
+};
+
+/*
+ * Large stream data can be decompress by calling libdeflate_deflate_decompress_block() 
+ * multiple times.  Each time call this function, 'out_block_with_in_dict' have 
+ * 'in_dict_nbytes' repeat of the last called's tail outputed uncompressed data as 
+ * dictionary data, and 'out_block_nbytes' new uncompressed data want be decompressed;
+ * The dictionary data size in_dict_nbytes<=32k, if it is greater than 32k, the extra
+ * part of the previous part of the dictionary data is invalid.
+ * libdeflate_deflate_compress_bound_block(out_block_nbytes) can got the upper limit
+ *  of 'in_part' required space 'in_part_nbytes_bound'.
+ * 'is_final_block_ret' can NULL.
+ * 
+ * WARNING: This function must decompressed one full DEFLATE block before stop;
+ * so 'in_part_nbytes_bound' must possess a block end flag, and "out_block_nbytes"
+ * must be able to store uncompressed data of this block decompressed;
+ * This feature is not compatible with the DEFLATE stream decoding standard,
+ * this function can't support a single DEFLATE block that may have any length.
+ */
+LIBDEFLATEAPI enum libdeflate_result
+libdeflate_deflate_decompress_block(struct libdeflate_decompressor *decompressor,
+				 const void *in_part, size_t in_part_nbytes_bound,
+				 void *out_block_with_in_dict,size_t in_dict_nbytes, size_t out_block_nbytes,
+				 size_t *actual_in_nbytes_ret,size_t *actual_out_nbytes_ret,
+				 enum libdeflate_decompress_stop_by stop_type,int* is_final_block_ret);
+
+/*
+ * You can get (save) & set (restore) the decompressor's state;
+ * If the data inputed is not enough or ouput space full, you can restore the state of 
+ * the decompressor and provide more data or space to continue attempt decompress.
+ */
+LIBDEFLATEAPI uint16_t libdeflate_deflate_decompress_get_state(struct libdeflate_decompressor *decompressor);
+LIBDEFLATEAPI void libdeflate_deflate_decompress_set_state(struct libdeflate_decompressor *decompressor,uint16_t state);
+
+/*
+ * Clear the state saved between calls libdeflate_deflate_decompress_block();
+ * if you know the next block does not depend on the inputed data of the previous 
+ * block, you can call this function reset 'decompressor';
+ * Note: if next block depend on the inputed data of the previous block, reset will
+ * cause libdeflate_deflate_decompress_block() to fail.
+ */
+LIBDEFLATEAPI void
+libdeflate_deflate_decompress_block_reset(struct libdeflate_decompressor *decompressor);
 
 /*
  * Like libdeflate_deflate_decompress(), but assumes the zlib wrapper format
