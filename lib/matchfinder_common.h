@@ -176,49 +176,37 @@ lz_hash(u32 seq, unsigned num_bits)
  * to a maximum of @max_len.  Initially, @start_len bytes are matched.
  */
 static forceinline unsigned
-lz_extend(const u8 * const strptr, const u8 * const matchptr,
-	  const unsigned start_len, const unsigned max_len)
+lz_extend(const u8 * strptr, const u8 * matchptr,
+	  const unsigned start_len, unsigned max_len)
 {
-	unsigned len = start_len;
-	machine_word_t v_word;
+  const u8 * const matchptr_orig = matchptr;
 
+	strptr += start_len;
+	matchptr += start_len;
+	max_len -= start_len;
 	if (UNALIGNED_ACCESS_IS_FAST) {
-
-		if (likely(max_len - len >= 4 * WORDBYTES)) {
-
-		#define COMPARE_WORD_STEP				\
-			v_word = load_word_unaligned(&matchptr[len]) ^	\
-				 load_word_unaligned(&strptr[len]);	\
-			if (v_word != 0)				\
-				goto word_differs;			\
-			len += WORDBYTES;				\
-
-			COMPARE_WORD_STEP
-			COMPARE_WORD_STEP
-			COMPARE_WORD_STEP
-			COMPARE_WORD_STEP
-		#undef COMPARE_WORD_STEP
-		}
-
-		while (len + WORDBYTES <= max_len) {
-			v_word = load_word_unaligned(&matchptr[len]) ^
-				 load_word_unaligned(&strptr[len]);
-			if (v_word != 0)
-				goto word_differs;
-			len += WORDBYTES;
+		for (; max_len >= WORDBYTES; max_len -= WORDBYTES) {
+			machine_word_t v_word = load_word_unaligned(strptr) ^
+									load_word_unaligned(matchptr);
+			strptr += WORDBYTES;
+			if (v_word != 0) {
+				unsigned matching_bits;
+				if (CPU_IS_LITTLE_ENDIAN())
+					matching_bits = bsfw(v_word);
+				else
+					matching_bits = WORDBITS - 1 - bsrw(v_word);
+				return (unsigned)(matchptr - matchptr_orig) + (matching_bits >> 3);
+			}
+			matchptr += WORDBYTES;
 		}
 	}
 
-	while (len < max_len && matchptr[len] == strptr[len])
-		len++;
-	return len;
-
-word_differs:
-	if (CPU_IS_LITTLE_ENDIAN())
-		len += (bsfw(v_word) >> 3);
-	else
-		len += (WORDBITS - 1 - bsrw(v_word)) >> 3;
-	return len;
+  while (max_len && *matchptr == *strptr) {
+    max_len--;
+    ++strptr;
+    ++matchptr;
+  }
+  return (unsigned)(matchptr - matchptr_orig);
 }
 
 #endif /* LIB_MATCHFINDER_COMMON_H */
