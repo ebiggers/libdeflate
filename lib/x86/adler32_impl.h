@@ -39,7 +39,9 @@
 #  define USE_VNNI		0
 #  define USE_AVX512		0
 #  include "adler32_template.h"
-
+#endif
+#if defined(__GNUC__) || defined(__clang__) || \
+	(defined(_MSC_VER) && !defined(_M_ARM64EC))
 #  define adler32_x86_avx2	adler32_x86_avx2
 #  define SUFFIX			   _avx2
 #  define ATTRIBUTES		_target_attribute("avx2")
@@ -60,7 +62,8 @@
  * instead of gcc 11.  (libdeflate supports direct compilation without a
  * configure step, so checking the binutils version is not always an option.)
  */
-#if (GCC_PREREQ(12, 1) || CLANG_PREREQ(12, 0, 13000000) || MSVC_PREREQ(1930)) && \
+#if (GCC_PREREQ(12, 1) || CLANG_PREREQ(12, 0, 13000000) || \
+     (MSVC_PREREQ(1930) && !defined(_M_ARM64EC))) && \
 	!defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX_VNNI)
 #  define adler32_x86_avx2_vnni	adler32_x86_avx2_vnni
 #  define SUFFIX			   _avx2_vnni
@@ -71,7 +74,8 @@
 #  include "adler32_template.h"
 #endif
 
-#if (GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)) && \
+#if (GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || \
+     (MSVC_PREREQ(1920) && !defined(_M_ARM64EC))) && \
 	!defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX512VNNI)
 /*
  * AVX512VNNI implementation using 256-bit vectors.  This is very similar to the
