@@ -68,7 +68,7 @@
 #if VL == 16
 #  define vec_t			__m128i
 #  define fold_vec		fold_vec128
-#  define VLOADU(p)		_mm_loadu_si128((const void *)(p))
+#  define VLOADU(p)		_mm_loadu_si128((const __m128i *)(p))
 #  define VXOR(a, b)		_mm_xor_si128((a), (b))
 #  define M128I_TO_VEC(a)	a
 #  define MULTS_8V		_mm_set_epi64x(CRC32_X991_MODG, CRC32_X1055_MODG)
@@ -78,7 +78,7 @@
 #elif VL == 32
 #  define vec_t			__m256i
 #  define fold_vec		fold_vec256
-#  define VLOADU(p)		_mm256_loadu_si256((const void *)(p))
+#  define VLOADU(p)		_mm256_loadu_si256((const __m256i *)(p))
 #  define VXOR(a, b)		_mm256_xor_si256((a), (b))
 #  define M128I_TO_VEC(a)	_mm256_zextsi128_si256(a)
 #  define MULTS(a, b)		_mm256_set_epi64x(a, b, a, b)
@@ -89,7 +89,7 @@
 #elif VL == 64
 #  define vec_t			__m512i
 #  define fold_vec		fold_vec512
-#  define VLOADU(p)		_mm512_loadu_si512((const void *)(p))
+#  define VLOADU(p)		_mm512_loadu_si512((const __m512i *)(p))
 #  define VXOR(a, b)		_mm512_xor_si512((a), (b))
 #  define M128I_TO_VEC(a)	_mm512_zextsi128_si512(a)
 #  define MULTS(a, b)		_mm512_set_epi64(a, b, a, b, a, b, a, b)
@@ -160,8 +160,8 @@ static forceinline ATTRIBUTES __m128i
 ADD_SUFFIX(fold_lessthan16bytes)(__m128i x, const u8 *p, size_t len,
 				 __m128i /* __v2du */ mults_128b)
 {
-	__m128i lshift = _mm_loadu_si128((const void *)&shift_tab[len]);
-	__m128i rshift = _mm_loadu_si128((const void *)&shift_tab[len + 16]);
+	__m128i lshift = _mm_loadu_si128((const __m128i *)&shift_tab[len]);
+	__m128i rshift = _mm_loadu_si128((const __m128i *)&shift_tab[len + 16]);
 	__m128i x0, x1;
 
 	/* x0 = x left-shifted by '16 - len' bytes */
@@ -172,7 +172,7 @@ ADD_SUFFIX(fold_lessthan16bytes)(__m128i x, const u8 *p, size_t len,
 	 * bytes) followed by the remaining data.
 	 */
 	x1 = _mm_blendv_epi8(_mm_shuffle_epi8(x, rshift),
-			     _mm_loadu_si128((const void *)(p + len - 16)),
+			     _mm_loadu_si128((const __m128i *)(p + len - 16)),
 			     /* msb 0/1 of each byte selects byte from arg1/2 */
 			     rshift);
 
@@ -221,7 +221,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 				x0 = _mm_xor_si128(
 					x0, _mm_maskz_loadu_epi8((1 << len) - 1, p));
 				x0 = _mm_shuffle_epi8(
-					x0, _mm_loadu_si128((const void *)&shift_tab[len]));
+					x0, _mm_loadu_si128((const __m128i *)&shift_tab[len]));
 				goto reduce_x0;
 			#else
 				return crc32_slice1(crc, p, len);
@@ -232,12 +232,12 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 			 * Use 128-bit instructions so that these lengths aren't
 			 * slower with VL > 16 than with VL=16.
 			 */
-			x0 = _mm_xor_si128(_mm_loadu_si128((const void *)p), x0);
+			x0 = _mm_xor_si128(_mm_loadu_si128((const __m128i *)p), x0);
 			if (len >= 32) {
-				x0 = fold_vec128(x0, _mm_loadu_si128((const void *)(p + 16)),
+				x0 = fold_vec128(x0, _mm_loadu_si128((const __m128i *)(p + 16)),
 						 mults_128b);
 				if (len >= 48)
-					x0 = fold_vec128(x0, _mm_loadu_si128((const void *)(p + 32)),
+					x0 = fold_vec128(x0, _mm_loadu_si128((const __m128i *)(p + 32)),
 							 mults_128b);
 			}
 			p += len & ~15;
@@ -268,7 +268,7 @@ ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
 			size_t align = -(uintptr_t)p & (VL-1);
 
 			len -= align;
-			x0 = _mm_xor_si128(_mm_loadu_si128((const void *)p), x0);
+			x0 = _mm_xor_si128(_mm_loadu_si128((const __m128i *)p), x0);
 			p += 16;
 			if (align & 15) {
 				x0 = fold_lessthan16bytes(x0, p, align & 15,
@@ -367,7 +367,7 @@ less_than_vl_remaining:
 					 _mm512_extracti64x4_epi64(v0, 1),
 					 mults_256b);
 		if (len & 32) {
-			y0 = fold_vec256(y0, _mm256_loadu_si256((const void *)p),
+			y0 = fold_vec256(y0, _mm256_loadu_si256((const __m256i *)p),
 					 mults_256b);
 			p += 32;
 		}
@@ -376,7 +376,7 @@ less_than_vl_remaining:
 				 _mm256_extracti128_si256(y0, 1), mults_128b);
 	}
 	if (len & 16) {
-		x0 = fold_vec128(x0, _mm_loadu_si128((const void *)p),
+		x0 = fold_vec128(x0, _mm_loadu_si128((const __m128i *)p),
 				 mults_128b);
 		p += 16;
 	}
