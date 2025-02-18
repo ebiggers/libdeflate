@@ -261,7 +261,7 @@ typedef size_t machine_word_t;
 #if defined(__GNUC__) || __has_builtin(__builtin_prefetch)
 #  define prefetchw(addr)	__builtin_prefetch((addr), 1)
 #elif defined(_MSC_VER)
-#  if defined(ARCH_X86_32) || defined(ARCH_X86_64)
+#  if (defined(ARCH_X86_32) || defined(ARCH_X86_64)) && !defined(_M_ARM64EC)
 #    define prefetchw(addr)	_m_prefetchw(addr)
 #  elif defined(ARCH_ARM64)
 #    define prefetchw(addr)	__prefetch2((addr), 0x10 /* prfop=PSTL1KEEP */)
