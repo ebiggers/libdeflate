@@ -15,7 +15,8 @@
  * However, MSVC from VS2017 (toolset v141) apparently miscompiles the _bzhi_*()
  * intrinsics.  It seems to be fixed in VS2022.  Hence, use MSVC_PREREQ(1930).
  */
-#if defined(__GNUC__) || defined(__clang__) || MSVC_PREREQ(1930)
+#if defined(__GNUC__) || defined(__clang__) || \
+	(MSVC_PREREQ(1930) && !defined(_M_ARM64EC))
 #  define deflate_decompress_bmi2	deflate_decompress_bmi2
 #  define FUNCNAME			deflate_decompress_bmi2
 #  define ATTRIBUTES			_target_attribute("bmi2")
