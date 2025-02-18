@@ -139,8 +139,11 @@ jobs:
     name: Build (Windows, Visual Studio ${{matrix.toolset}}, ${{matrix.platform}})
     strategy:
       matrix:
-        platform: [ARM64]
+        platform: [ARM64, ARM64EC]
         toolset: [v143, ClangCL]
+        exclude: # Exclude unsupported combinations
+        - platform: ARM64EC
+          toolset: ClangCL
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
@@ -149,7 +152,7 @@ jobs:
     - run: >
         cmake -B build -G "Visual Studio 17 2022" -T ${{matrix.toolset}}
         -A ${{matrix.platform}} -DCMAKE_C_FLAGS="/W4 /WX"
-        -DCMAKE_INSTALL_PREFIX=build\install
+        -DCMAKE_INSTALL_PREFIX=build\install -DCMAKE_SYSTEM_VERSION=10
     - run: cmake --build build --verbose --config Release
     - run: cmake --install build --verbose --config Release
 
