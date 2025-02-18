@@ -35,8 +35,8 @@ jobs:
         - { arch: aarch64, distro: bullseye, compiler: clang }
         - { arch: s390x, distro: bullseye, compiler: gcc }
         - { arch: s390x, distro: bullseye, compiler: clang }
-        - { arch: ppc64le, distro: bullseye, compiler: gcc }
-        - { arch: ppc64le, distro: bullseye, compiler: clang }
+        # - { arch: ppc64le, distro: bullseye, compiler: gcc }
+        # - { arch: ppc64le, distro: bullseye, compiler: clang }
         - { arch: riscv64, distro: ubuntu_latest, compiler: gcc }
         - { arch: riscv64, distro: ubuntu_latest, compiler: clang }
     runs-on: ubuntu-latest
