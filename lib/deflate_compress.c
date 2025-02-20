@@ -2633,10 +2633,10 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						  in_max_block_end - in_next,
 						  c->max_search_depth);
 		do {
-			unsigned cur_len;
-			unsigned cur_offset;
-			unsigned next_len;
-			unsigned next_offset;
+			u32 cur_len;
+			u32 cur_offset;
+			u32 next_len;
+			u32 next_offset;
 
 			/*
 			 * Recalculate the minimum match length if it hasn't
