@@ -175,11 +175,11 @@ lz_hash(u32 seq, unsigned num_bits)
  * Return the number of bytes at @matchptr that match the bytes at @strptr, up
  * to a maximum of @max_len.  Initially, @start_len bytes are matched.
  */
-static forceinline unsigned
+static forceinline u32
 lz_extend(const u8 * const strptr, const u8 * const matchptr,
-	  const unsigned start_len, const unsigned max_len)
+	  const u32 start_len, const u32 max_len)
 {
-	unsigned len = start_len;
+	u32 len = start_len;
 	machine_word_t v_word;
 
 	if (UNALIGNED_ACCESS_IS_FAST) {
