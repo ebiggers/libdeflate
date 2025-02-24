@@ -66,6 +66,7 @@
 #undef ARCH_ARM64
 #undef ARCH_ARM32
 #undef ARCH_RISCV
+#if 0
 #ifdef _MSC_VER
    /* Way too many things are broken in ARM64EC to pretend that it is x86_64. */
 #  if defined(_M_X64) && !defined(_M_ARM64EC)
@@ -89,6 +90,7 @@
 #  elif defined(__riscv)
 #    define ARCH_RISCV
 #  endif
+#endif
 #endif
 
 /* ========================================================================== */
