@@ -234,7 +234,7 @@ check_buildtime_parameters(void)
 /******************************************************************************/
 
 /* Table: length slot => length slot base value */
-static const unsigned deflate_length_slot_base[] = {
+static const u32 deflate_length_slot_base[] = {
 	3,    4,    5,    6,    7,    8,    9,    10,
 	11,   13,   15,   17,   19,   23,   27,   31,
 	35,   43,   51,   59,   67,   83,   99,   115,
@@ -250,7 +250,7 @@ static const u8 deflate_extra_length_bits[] = {
 };
 
 /* Table: offset slot => offset slot base value */
-static const unsigned deflate_offset_slot_base[] = {
+static const u32 deflate_offset_slot_base[] = {
 	1,     2,     3,     4,     5,     7,     9,     13,
 	17,    25,    33,    49,    65,    97,    129,   193,
 	257,   385,   513,   769,   1025,  1537,  2049,  3073,
@@ -470,13 +470,13 @@ struct libdeflate_compressor {
 	 * The maximum search depth: consider at most this many potential
 	 * matches at each position
 	 */
-	unsigned max_search_depth;
+	u32 max_search_depth;
 
 	/*
 	 * The "nice" match length: if a match of this length is found, choose
 	 * it immediately without further consideration
 	 */
-	unsigned nice_match_length;
+	u32 nice_match_length;
 
 	/* Frequency counters for the current block */
 	struct deflate_freqs freqs;
@@ -626,7 +626,7 @@ struct libdeflate_compressor {
 			 * early, before max_optim_passes has been reached.
 			 * Smaller values = more compression.
 			 */
-			unsigned min_improvement_to_continue;
+			u32 min_improvement_to_continue;
 
 			/*
 			 * The minimum number of bits that would need to be
@@ -636,7 +636,7 @@ struct libdeflate_compressor {
 			 * optimization pass actually increased the cost.
 			 * Smaller values = more compression.
 			 */
-			unsigned min_bits_to_use_nonfinal_path;
+			u32 min_bits_to_use_nonfinal_path;
 
 			/*
 			 * The maximum block length, in uncompressed bytes, at
@@ -653,7 +653,7 @@ struct libdeflate_compressor {
 			 * match/literal list as the optimized dynamic block
 			 * happens to be cheaper than the dynamic block itself.
 			 */
-			unsigned max_len_to_optimize_static_block;
+			u32 max_len_to_optimize_static_block;
 
 		} n; /* (n)ear-optimal */
 	#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
@@ -1639,7 +1639,7 @@ static void
 deflate_compute_full_len_codewords(struct libdeflate_compressor *c,
 				   const struct deflate_codes *codes)
 {
-	unsigned len;
+	u32 len;
 
 	STATIC_ASSERT(MAX_LITLEN_CODEWORD_LEN +
 		      DEFLATE_MAX_EXTRA_LENGTH_BITS <= 32);
@@ -1662,8 +1662,8 @@ deflate_compute_full_len_codewords(struct libdeflate_compressor *c,
 do {									\
 	const struct libdeflate_compressor *c__ = (c_);			\
 	const struct deflate_codes *codes__ = (codes_);			\
-	unsigned length__ = (length_);					\
-	unsigned offset__ = (offset_);					\
+	u32 length__ = (length_);					\
+	u32 offset__ = (offset_);					\
 	unsigned offset_slot__ = (offset_slot_);			\
 									\
 	/* Litlen symbol and extra length bits */			\
@@ -1936,9 +1936,9 @@ deflate_flush_block(struct libdeflate_compressor *c,
 		struct deflate_optimum_node * const end_node =
 			&c->p.n.optimum_nodes[block_length];
 		do {
-			unsigned length = cur_node->item & OPTIMUM_LEN_MASK;
-			unsigned offset = cur_node->item >>
-					  OPTIMUM_OFFSET_SHIFT;
+			u32 length = cur_node->item & OPTIMUM_LEN_MASK;
+			u32 offset = cur_node->item >> OPTIMUM_OFFSET_SHIFT;
+
 			if (length == 1) {
 				/* Literal */
 				ADD_BITS(codes->codewords.litlen[offset],
@@ -1960,8 +1960,8 @@ deflate_flush_block(struct libdeflate_compressor *c,
 		for (seq = sequences; ; seq++) {
 			u32 litrunlen = seq->litrunlen_and_length &
 					SEQ_LITRUNLEN_MASK;
-			unsigned length = seq->litrunlen_and_length >>
-					  SEQ_LENGTH_SHIFT;
+			u32 length = seq->litrunlen_and_length >>
+				     SEQ_LENGTH_SHIFT;
 			unsigned lit;
 
 			/* Output a run of literals. */
@@ -2118,7 +2118,7 @@ observe_literal(struct block_split_stats *stats, u8 lit)
  * one observation type for "long match".
  */
 static forceinline void
-observe_match(struct block_split_stats *stats, unsigned length)
+observe_match(struct block_split_stats *stats, u32 length)
 {
 	stats->new_observations[NUM_LITERAL_OBSERVATION_TYPES +
 				(length >= 9)]++;
@@ -2242,7 +2242,7 @@ deflate_choose_literal(struct libdeflate_compressor *c, unsigned literal,
 
 static forceinline void
 deflate_choose_match(struct libdeflate_compressor *c,
-		     unsigned length, unsigned offset, bool gather_split_stats,
+		     u32 length, u32 offset, bool gather_split_stats,
 		     struct deflate_sequence **seq_p)
 {
 	struct deflate_sequence *seq = *seq_p;
@@ -2254,7 +2254,7 @@ deflate_choose_match(struct libdeflate_compressor *c,
 	if (gather_split_stats)
 		observe_match(&c->split_stats, length);
 
-	seq->litrunlen_and_length |= (u32)length << SEQ_LENGTH_SHIFT;
+	seq->litrunlen_and_length |= length << SEQ_LENGTH_SHIFT;
 	seq->offset = offset;
 	seq->offset_slot = offset_slot;
 
@@ -2268,7 +2268,7 @@ deflate_choose_match(struct libdeflate_compressor *c,
  * the input buffer.
  */
 static forceinline void
-adjust_max_and_nice_len(unsigned *max_len, unsigned *nice_len, size_t remaining)
+adjust_max_and_nice_len(u32 *max_len, u32 *nice_len, size_t remaining)
 {
 	if (unlikely(remaining < DEFLATE_MAX_MATCH_LEN)) {
 		*max_len = remaining;
@@ -2292,8 +2292,8 @@ adjust_max_and_nice_len(unsigned *max_len, unsigned *nice_len, size_t remaining)
  * probably be worthwhile.  Conversely, if not many literals are used, then
  * probably literals will be cheap and short matches won't be worthwhile.
  */
-static unsigned
-choose_min_match_len(unsigned num_used_literals, unsigned max_search_depth)
+static u32
+choose_min_match_len(u32 num_used_literals, u32 max_search_depth)
 {
 	/* map from num_used_literals to min_len */
 	static const u8 min_lens[] = {
@@ -2304,7 +2304,7 @@ choose_min_match_len(unsigned num_used_literals, unsigned max_search_depth)
 		4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
 		/* The rest is implicitly 3. */
 	};
-	unsigned min_len;
+	u32 min_len;
 
 	STATIC_ASSERT(DEFLATE_MIN_MATCH_LEN <= 3);
 	STATIC_ASSERT(ARRAY_LEN(min_lens) <= DEFLATE_NUM_LITERALS + 1);
@@ -2326,12 +2326,11 @@ choose_min_match_len(unsigned num_used_literals, unsigned max_search_depth)
 	return min_len;
 }
 
-static unsigned
-calculate_min_match_len(const u8 *data, size_t data_len,
-			unsigned max_search_depth)
+static u32
+calculate_min_match_len(const u8 *data, size_t data_len, u32 max_search_depth)
 {
 	u8 used[256] = { 0 };
-	unsigned num_used_literals = 0;
+	u32 num_used_literals = 0;
 	size_t i;
 
 	/*
@@ -2357,13 +2356,13 @@ calculate_min_match_len(const u8 *data, size_t data_len,
  * Recalculate the minimum match length for a block, now that we know the
  * distribution of literals that are actually being used (freqs->litlen).
  */
-static unsigned
+static u32
 recalculate_min_match_len(const struct deflate_freqs *freqs,
-			  unsigned max_search_depth)
+			  u32 max_search_depth)
 {
 	u32 literal_freq = 0;
 	u32 cutoff;
-	unsigned num_used_literals = 0;
+	u32 num_used_literals = 0;
 	int i;
 
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
@@ -2457,8 +2456,8 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
 	const u8 *in_cur_base = in_next;
-	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
-	unsigned nice_len = MIN(c->nice_match_length, max_len);
+	u32 max_len = DEFLATE_MAX_MATCH_LEN;
+	u32 nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hash = 0;
 
 	ht_matchfinder_init(&c->p.f.ht_mf);
@@ -2534,8 +2533,8 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
 	const u8 *in_cur_base = in_next;
-	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
-	unsigned nice_len = MIN(c->nice_match_length, max_len);
+	u32 max_len = DEFLATE_MAX_MATCH_LEN;
+	u32 nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
 
 	hc_matchfinder_init(&c->p.g.hc_mf);
@@ -2547,7 +2546,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 		const u8 * const in_max_block_end = choose_max_block_end(
 				in_next, in_end, SOFT_MAX_BLOCK_LENGTH);
 		struct deflate_sequence *seq = c->p.g.sequences;
-		unsigned min_len;
+		u32 min_len;
 
 		init_block_split_stats(&c->split_stats);
 		deflate_begin_sequences(c, seq);
@@ -2610,8 +2609,8 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
 	const u8 *in_cur_base = in_next;
-	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
-	unsigned nice_len = MIN(c->nice_match_length, max_len);
+	u32 max_len = DEFLATE_MAX_MATCH_LEN;
+	u32 nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
 
 	hc_matchfinder_init(&c->p.g.hc_mf);
@@ -2625,7 +2624,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 		const u8 *next_recalc_min_len =
 			in_next + MIN(in_end - in_next, 10000);
 		struct deflate_sequence *seq = c->p.g.sequences;
-		unsigned min_len;
+		u32 min_len;
 
 		init_block_split_stats(&c->split_stats);
 		deflate_begin_sequences(c, seq);
@@ -2633,10 +2632,10 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						  in_max_block_end - in_next,
 						  c->max_search_depth);
 		do {
-			unsigned cur_len;
-			unsigned cur_offset;
-			unsigned next_len;
-			unsigned next_offset;
+			u32 cur_len;
+			u32 cur_offset;
+			u32 next_len;
+			u32 next_offset;
 
 			/*
 			 * Recalculate the minimum match length if it hasn't
@@ -2849,8 +2848,8 @@ deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 		&c->p.n.optimum_nodes[block_length];
 
 	do {
-		unsigned length = cur_node->item & OPTIMUM_LEN_MASK;
-		unsigned offset = cur_node->item >> OPTIMUM_OFFSET_SHIFT;
+		u32 length = cur_node->item & OPTIMUM_LEN_MASK;
+		u32 offset = cur_node->item >> OPTIMUM_OFFSET_SHIFT;
 
 		if (length == 1) {
 			/* Literal */
@@ -3111,7 +3110,7 @@ deflate_choose_default_litlen_costs(struct libdeflate_compressor *c,
 				    const u8 *block_begin, u32 block_length,
 				    u32 *lit_cost, u32 *len_sym_cost)
 {
-	unsigned num_used_literals = 0;
+	u32 num_used_literals = 0;
 	u32 literal_freq = block_length;
 	u32 match_freq = 0;
 	u32 cutoff;
@@ -3161,7 +3160,7 @@ deflate_choose_default_litlen_costs(struct libdeflate_compressor *c,
 }
 
 static forceinline u32
-deflate_default_length_cost(unsigned len, u32 len_sym_cost)
+deflate_default_length_cost(u32 len, u32 len_sym_cost)
 {
 	unsigned slot = deflate_length_slot[len];
 	u32 num_extra_bits = deflate_extra_length_bits[slot];
@@ -3188,7 +3187,7 @@ static void
 deflate_set_default_costs(struct libdeflate_compressor *c,
 			  u32 lit_cost, u32 len_sym_cost)
 {
-	unsigned i;
+	u32 i;
 
 	/* Literals */
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
@@ -3224,7 +3223,7 @@ static forceinline void
 deflate_adjust_costs_impl(struct libdeflate_compressor *c,
 			  u32 lit_cost, u32 len_sym_cost, int change_amount)
 {
-	unsigned i;
+	u32 i;
 
 	/* Literals */
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
@@ -3337,7 +3336,7 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 	cur_node->cost_to_end = 0;
 	do {
 		unsigned num_matches;
-		unsigned literal;
+		u32 literal;
 		u32 best_cost_to_end;
 
 		cur_node--;
@@ -3349,14 +3348,14 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 		/* It's always possible to choose a literal. */
 		best_cost_to_end = c->p.n.costs.literal[literal] +
 				   (cur_node + 1)->cost_to_end;
-		cur_node->item = ((u32)literal << OPTIMUM_OFFSET_SHIFT) | 1;
+		cur_node->item = (literal << OPTIMUM_OFFSET_SHIFT) | 1;
 
 		/* Also consider matches if there are any. */
 		if (num_matches) {
 			const struct lz_match *match;
-			unsigned len;
-			unsigned offset;
-			unsigned offset_slot;
+			u32 len;
+			u32 offset;
+			u32 offset_slot;
 			u32 offset_cost;
 			u32 cost_to_end;
 
@@ -3384,7 +3383,7 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 					if (cost_to_end < best_cost_to_end) {
 						best_cost_to_end = cost_to_end;
 						cur_node->item = len |
-							((u32)offset <<
+							(offset <<
 							 OPTIMUM_OFFSET_SHIFT);
 					}
 				} while (++len <= match->length);
@@ -3601,8 +3600,8 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 	const u8 *in_cur_base = in_next;
 	const u8 *in_next_slide =
 		in_next + MIN(in_end - in_next, MATCHFINDER_WINDOW_SIZE);
-	unsigned max_len = DEFLATE_MAX_MATCH_LEN;
-	unsigned nice_len = MIN(c->nice_match_length, max_len);
+	u32 max_len = DEFLATE_MAX_MATCH_LEN;
+	u32 nice_len = MIN(c->nice_match_length, max_len);
 	struct lz_match *cache_ptr = c->p.n.match_cache;
 	u32 next_hashes[2] = {0, 0};
 	bool prev_block_used_only_literals = false;
@@ -3617,7 +3616,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		const u8 *prev_end_block_check = NULL;
 		bool change_detected = false;
 		const u8 *next_observation = in_next;
-		unsigned min_len;
+		u32 min_len;
 
 		/*
 		 * Use the minimum match length heuristic to improve the
@@ -3648,7 +3647,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		 */
 		for (;;) {
 			struct lz_match *matches;
-			unsigned best_len;
+			u32 best_len;
 			size_t remaining = in_end - in_next;
 
 			/* Slide the window forward if needed. */
@@ -3853,9 +3852,9 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 static void
 deflate_init_offset_slot_full(struct libdeflate_compressor *c)
 {
-	unsigned offset_slot;
-	unsigned offset;
-	unsigned offset_end;
+	u32 offset_slot;
+	u32 offset;
+	u32 offset_end;
 
 	for (offset_slot = 0; offset_slot < ARRAY_LEN(deflate_offset_slot_base);
 	     offset_slot++) {
