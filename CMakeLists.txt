@@ -45,7 +45,7 @@ option(LIBDEFLATE_USE_SHARED_LIB
        "Link the libdeflate-gzip and test programs to the shared library instead
        of the static library" OFF)
 if(APPLE)
-    option(LIBDEFLATE_FRAMEWORK "Build as Apple Frameworks" OFF)
+    option(LIBDEFLATE_APPLE_FRAMEWORK "Build as Apple Framework" OFF)
 endif()
 
 if(LIBDEFLATE_BUILD_TESTS)
@@ -237,7 +237,7 @@ if(LIBDEFLATE_BUILD_STATIC_LIB)
     set_target_properties(libdeflate_static PROPERTIES
                           OUTPUT_NAME ${STATIC_LIB_NAME}
                           PUBLIC_HEADER libdeflate.h)
-    if(LIBDEFLATE_FRAMEWORK)
+    if(LIBDEFLATE_APPLE_FRAMEWORK)
         set_target_properties(libdeflate_static PROPERTIES
             FRAMEWORK TRUE
             FRAMEWORK_VERSION "${VERSION_STRING}"
