@@ -44,6 +44,9 @@ option(LIBDEFLATE_BUILD_TESTS "Build the test programs" OFF)
 option(LIBDEFLATE_USE_SHARED_LIB
        "Link the libdeflate-gzip and test programs to the shared library instead
        of the static library" OFF)
+if(APPLE)
+    option(LIBDEFLATE_APPLE_FRAMEWORK "Build as Apple Framework" OFF)
+endif()
 
 if(LIBDEFLATE_BUILD_TESTS)
     enable_testing()
@@ -234,6 +237,21 @@ if(LIBDEFLATE_BUILD_STATIC_LIB)
     set_target_properties(libdeflate_static PROPERTIES
                           OUTPUT_NAME ${STATIC_LIB_NAME}
                           PUBLIC_HEADER libdeflate.h)
+    if(LIBDEFLATE_APPLE_FRAMEWORK)
+        set_target_properties(libdeflate_static PROPERTIES
+            FRAMEWORK TRUE
+            FRAMEWORK_VERSION "${VERSION_STRING}"
+            PRODUCT_BUNDLE_IDENTIFIER "github.com/ebiggers/libdeflate"
+            XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
+            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+            MACOSX_FRAMEWORK_IDENTIFIER "github.com/ebiggers/libdeflate"
+            MACOSX_FRAMEWORK_BUNDLE_VERSION "${VERSION_STRING}"
+            MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+            MACOSX_RPATH TRUE)
+    endif()
+
     target_include_directories(libdeflate_static PUBLIC ${LIB_INCLUDE_DIRS})
     target_compile_definitions(libdeflate_static PRIVATE ${LIB_COMPILE_DEFINITIONS})
     target_compile_options(libdeflate_static PRIVATE ${LIB_COMPILE_OPTIONS})
@@ -267,6 +285,8 @@ install(TARGETS ${LIB_TARGETS}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime OPTIONAL
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # Generate and install the pkg-config file.  (Don't confuse this with the CMake
