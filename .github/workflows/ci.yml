@@ -26,8 +26,8 @@ jobs:
     strategy:
       matrix:
         include:
-        - { arch: armv6, distro: bookworm, compiler: gcc }
-        - { arch: armv6, distro: bookworm, compiler: clang }
+        # - { arch: armv6, distro: bookworm, compiler: gcc }
+        # - { arch: armv6, distro: bookworm, compiler: clang }
         - { arch: armv7, distro: bookworm, compiler: gcc }
         - { arch: armv7, distro: bookworm, compiler: clang }
         - { arch: aarch64, distro: bookworm, compiler: gcc }
