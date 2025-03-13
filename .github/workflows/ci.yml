@@ -26,16 +26,16 @@ jobs:
     strategy:
       matrix:
         include:
-        - { arch: armv6, distro: bullseye, compiler: gcc }
-        - { arch: armv6, distro: bullseye, compiler: clang }
-        - { arch: armv7, distro: bullseye, compiler: gcc }
-        - { arch: armv7, distro: bullseye, compiler: clang }
-        - { arch: aarch64, distro: bullseye, compiler: gcc }
-        - { arch: aarch64, distro: bullseye, compiler: clang }
-        - { arch: s390x, distro: bullseye, compiler: gcc }
-        - { arch: s390x, distro: bullseye, compiler: clang }
-        - { arch: ppc64le, distro: bullseye, compiler: gcc }
-        - { arch: ppc64le, distro: bullseye, compiler: clang }
+        - { arch: armv6, distro: bookworm, compiler: gcc }
+        - { arch: armv6, distro: bookworm, compiler: clang }
+        - { arch: armv7, distro: bookworm, compiler: gcc }
+        - { arch: armv7, distro: bookworm, compiler: clang }
+        - { arch: aarch64, distro: bookworm, compiler: gcc }
+        - { arch: aarch64, distro: bookworm, compiler: clang }
+        - { arch: s390x, distro: bookworm, compiler: gcc }
+        - { arch: s390x, distro: bookworm, compiler: clang }
+        - { arch: ppc64le, distro: bookworm, compiler: gcc }
+        - { arch: ppc64le, distro: bookworm, compiler: clang }
         - { arch: riscv64, distro: ubuntu_latest, compiler: gcc }
         - { arch: riscv64, distro: ubuntu_latest, compiler: clang }
     runs-on: ubuntu-latest
