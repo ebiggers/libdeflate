@@ -17,7 +17,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y clang llvm libz-dev valgrind
-    - run: sudo sysctl kernel.randomize_va_space=0 # https://bugs.launchpad.net/ubuntu/+source/llvm-toolchain-14/+bug/2048768
     - run: scripts/run_tests.sh
     - name: Direct compilation without official build system
       run: $CC -O2 -Wall -Werror lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip
@@ -288,6 +287,5 @@ jobs:
         sudo apt-get install -y clang llvm
     - name: Fuzz
       run: |
-        sudo sysctl kernel.randomize_va_space=0 # https://bugs.launchpad.net/ubuntu/+source/llvm-toolchain-14/+bug/2048768
         scripts/libFuzzer/fuzz.sh --time=120 ${{matrix.sanitizer}} \
             ${{matrix.target}}
