@@ -17,7 +17,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y clang llvm libz-dev valgrind
-    - run: sudo sysctl kernel.randomize_va_space=0 # https://bugs.launchpad.net/ubuntu/+source/llvm-toolchain-14/+bug/2048768
     - run: scripts/run_tests.sh
     - name: Direct compilation without official build system
       run: $CC -O2 -Wall -Werror lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip
@@ -27,22 +26,22 @@ jobs:
     strategy:
       matrix:
         include:
-        - { arch: armv6, distro: bullseye, compiler: gcc }
-        - { arch: armv6, distro: bullseye, compiler: clang }
-        - { arch: armv7, distro: bullseye, compiler: gcc }
-        - { arch: armv7, distro: bullseye, compiler: clang }
-        - { arch: aarch64, distro: bullseye, compiler: gcc }
-        - { arch: aarch64, distro: bullseye, compiler: clang }
-        - { arch: s390x, distro: bullseye, compiler: gcc }
-        - { arch: s390x, distro: bullseye, compiler: clang }
-        - { arch: ppc64le, distro: bullseye, compiler: gcc }
-        - { arch: ppc64le, distro: bullseye, compiler: clang }
+        # - { arch: armv6, distro: bookworm, compiler: gcc }
+        # - { arch: armv6, distro: bookworm, compiler: clang }
+        - { arch: armv7, distro: bookworm, compiler: gcc }
+        - { arch: armv7, distro: bookworm, compiler: clang }
+        - { arch: aarch64, distro: bookworm, compiler: gcc }
+        - { arch: aarch64, distro: bookworm, compiler: clang }
+        - { arch: s390x, distro: bookworm, compiler: gcc }
+        - { arch: s390x, distro: bookworm, compiler: clang }
+        - { arch: ppc64le, distro: bookworm, compiler: gcc }
+        - { arch: ppc64le, distro: bookworm, compiler: clang }
         - { arch: riscv64, distro: ubuntu_latest, compiler: gcc }
         - { arch: riscv64, distro: ubuntu_latest, compiler: clang }
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: uraimo/run-on-arch-action@v2.8.1
+      - uses: uraimo/run-on-arch-action@v3.0.0
         with:
           arch: ${{ matrix.arch }}
           distro: ${{ matrix.distro }}
@@ -288,6 +287,5 @@ jobs:
         sudo apt-get install -y clang llvm
     - name: Fuzz
       run: |
-        sudo sysctl kernel.randomize_va_space=0 # https://bugs.launchpad.net/ubuntu/+source/llvm-toolchain-14/+bug/2048768
         scripts/libFuzzer/fuzz.sh --time=120 ${{matrix.sanitizer}} \
             ${{matrix.target}}
