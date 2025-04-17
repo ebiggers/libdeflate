@@ -110,8 +110,9 @@ os_supports_avx512(u64 xcr0)
 }
 
 /*
- * Don't use 512-bit vectors on Intel CPUs before Rocket Lake and Sapphire
- * Rapids, due to the downclocking penalty.
+ * Don't use 512-bit vectors (ZMM registers) on Intel CPUs before Rocket Lake
+ * and Sapphire Rapids, due to the overly-eager downclocking which can reduce
+ * the performance of workloads that use ZMM registers only occasionally.
  */
 static inline bool
 allow_512bit_vectors(const u32 manufacturer[3], u32 family, u32 model)
