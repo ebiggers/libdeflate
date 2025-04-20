@@ -96,9 +96,9 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 /*
  * VPCLMULQDQ/AVX512 implementation using 256-bit vectors.  This is very similar
  * to the VPCLMULQDQ/AVX2 implementation but takes advantage of the vpternlog
- * instruction and more registers.  This is used on CPUs that support AVX-512
- * but where using 512-bit vectors causes downclocking.  This should also be the
- * optimal implementation on CPUs that support AVX10/256 but not AVX10/512.
+ * instruction and more registers.  This is used on certain older Intel CPUs,
+ * specifically Ice Lake and Tiger Lake, which support VPCLMULQDQ and AVX512 but
+ * downclock a bit too eagerly when ZMM registers are used.
  *
  * _mm256_zextsi128_si256() requires gcc 10.
  */
@@ -111,8 +111,7 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 
 /*
  * VPCLMULQDQ/AVX512 implementation using 512-bit vectors.  This is used on CPUs
- * that have a good AVX-512 implementation including VPCLMULQDQ.  This should
- * also be the optimal implementation on CPUs that support AVX10/512.
+ * that have a good AVX-512 implementation including VPCLMULQDQ.
  *
  * _mm512_zextsi128_si512() requires gcc 10.
  */

@@ -76,9 +76,9 @@
 /*
  * AVX512VNNI implementation using 256-bit vectors.  This is very similar to the
  * AVX-VNNI implementation but takes advantage of masking and more registers.
- * This is used on CPUs that support AVX-512 but where using 512-bit vectors
- * causes downclocking.  This should also be the optimal implementation on CPUs
- * that support AVX10/256 but not AVX10/512.
+ * This is used on certain older Intel CPUs, specifically Ice Lake and Tiger
+ * Lake, which support AVX512VNNI but downclock a bit too eagerly when ZMM
+ * registers are used.
  */
 #  define adler32_x86_avx512_vl256_vnni	adler32_x86_avx512_vl256_vnni
 #  define SUFFIX				   _avx512_vl256_vnni
@@ -90,8 +90,7 @@
 
 /*
  * AVX512VNNI implementation using 512-bit vectors.  This is used on CPUs that
- * have a good AVX-512 implementation including AVX512VNNI.  This should also be
- * the optimal implementation on CPUs that support AVX10/512.
+ * have a good AVX-512 implementation including AVX512VNNI.
  */
 #  define adler32_x86_avx512_vl512_vnni	adler32_x86_avx512_vl512_vnni
 #  define SUFFIX				   _avx512_vl512_vnni
