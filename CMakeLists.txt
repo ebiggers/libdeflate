@@ -93,6 +93,32 @@ if(LIBDEFLATE_FREESTANDING)
     add_definitions(-DFREESTANDING)
 endif()
 
+function(configure_framework libtype)
+    if(LIBDEFLATE_APPLE_FRAMEWORK)
+        set_target_properties(${libtype} PROPERTIES
+            FRAMEWORK TRUE
+            FRAMEWORK_VERSION "${VERSION_STRING}"
+            PRODUCT_BUNDLE_IDENTIFIER "github.com/ebiggers/libdeflate/${libtype}"
+            XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
+            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+            MACOSX_FRAMEWORK_IDENTIFIER "github.com/ebiggers/libdeflate/${libtype}"
+            MACOSX_FRAMEWORK_BUNDLE_VERSION "${VERSION_STRING}"
+            MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+            MACOSX_RPATH TRUE
+            # RESOURCE "${LIBDEFLATE_RESOURCES}"
+        )
+
+        set(RES_DEST_DIR "$<TARGET_FILE_DIR:${libtype}>/Resources")
+        add_custom_command(TARGET ${libtype} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E make_directory "${RES_DEST_DIR}"
+          COMMAND ${CMAKE_COMMAND} -E copy ${LIBDEFLATE_RESOURCES} "${RES_DEST_DIR}/"
+          COMMENT "Copying resource files to ${libtype}.framework/Resources"
+        )
+    endif()
+endfunction()
+
 # Check for cases where the compiler supports an instruction set extension but
 # the assembler does not, and in those cases print a warning and add an
 # appropriate -DLIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_* flag.  libdeflate's C
@@ -221,6 +247,14 @@ set(LIB_INCLUDE_DIRS
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_FULL_INCLUDEDIR}>)
 
+# Define resource files for Apple Framework
+set(LIBDEFLATE_RESOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+    "${CMAKE_CURRENT_SOURCE_DIR}/COPYING"
+    "${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config.cmake"
+)
+message(STATUS "Resource files: ${LIBDEFLATE_RESOURCES}")
+
 # Build the static library.
 if(LIBDEFLATE_BUILD_STATIC_LIB)
     add_library(libdeflate_static STATIC ${LIB_SOURCES})
@@ -237,21 +271,7 @@ if(LIBDEFLATE_BUILD_STATIC_LIB)
     set_target_properties(libdeflate_static PROPERTIES
                           OUTPUT_NAME ${STATIC_LIB_NAME}
                           PUBLIC_HEADER libdeflate.h)
-    if(LIBDEFLATE_APPLE_FRAMEWORK)
-        set_target_properties(libdeflate_static PROPERTIES
-            FRAMEWORK TRUE
-            FRAMEWORK_VERSION "${VERSION_STRING}"
-            PRODUCT_BUNDLE_IDENTIFIER "github.com/ebiggers/libdeflate"
-            XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
-            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
-            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
-            MACOSX_FRAMEWORK_IDENTIFIER "github.com/ebiggers/libdeflate"
-            MACOSX_FRAMEWORK_BUNDLE_VERSION "${VERSION_STRING}"
-            MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-            MACOSX_RPATH TRUE)
-    endif()
-
+    configure_framework(libdeflate_static)
     target_include_directories(libdeflate_static PUBLIC ${LIB_INCLUDE_DIRS})
     target_compile_definitions(libdeflate_static PRIVATE ${LIB_COMPILE_DEFINITIONS})
     target_compile_options(libdeflate_static PRIVATE ${LIB_COMPILE_OPTIONS})
@@ -271,6 +291,7 @@ if(LIBDEFLATE_BUILD_SHARED_LIB)
                           PUBLIC_HEADER libdeflate.h
                           C_VISIBILITY_PRESET hidden
                           SOVERSION 0)
+    configure_framework(libdeflate_shared)
     target_include_directories(libdeflate_shared PUBLIC ${LIB_INCLUDE_DIRS})
     target_compile_definitions(libdeflate_shared PUBLIC LIBDEFLATE_DLL)
     target_compile_definitions(libdeflate_shared PRIVATE ${LIB_COMPILE_DEFINITIONS})
