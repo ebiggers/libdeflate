@@ -107,13 +107,12 @@ function(configure_framework libtype)
             MACOSX_FRAMEWORK_BUNDLE_VERSION "${VERSION_STRING}"
             MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${PROJECT_VERSION}"
             MACOSX_RPATH TRUE
-            # RESOURCE "${LIBDEFLATE_RESOURCES}"
         )
 
         set(RES_DEST_DIR "$<TARGET_FILE_DIR:${libtype}>/Resources")
         add_custom_command(TARGET ${libtype} POST_BUILD
           COMMAND ${CMAKE_COMMAND} -E make_directory "${RES_DEST_DIR}"
-          COMMAND ${CMAKE_COMMAND} -E copy ${LIBDEFLATE_RESOURCES} "${RES_DEST_DIR}/"
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LIBDEFLATE_RESOURCES} "${RES_DEST_DIR}/"
           COMMENT "Copying resource files to ${libtype}.framework/Resources"
         )
     endif()
@@ -252,6 +251,7 @@ set(LIBDEFLATE_RESOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
     "${CMAKE_CURRENT_SOURCE_DIR}/COPYING"
     "${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/libdeflate-targets.cmake"
 )
 message(STATUS "Resource files: ${LIBDEFLATE_RESOURCES}")
 
@@ -309,6 +309,13 @@ install(TARGETS ${LIB_TARGETS}
         FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime OPTIONAL
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+# Install resource files to Resources/ directory in the framework
+if(LIBDEFLATE_APPLE_FRAMEWORK)
+    install(FILES ${LIBDEFLATE_RESOURCES}
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/libdeflate_static.framework/Resources"
+    )
+endif()
 
 # Generate and install the pkg-config file.  (Don't confuse this with the CMake
 # package config file, which is CMake-specific.)  Take care to define the
