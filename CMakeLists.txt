@@ -246,14 +246,16 @@ set(LIB_INCLUDE_DIRS
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_FULL_INCLUDEDIR}>)
 
+if(LIBDEFLATE_APPLE_FRAMEWORK)
 # Define resource files for Apple Framework
-set(LIBDEFLATE_RESOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/COPYING"
-    "${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/libdeflate-targets.cmake"
-)
-message(STATUS "Resource files: ${LIBDEFLATE_RESOURCES}")
+    set(LIBDEFLATE_RESOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+        "${CMAKE_CURRENT_SOURCE_DIR}/COPYING"
+        "${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/libdeflate-targets.cmake"
+    )
+    message(STATUS "Resource files: ${LIBDEFLATE_RESOURCES}")
+endif()
 
 # Build the static library.
 if(LIBDEFLATE_BUILD_STATIC_LIB)
