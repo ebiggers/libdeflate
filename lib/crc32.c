@@ -258,5 +258,5 @@ libdeflate_crc32(u32 crc, const void *p, size_t len)
 {
 	if (p == NULL) /* Return initial value. */
 		return 0;
-	return ~crc32_impl(~crc, p, len);
+	return ~crc32_impl(~crc, (const u8*)p, len);
 }
