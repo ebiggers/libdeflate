@@ -1,5 +1,15 @@
 # libdeflate release notes
 
+## Version 1.24
+
+* The CMake-based build system now supports Apple Framework builds.
+
+* libdeflate now builds for Windows ARM64EC.
+
+* Made another small optimization to the x86 and ARM CRC32 code.
+
+* Fixed a compiler warning on certain platforms (issue #416).
+
 ## Version 1.23
 
 * Fixed bug introduced in 1.20 where incorrect checksums could be calculated if
