@@ -63,8 +63,8 @@
 #  else
 #    define VDPBUSD(a, b, c)	_mm_dpbusd_avx_epi32((a), (b), (c))
 #  endif
-#  define VLOAD(p)		_mm_load_si128((const void *)(p))
-#  define VLOADU(p)		_mm_loadu_si128((const void *)(p))
+#  define VLOAD(p)		_mm_load_si128((const vec_t*)(const void *)(p))
+#  define VLOADU(p)		_mm_loadu_si128((const vec_t*)(const void *)(p))
 #  define VMADD16(a, b)		_mm_madd_epi16((a), (b))
 #  define VMASKZ_LOADU(mask, p) _mm_maskz_loadu_epi8((mask), (p))
 #  define VMULLO32(a, b)	_mm_mullo_epi32((a), (b))
@@ -87,8 +87,8 @@
 #  else
 #    define VDPBUSD(a, b, c)	_mm256_dpbusd_avx_epi32((a), (b), (c))
 #  endif
-#  define VLOAD(p)		_mm256_load_si256((const void *)(p))
-#  define VLOADU(p)		_mm256_loadu_si256((const void *)(p))
+#  define VLOAD(p)		_mm256_load_si256((const vec_t*)(const void *)(p))
+#  define VLOADU(p)		_mm256_loadu_si256((const vec_t*)(const void *)(p))
 #  define VMADD16(a, b)		_mm256_madd_epi16((a), (b))
 #  define VMASKZ_LOADU(mask, p) _mm256_maskz_loadu_epi8((mask), (p))
 #  define VMULLO32(a, b)	_mm256_mullo_epi32((a), (b))

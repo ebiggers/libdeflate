@@ -3900,7 +3900,7 @@ libdeflate_alloc_compressor_ex(int compression_level,
 			size += sizeof(c->p.f);
 	}
 
-	c = libdeflate_aligned_malloc(options->malloc_func ?
+	c = (struct libdeflate_compressor*)libdeflate_aligned_malloc(options->malloc_func ?
 				      options->malloc_func :
 				      libdeflate_default_malloc_func,
 				      MATCHFINDER_MEM_ALIGNMENT, size);
@@ -4032,18 +4032,18 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	 * uncompressed blocks.
 	 */
 	if (unlikely(in_nbytes <= c->max_passthrough_size))
-		return deflate_compress_none(in, in_nbytes,
-					     out, out_nbytes_avail);
+		return deflate_compress_none((const u8*)in, in_nbytes,
+					     (u8*)out, out_nbytes_avail);
 
 	/* Initialize the output bitstream structure. */
 	os.bitbuf = 0;
 	os.bitcount = 0;
-	os.next = out;
+	os.next = (u8*)out;
 	os.end = os.next + out_nbytes_avail;
 	os.overflow = false;
 
 	/* Call the actual compression function. */
-	(*c->impl)(c, in, in_nbytes, &os);
+	(*c->impl)(c, (const u8*)in, in_nbytes, &os);
 
 	/* Return 0 if the output buffer is too small. */
 	if (os.overflow)
