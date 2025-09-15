@@ -108,12 +108,10 @@ jobs:
     strategy:
       matrix:
         include:
-        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: v143,    vs: x64,   vcpkg: x64-windows}
-        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: ClangCL, vs: x64,   vcpkg: x64-windows}
-        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: v143,    vs: Win32, vcpkg: x86-windows}
-        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: ClangCL, vs: Win32, vcpkg: x86-windows}
-        - {os: windows-2019, gen: "Visual Studio 16 2019", toolset: v142,    vs: x64,   vcpkg: x64-windows}
-        - {os: windows-2019, gen: "Visual Studio 16 2019", toolset: v142,    vs: Win32, vcpkg: x86-windows}
+        - {os: windows-latest, gen: "Visual Studio 17 2022", toolset: v143,    vs: x64,   vcpkg: x64-windows}
+        - {os: windows-latest, gen: "Visual Studio 17 2022", toolset: ClangCL, vs: x64,   vcpkg: x64-windows}
+        - {os: windows-latest, gen: "Visual Studio 17 2022", toolset: v143,    vs: Win32, vcpkg: x86-windows}
+        - {os: windows-latest, gen: "Visual Studio 17 2022", toolset: ClangCL, vs: Win32, vcpkg: x86-windows}
     runs-on: ${{matrix.os}}
     steps:
     - uses: actions/checkout@v4
