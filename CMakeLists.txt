@@ -6,6 +6,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build" FORCE)
 endif()
 
+if(DEFINED CMAKE_C_FLAGS_RELEASE)
+    set(LIBDEFLATE_USER_SET_RELEASE_FLAGS ON)
+endif()
+
 # With MSVC, don't automatically append /W3 to the compiler flags.
 # This makes it possible for the user to select /W4.
 if(POLICY CMP0092)
@@ -64,7 +68,10 @@ if(NOT LIBDEFLATE_BUILD_STATIC_LIB)
 endif()
 
 # Set common C compiler flags for all targets (the library and the programs).
-set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG")
+if(NOT LIBDEFLATE_USER_SET_RELEASE_FLAGS)
+    set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG"
+        CACHE STRING "C compiler flags for release builds" FORCE)
+endif()
 set(CMAKE_C_STANDARD 99)
 if(NOT MSVC)
     check_c_compiler_flag(-Wdeclaration-after-statement HAVE_WDECLARATION_AFTER_STATEMENT)
