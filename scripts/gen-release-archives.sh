@@ -19,7 +19,9 @@ zipfile="${dir}.zip"
 echo "Generating $zipfile"
 rm -rf build "$dir" "$zipfile"
 CFLAGS="-Werror" x86_64-w64-mingw32-cmake -B build -G Ninja \
-	-DLIBDEFLATE_BUILD_TESTS=1 > /dev/null
+	-DLIBDEFLATE_BUILD_TESTS=1 -DZLIB_USE_STATIC_LIBS=1 \
+	-DCMAKE_EXE_LINKER_FLAGS="-static-libgcc" \
+	-DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc" > /dev/null
 cmake --build build > /dev/null
 mkdir "$dir"
 cp libdeflate.h build/libdeflate.{dll,dll.a,a} \
