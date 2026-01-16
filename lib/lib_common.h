@@ -13,10 +13,18 @@
 #  error "lib_common.h must always be included before libdeflate.h"
 #endif
 
-#if defined(LIBDEFLATE_DLL) && (defined(_WIN32) || defined(__CYGWIN__))
-#  define LIBDEFLATE_EXPORT_SYM  __declspec(dllexport)
+#if defined(_WIN32) || defined(__CYGWIN__)
+#  ifdef LIBDEFLATE_DLL
+#    define LIBDEFLATE_EXPORT_SYM  __declspec(dllexport)
+#  else
+#    define LIBDEFLATE_EXPORT_SYM
+#  endif
 #elif defined(__GNUC__)
-#  define LIBDEFLATE_EXPORT_SYM  __attribute__((visibility("default")))
+#  ifdef LIBDEFLATE_DLL
+#    define LIBDEFLATE_EXPORT_SYM  __attribute__((visibility("default")))
+#  else
+#    define LIBDEFLATE_EXPORT_SYM  __attribute__((visibility("hidden")))
+#  endif
 #else
 #  define LIBDEFLATE_EXPORT_SYM
 #endif
