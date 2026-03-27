@@ -563,7 +563,7 @@ tmain(int argc, tchar *argv[])
 	options.force = false;
 	options.keep = false;
 	options.test = false;
-	options.compression_level = 6;
+	options.compression_level = -1;
 	options.suffix = T(".gz");
 
 	while ((opt_char = tgetopt(argc, argv, optstring)) != -1) {
