@@ -146,7 +146,7 @@ following bindings:
 * C#: [LibDeflate.NET](https://github.com/jzebedee/LibDeflate.NET)
 * Delphi: [libdeflate-pas](https://github.com/zedxxx/libdeflate-pas)
 * Go: [go-libdeflate](https://github.com/4kills/go-libdeflate)
-* Java: [libdeflate-java](https://github.com/astei/libdeflate-java)
+* Java: [jlibdeflate](https://github.com/fulcrumgenomics/jlibdeflate)
 * Julia: [LibDeflate.jl](https://github.com/jakobnissen/LibDeflate.jl)
 * Nim: [libdeflate-nim](https://github.com/gemesa/libdeflate-nim)
 * Perl: [Gzip::Libdeflate](https://github.com/benkasminbullock/gzip-libdeflate)
