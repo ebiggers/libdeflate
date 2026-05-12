@@ -202,10 +202,10 @@ if [ "$GZIP" = /bin/gzip ] || [ "$GZIP" = /usr/bin/gzip ]; then
 	assert_error '\<invalid option\>' gzip -10
 	max_level=9
 else
-	for level in 13 99999 1a; do
+	for level in 14 99999 1a; do
 		assert_error '\<Invalid compression level\>' gzip -$level
 	done
-	max_level=12
+	max_level=13
 fi
 for level in $(seq 1 $max_level); do
 	gzip -c "-$level" file > "file$level"
