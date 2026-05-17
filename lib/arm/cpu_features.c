@@ -68,7 +68,7 @@ static void scan_auxv(unsigned long *hwcap, unsigned long *hwcap2)
 	int filled = 0;
 	int i;
 
-	fd = open("/proc/self/auxv", O_RDONLY);
+	fd = open("/proc/self/auxv", O_RDONLY | O_CLOEXEC);
 	if (fd < 0)
 		return;
 
@@ -149,7 +149,7 @@ static bool arm64_cpu_is_neoverse_v_class(void)
 	u32 part;
 
 	fd = open("/sys/devices/system/cpu/cpu0/regs/identification/midr_el1",
-		  O_RDONLY);
+		  O_RDONLY | O_CLOEXEC);
 	if (fd < 0)
 		return false;
 	do {
