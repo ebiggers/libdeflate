@@ -482,14 +482,14 @@ parse_compression_level(tchar opt_char, const tchar *arg)
 		level = (level * 10) + (arg[0] - '0');
 	}
 
-	if (level < 0 || level > 12)
+	if (level < 0 || level > 13)
 		goto invalid;
 
 	return level;
 
 invalid:
 	msg("Invalid compression level: \"%"TC"%"TS"\".  "
-	    "Must be an integer in the range [0, 12].", opt_char, arg);
+	    "Must be an integer in the range [0, 13].", opt_char, arg);
 	return -1;
 }
 

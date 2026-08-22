@@ -29,8 +29,8 @@ multifile()
 
 	NUM_ITERATIONS=1
 
-	echo "File | zlib -6 | zlib -9 | libdeflate -6 | libdeflate -9 | libdeflate -12"
-	echo "-----|---------|---------|---------------|---------------|---------------"
+	echo "File | zlib -6 | zlib -9 | libdeflate -6 | libdeflate -9 | libdeflate -12 | libdeflate -13"
+	echo "-----|---------|---------|---------------|---------------|----------------|---------------"
 
 	for file in "$@"; do
 		echo -n "$(basename "$file")"
@@ -46,6 +46,8 @@ multifile()
 		run_benchmark "${cmd[@]}" -9
 		results+=("$CSIZE")
 		run_benchmark "${cmd[@]}" -12
+		results+=("$CSIZE")
+		run_benchmark "${cmd[@]}" -13
 		results+=("$CSIZE")
 		best=2000000000
 		for result in "${results[@]}"; do
@@ -87,7 +89,7 @@ single_file()
 		echo -n "|------------------"
 	fi
 	echo "|-----"
-	for level in {1..12}; do
+	for level in {1..13}; do
 		echo -n "$level"
 		args=("$file" -s "$usize" "-$level")
 

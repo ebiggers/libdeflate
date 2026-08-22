@@ -66,6 +66,7 @@ show_usage(FILE *fp)
 "  -1        fastest (worst) compression\n"
 "  -6        medium compression (default)\n"
 "  -12       slowest (best) compression\n"
+"  -13       extremely slow compression\n"
 "  -c        write to standard output\n"
 "  -d        decompress\n"
 "  -f        overwrite existing output files; (de)compress hard-linked files;\n"

@@ -29,7 +29,7 @@ for level in 0 1 3 7 9; do
 		run_cmd ./benchmark -$level $ref_impl "$TESTDATA"
 	done
 done
-for level in 0 1 3 7 9 12; do
+for level in 0 1 3 7 9 12 13; do
 	for ref_impl in '' '-Z'; do
 		run_cmd ./benchmark -$level $ref_impl "$TESTDATA"
 	done
