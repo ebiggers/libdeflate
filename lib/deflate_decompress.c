@@ -1137,6 +1137,9 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret)
 {
+	if (unlikely(!d || !in || (!out && out_nbytes_avail > 0)))
+		return LIBDEFLATE_BAD_DATA;
+
 	return decompress_impl(d, in, in_nbytes, out, out_nbytes_avail,
 			       actual_in_nbytes_ret, actual_out_nbytes_ret);
 }
@@ -1161,7 +1164,7 @@ libdeflate_alloc_decompressor_ex(const struct libdeflate_options *options)
 	 * Note: if more fields are added to libdeflate_options, this code will
 	 * need to be updated to support both the old and new structs.
 	 */
-	if (options->sizeof_options != sizeof(*options))
+	if (!options || options->sizeof_options != sizeof(*options))
 		return NULL;
 
 	d = (options->malloc_func ? options->malloc_func :

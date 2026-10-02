@@ -3882,7 +3882,7 @@ libdeflate_alloc_compressor_ex(int compression_level,
 	 * Note: if more fields are added to libdeflate_options, this code will
 	 * need to be updated to support both the old and new structs.
 	 */
-	if (options->sizeof_options != sizeof(*options))
+	if (!options || options->sizeof_options != sizeof(*options))
 		return NULL;
 
 	/*
@@ -4033,6 +4033,9 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 			    void *out, size_t out_nbytes_avail)
 {
 	struct deflate_output_bitstream os;
+
+	if (unlikely(!c || !out || (!in && in_nbytes > 0)))
+		return 0;
 
 	/*
 	 * For extremely short inputs, or for compression level 0, just output

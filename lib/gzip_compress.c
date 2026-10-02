@@ -38,6 +38,9 @@ libdeflate_gzip_compress(struct libdeflate_compressor *c,
 	u8 xfl;
 	size_t deflate_size;
 
+	if (unlikely(!c || !out || (!in && in_nbytes > 0)))
+		return 0;
+
 	if (out_nbytes_avail <= GZIP_MIN_OVERHEAD)
 		return 0;
 

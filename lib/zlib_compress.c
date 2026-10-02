@@ -39,6 +39,9 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 	unsigned level_hint;
 	size_t deflate_size;
 
+	if (unlikely(!c || !out || (!in && in_nbytes > 0)))
+		return 0;
+
 	if (out_nbytes_avail <= ZLIB_MIN_OVERHEAD)
 		return 0;
 

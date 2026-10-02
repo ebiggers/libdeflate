@@ -62,8 +62,13 @@ LIBDEFLATEAPI void
 libdeflate_set_memory_allocator(malloc_func_t malloc_func,
 				free_func_t free_func)
 {
+#ifndef FREESTANDING
+	libdeflate_default_malloc_func = malloc_func ? malloc_func : malloc;
+	libdeflate_default_free_func = free_func ? free_func : free;
+#else
 	libdeflate_default_malloc_func = malloc_func;
 	libdeflate_default_free_func = free_func;
+#endif
 }
 
 /*

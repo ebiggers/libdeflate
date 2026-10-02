@@ -42,6 +42,9 @@ libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *d,
 	size_t actual_out_nbytes;
 	enum libdeflate_result result;
 
+	if (unlikely(!d || !in || (!out && out_nbytes_avail > 0)))
+		return LIBDEFLATE_BAD_DATA;
+
 	if (in_nbytes < GZIP_MIN_OVERHEAD)
 		return LIBDEFLATE_BAD_DATA;
 
