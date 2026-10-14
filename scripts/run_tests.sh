@@ -310,6 +310,12 @@ install_test()
 {
 	build
 	$MAKE -C build install DESTDIR=inst > /dev/null
+
+	local inst_dir="$PWD/build/inst-prefix"
+	DESTDIR="$inst_dir" cmake -DCMAKE_INSTALL_PREFIX=/prefix \
+		-P build/cmake_install.cmake > /dev/null
+	[ -f "$inst_dir/prefix/bin/libdeflate-gzip" ] || fail "gzip wasn't installed"
+	[ -f "$inst_dir/prefix/bin/libdeflate-gunzip" ] || fail "gunzip wasn't installed"
 }
 TEST_FUNCS+=(install_test)
 
