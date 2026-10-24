@@ -1,5 +1,13 @@
 # libdeflate release notes
 
+## [git master branch]
+
+* Compression at levels 5-9 is now faster on most data, with the largest
+  speedups at the highest levels: about 2-10% at level 5 and 30-55% at level 9,
+  depending on the platform.  The compressed output is unchanged.  As a
+  trade-off, the memory usage of compressors at levels 5-9 increased by 192 KiB
+  (64 KiB on 32-bit platforms).
+
 ## Version 1.26
 
 * Added support for compression level -1 as an alias for the default compression

@@ -51,6 +51,7 @@
 #  pragma warning(disable : 4232) /* nonstandard extension used */
 #  pragma warning(disable : 4245) /* conversion from 'int' to 'unsigned int' */
 #  pragma warning(disable : 4295) /* array too small to include terminating null */
+#  pragma warning(disable : 4324) /* structure padded due to alignment specifier */
 #endif
 #ifndef FREESTANDING
 #  include <string.h>	/* for memcpy() */
