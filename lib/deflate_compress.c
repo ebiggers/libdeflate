@@ -517,11 +517,14 @@ struct libdeflate_compressor {
 	union {
 		/* Data for greedy or lazy parsing */
 		struct {
-			/* Hash chains matchfinder */
-			struct hc_matchfinder hc_mf;
-
 			/* Matches and literals chosen for the current block */
 			struct deflate_sequence sequences[SEQ_STORE_LENGTH + 1];
+
+			/*
+			 * Hash chains matchfinder.  This must be last, since
+			 * only the part of it that will be used is allocated.
+			 */
+			struct hc_matchfinder hc_mf;
 
 		} g; /* (g)reedy */
 
@@ -2523,6 +2526,16 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 }
 
 /*
+ * Whether the greedy and lazy compressors use multi-hop links in the hash
+ * chains matchfinder (see 'next_tab' in hc_matchfinder.h).  Multi-hop links
+ * make searching faster but inserting slower, so they pay off only for the
+ * deeper searches done by the lazy compressors.  The choice doesn't affect the
+ * output.
+ */
+#define GREEDY_MULTI_HOP	false
+#define LAZY_MULTI_HOP		true
+
+/*
  * This is the "greedy" DEFLATE compressor. It always chooses the longest match.
  */
 static void
@@ -2537,7 +2550,7 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 	u32 nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
 
-	hc_matchfinder_init(&c->p.g.hc_mf);
+	hc_matchfinder_init(&c->p.g.hc_mf, GREEDY_MULTI_HOP);
 
 	do {
 		/* Starting a new DEFLATE block */
@@ -2568,7 +2581,8 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 						nice_len,
 						c->max_search_depth,
 						next_hashes,
-						&offset);
+						&offset,
+						GREEDY_MULTI_HOP);
 
 			if (length >= min_len &&
 			    (length > DEFLATE_MIN_MATCH_LEN ||
@@ -2581,7 +2595,8 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 							  in_next + 1,
 							  in_end,
 							  length - 1,
-							  next_hashes);
+							  next_hashes,
+							  GREEDY_MULTI_HOP);
 				in_next += length;
 			} else {
 				/* No match found */
@@ -2613,7 +2628,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 	u32 nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
 
-	hc_matchfinder_init(&c->p.g.hc_mf);
+	hc_matchfinder_init(&c->p.g.hc_mf, LAZY_MULTI_HOP);
 
 	do {
 		/* Starting a new DEFLATE block */
@@ -2662,7 +2677,8 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						nice_len,
 						c->max_search_depth,
 						next_hashes,
-						&cur_offset);
+						&cur_offset,
+						LAZY_MULTI_HOP);
 			if (cur_len < min_len ||
 			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
 			     cur_offset > 8192)) {
@@ -2686,7 +2702,8 @@ have_cur_match:
 							  in_next,
 							  in_end,
 							  cur_len - 1,
-							  next_hashes);
+							  next_hashes,
+							  LAZY_MULTI_HOP);
 				in_next += cur_len - 1;
 				continue;
 			}
@@ -2718,7 +2735,8 @@ have_cur_match:
 						nice_len,
 						c->max_search_depth >> 1,
 						next_hashes,
-						&next_offset);
+						&next_offset,
+						LAZY_MULTI_HOP);
 			if (next_len >= cur_len &&
 			    4 * (int)(next_len - cur_len) +
 			    ((int)bsr32(cur_offset) -
@@ -2748,7 +2766,8 @@ have_cur_match:
 						nice_len,
 						c->max_search_depth >> 2,
 						next_hashes,
-						&next_offset);
+						&next_offset,
+						LAZY_MULTI_HOP);
 				if (next_len >= cur_len &&
 				    4 * (int)(next_len - cur_len) +
 				    ((int)bsr32(cur_offset) -
@@ -2777,7 +2796,8 @@ have_cur_match:
 								  in_next,
 								  in_end,
 								  cur_len - 3,
-								  next_hashes);
+								  next_hashes,
+								  LAZY_MULTI_HOP);
 					in_next += cur_len - 3;
 				}
 			} else { /* !lazy2 */
@@ -2792,7 +2812,8 @@ have_cur_match:
 							  in_next,
 							  in_end,
 							  cur_len - 2,
-							  next_hashes);
+							  next_hashes,
+							  LAZY_MULTI_HOP);
 				in_next += cur_len - 2;
 			}
 			/* Check if it's time to output another block. */
@@ -3901,10 +3922,16 @@ libdeflate_alloc_compressor_ex(int compression_level,
 	else
 #endif
 	{
-		if (compression_level >= 2)
-			size += sizeof(c->p.g);
-		else if (compression_level == 1)
+		if (compression_level >= 2) {
+			/* Levels 5 and higher use the lazy compressors. */
+			size = offsetof(struct libdeflate_compressor,
+					p.g.hc_mf) +
+			       hc_matchfinder_size(compression_level >= 5 ?
+						   LAZY_MULTI_HOP :
+						   GREEDY_MULTI_HOP);
+		} else if (compression_level == 1) {
 			size += sizeof(c->p.f);
+		}
 	}
 
 	c = libdeflate_aligned_malloc(options->malloc_func ?

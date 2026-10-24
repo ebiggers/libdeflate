@@ -101,6 +101,11 @@
  * bytes of a potential match.  It is only when these bytes match that a full
  * match extension is attempted.
  *
+ * Optionally, each linked list node can store not just the next node but the
+ * next several nodes ("hops"); see 'next_tab'.  This makes walking the lists
+ * much faster on modern CPUs, at the cost of more memory and slightly slower
+ * insertion.  It's worthwhile for compressors that search deeply.
+ *
  * ----------------------------------------------------------------------------
  */
 
@@ -116,6 +121,20 @@
 	(((1UL << HC_MATCHFINDER_HASH3_ORDER) +		\
 	  (1UL << HC_MATCHFINDER_HASH4_ORDER)) * sizeof(mf_pos_t))
 
+/*
+ * Type of a multi-hop link in 'next_tab'.  This is 'machine_word_t', annotated
+ * with 'may_alias' because matchfinder_rebase() accesses it as 'mf_pos_t'.
+ */
+#if defined(__GNUC__) || __has_attribute(may_alias)
+typedef machine_word_t __attribute__((may_alias)) hc_link_t;
+#else
+typedef machine_word_t hc_link_t;
+#endif
+
+/* The number of hops in a multi-hop link; see 'next_tab'.  */
+#define HC_MATCHFINDER_HOPS_PER_WORD	\
+	((int)(sizeof(hc_link_t) / sizeof(mf_pos_t)))
+
 struct MATCHFINDER_ALIGNED hc_matchfinder  {
 
 	/* The hash table for finding length 3 matches  */
@@ -125,27 +144,124 @@ struct MATCHFINDER_ALIGNED hc_matchfinder  {
 	 * finding length 4+ matches  */
 	mf_pos_t hash4_tab[1UL << HC_MATCHFINDER_HASH4_ORDER];
 
-	/* The "next node" references for the linked lists.  The "next node" of
-	 * the node for the sequence with position 'pos' is 'next_tab[pos]'.  */
-	mf_pos_t next_tab[MATCHFINDER_WINDOW_SIZE];
+	/*
+	 * The "links" from each linked list node to the nodes that follow it.
+	 * The link of the node for the sequence with position 'pos' is either
+	 * 'single_hop[pos]' or 'multi_hop[pos]', depending on the 'multi_hop'
+	 * parameter of the matchfinder functions.  'multi_hop' must be a
+	 * compile-time constant, and it must be the same for all calls that use
+	 * the same matchfinder.
+	 *
+	 * A single-hop link is just the next node.  A multi-hop link is the
+	 * next HC_MATCHFINDER_HOPS_PER_WORD nodes, packed as 16-bit fields: the
+	 * next node in bits 0-15, the node after that in bits 16-31, and so on.
+	 *
+	 * Multi-hop links make the linked lists faster to walk.  Walking a list
+	 * is otherwise a chain of dependent memory loads, where each load's
+	 * address comes from the previous load; and since the links don't fit
+	 * in the L1 cache, each step can take the full latency of an L2 cache
+	 * access.  With N hops per link, only one in every N steps needs to
+	 * wait for a load.
+	 *
+	 * The extra hops are easy to maintain, as the lists are only ever
+	 * modified by prepending a node: the new node's link is just the old
+	 * first node, followed by the first N-1 hops of the old first node's
+	 * link.  The visited nodes are exactly the same as with single-hop
+	 * links, so the matches found are too.  However, inserting a node now
+	 * requires loading the old first node's link, which makes insertion
+	 * slower.  So multi-hop links are worthwhile only when searching
+	 * deeply.
+	 *
+	 * Each hop is a 16-bit field, so either kind of link can be rebased
+	 * together with the hash tables as an array of mf_pos_t.
+	 *
+	 * This must be the last member, so that the space for multi-hop links
+	 * needn't be allocated when they aren't used; see
+	 * hc_matchfinder_size().
+	 */
+	union {
+		mf_pos_t single_hop[MATCHFINDER_WINDOW_SIZE];
+		hc_link_t multi_hop[MATCHFINDER_WINDOW_SIZE];
+	} next_tab;
 };
+
+/*
+ * Return the number of bytes at the start of struct hc_matchfinder that are
+ * used.  When multi-hop links aren't used, the rest needn't be allocated.
+ */
+static forceinline size_t
+hc_matchfinder_size(bool multi_hop)
+{
+	return offsetof(struct hc_matchfinder, next_tab) +
+	       MATCHFINDER_WINDOW_SIZE *
+	       (multi_hop ? sizeof(hc_link_t) : sizeof(mf_pos_t));
+}
+
+/* Return the multi-hop link of the node with position @node.  */
+static forceinline hc_link_t
+hc_matchfinder_get_link(const struct hc_matchfinder *mf, mf_pos_t node)
+{
+	return mf->next_tab.multi_hop[node & (MATCHFINDER_WINDOW_SIZE - 1)];
+}
+
+/* Return the last node of the multi-hop link @link.  */
+static forceinline mf_pos_t
+hc_last_hop(hc_link_t link)
+{
+	return (mf_pos_t)(link >> (16 * (HC_MATCHFINDER_HOPS_PER_WORD - 1)));
+}
+
+/*
+ * Prepend the node for the sequence with position @cur_pos to the linked list
+ * whose first node is @old_first.  If @multi_hop, return the link of @old_first
+ * (which is needed to build the new node's link anyway); otherwise return 0.
+ */
+static forceinline hc_link_t
+hc_matchfinder_prepend(struct hc_matchfinder *mf, u32 cur_pos,
+		       mf_pos_t old_first, bool multi_hop)
+{
+	hc_link_t old_first_link;
+
+	if (!multi_hop) {
+		mf->next_tab.single_hop[cur_pos] = old_first;
+		return 0;
+	}
+	old_first_link = hc_matchfinder_get_link(mf, old_first);
+	mf->next_tab.multi_hop[cur_pos] =
+		(old_first_link << 16) | (u16)old_first;
+	return old_first_link;
+}
 
 /* Prepare the matchfinder for a new input buffer.  */
 static forceinline void
-hc_matchfinder_init(struct hc_matchfinder *mf)
+hc_matchfinder_init(struct hc_matchfinder *mf, bool multi_hop)
 {
 	STATIC_ASSERT(HC_MATCHFINDER_TOTAL_HASH_SIZE %
 		      MATCHFINDER_SIZE_ALIGNMENT == 0);
 
 	matchfinder_init((mf_pos_t *)mf, HC_MATCHFINDER_TOTAL_HASH_SIZE);
+
+	/*
+	 * With multi-hop links, the first node inserted will have the link of
+	 * MATCHFINDER_INITVAL, i.e. of position 0, copied into its link.  The
+	 * copied hops will never be visited, but make sure they're initialized
+	 * anyway.  The rest of 'next_tab' needn't be initialized, since every
+	 * other link that gets read is a link that was written.
+	 */
+	if (multi_hop)
+		mf->next_tab.multi_hop[0] = (hc_link_t)0x0001000100010001 *
+					    (u16)MATCHFINDER_INITVAL;
 }
 
 static forceinline void
-hc_matchfinder_slide_window(struct hc_matchfinder *mf)
+hc_matchfinder_slide_window(struct hc_matchfinder *mf, bool multi_hop)
 {
+	STATIC_ASSERT(sizeof(mf->next_tab.single_hop) %
+		      MATCHFINDER_SIZE_ALIGNMENT == 0);
 	STATIC_ASSERT(sizeof(*mf) % MATCHFINDER_SIZE_ALIGNMENT == 0);
 
-	matchfinder_rebase((mf_pos_t *)mf, sizeof(*mf));
+	/* Rebase the hash tables and the part of 'next_tab' that is used.  */
+	matchfinder_rebase((mf_pos_t *)mf, hc_matchfinder_size(multi_hop));
 }
 
 /*
@@ -175,6 +291,8 @@ hc_matchfinder_slide_window(struct hc_matchfinder *mf)
  *	the sequence beginning at @in_next + 1.
  * @offset_ret
  *	If a match is found, its offset is returned in this location.
+ * @multi_hop
+ *	Whether to use multi-hop links; see 'next_tab'.
  *
  * Return the length of the match found, or 'best_len' if no match longer than
  * 'best_len' was found.
@@ -188,11 +306,15 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 			     const u32 nice_len,
 			     const u32 max_search_depth,
 			     u32 * const next_hashes,
-			     u32 * const offset_ret)
+			     u32 * const offset_ret,
+			     const bool multi_hop)
 {
 	u32 depth_remaining = max_search_depth;
 	const u8 *best_matchptr = in_next;
 	mf_pos_t cur_node3, cur_node4;
+	hc_link_t cur_link = 0; /* nodes after cur_node4 (if multi_hop) */
+	hc_link_t next_link = 0; /* link of the last node in 'cur_link' */
+	unsigned link_remaining = 0; /* number of nodes left in 'cur_link' */
 	u32 hash3, hash4;
 	u32 next_hashseq;
 	u32 seq4;
@@ -203,7 +325,7 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 	mf_pos_t cutoff;
 
 	if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
-		hc_matchfinder_slide_window(mf);
+		hc_matchfinder_slide_window(mf, multi_hop);
 		*in_base_p += MATCHFINDER_WINDOW_SIZE;
 		cur_pos = 0;
 	}
@@ -229,7 +351,7 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 	/* Update for length 4 matches.  This prepends the node for the current
 	 * sequence to the linked list in the 'hash4' bucket.  */
 	mf->hash4_tab[hash4] = cur_pos;
-	mf->next_tab[cur_pos] = cur_node4;
+	cur_link = hc_matchfinder_prepend(mf, cur_pos, cur_node4, multi_hop);
 
 	/* Compute the next hash codes.  */
 	next_hashseq = get_unaligned_le32(in_next + 1);
@@ -237,6 +359,44 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 	next_hashes[1] = lz_hash(next_hashseq, HC_MATCHFINDER_HASH4_ORDER);
 	prefetchw(&mf->hash3_tab[next_hashes[0]]);
 	prefetchw(&mf->hash4_tab[next_hashes[1]]);
+
+/*
+ * Prepare to walk the linked list.  'cur_link' contains the nodes that follow
+ * the first node.  Already start loading the link of the last of them, so that
+ * it will hopefully be available by the time it's needed.
+ */
+#define HC_BEGIN_WALK()							\
+	do {								\
+		if (multi_hop) {					\
+			link_remaining = HC_MATCHFINDER_HOPS_PER_WORD;	\
+			next_link = hc_matchfinder_get_link(mf,		\
+						hc_last_hop(cur_link));	\
+		}							\
+	} while (0)
+
+/* Advance to the next node in the linked list.  */
+#define HC_ADVANCE()							\
+	do {								\
+		if (!multi_hop) {					\
+			cur_node4 = mf->next_tab.single_hop[cur_node4 &	\
+					(MATCHFINDER_WINDOW_SIZE - 1)];	\
+		} else {						\
+			cur_node4 = (mf_pos_t)cur_link;			\
+			if (--link_remaining != 0) {			\
+				cur_link >>= 16;			\
+			} else {					\
+				/* cur_node4 is the last node of the	\
+				 * old 'cur_link', so 'next_link' is	\
+				 * its link.  Use it, and start loading	\
+				 * the link of its last node.  */	\
+				cur_link = next_link;			\
+				link_remaining =			\
+					HC_MATCHFINDER_HOPS_PER_WORD;	\
+				next_link = hc_matchfinder_get_link(mf,	\
+						hc_last_hop(cur_link));	\
+			}						\
+		}							\
+	} while (0)
 
 	if (best_len < 4) {  /* No match of length >= 4 found yet?  */
 
@@ -260,6 +420,7 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 		if (cur_node4 <= cutoff)
 			goto out;
 
+		HC_BEGIN_WALK();
 		for (;;) {
 			/* No length 4 match found yet.  Check the first 4 bytes.  */
 			matchptr = &in_base[cur_node4];
@@ -268,7 +429,7 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 				break;
 
 			/* The first 4 bytes did not match.  Keep trying.  */
-			cur_node4 = mf->next_tab[cur_node4 & (MATCHFINDER_WINDOW_SIZE - 1)];
+			HC_ADVANCE();
 			if (cur_node4 <= cutoff || !--depth_remaining)
 				goto out;
 		}
@@ -278,12 +439,13 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 		best_len = lz_extend(in_next, best_matchptr, 4, max_len);
 		if (best_len >= nice_len)
 			goto out;
-		cur_node4 = mf->next_tab[cur_node4 & (MATCHFINDER_WINDOW_SIZE - 1)];
+		HC_ADVANCE();
 		if (cur_node4 <= cutoff || !--depth_remaining)
 			goto out;
 	} else {
 		if (cur_node4 <= cutoff || best_len >= nice_len)
 			goto out;
+		HC_BEGIN_WALK();
 	}
 
 	/* Check for matches of length >= 5.  */
@@ -308,7 +470,7 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 				break;
 
 			/* Continue to the next node in the list.  */
-			cur_node4 = mf->next_tab[cur_node4 & (MATCHFINDER_WINDOW_SIZE - 1)];
+			HC_ADVANCE();
 			if (cur_node4 <= cutoff || !--depth_remaining)
 				goto out;
 		}
@@ -328,10 +490,12 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 		}
 
 		/* Continue to the next node in the list.  */
-		cur_node4 = mf->next_tab[cur_node4 & (MATCHFINDER_WINDOW_SIZE - 1)];
+		HC_ADVANCE();
 		if (cur_node4 <= cutoff || !--depth_remaining)
 			goto out;
 	}
+#undef HC_BEGIN_WALK
+#undef HC_ADVANCE
 out:
 	*offset_ret = in_next - best_matchptr;
 	return best_len;
@@ -356,6 +520,8 @@ out:
  *	The precomputed hash codes for the sequence beginning at @in_next.
  *	These will be used and then updated with the precomputed hashcodes for
  *	the sequence beginning at @in_next + @count.
+ * @multi_hop
+ *	Whether to use multi-hop links; see 'next_tab'.
  */
 static forceinline void
 hc_matchfinder_skip_bytes(struct hc_matchfinder * const mf,
@@ -363,7 +529,8 @@ hc_matchfinder_skip_bytes(struct hc_matchfinder * const mf,
 			  const u8 *in_next,
 			  const u8 * const in_end,
 			  const u32 count,
-			  u32 * const next_hashes)
+			  u32 * const next_hashes,
+			  const bool multi_hop)
 {
 	u32 cur_pos;
 	u32 hash3, hash4;
@@ -378,12 +545,13 @@ hc_matchfinder_skip_bytes(struct hc_matchfinder * const mf,
 	hash4 = next_hashes[1];
 	do {
 		if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
-			hc_matchfinder_slide_window(mf);
+			hc_matchfinder_slide_window(mf, multi_hop);
 			*in_base_p += MATCHFINDER_WINDOW_SIZE;
 			cur_pos = 0;
 		}
 		mf->hash3_tab[hash3] = cur_pos;
-		mf->next_tab[cur_pos] = mf->hash4_tab[hash4];
+		hc_matchfinder_prepend(mf, cur_pos, mf->hash4_tab[hash4],
+				       multi_hop);
 		mf->hash4_tab[hash4] = cur_pos;
 
 		next_hashseq = get_unaligned_le32(++in_next);
