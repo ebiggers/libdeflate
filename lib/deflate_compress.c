@@ -3189,6 +3189,12 @@ deflate_set_default_costs(struct libdeflate_compressor *c,
 {
 	u32 i;
 
+	/*
+	 * Also zero the entries that are never used, so that cost models can
+	 * be compared with memcmp().
+	 */
+	memset(&c->p.n.costs, 0, sizeof(c->p.n.costs));
+
 	/* Literals */
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
 		c->p.n.costs.literal[i] = lit_cost;
@@ -3499,6 +3505,14 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 		/* Update the cost model from the Huffman codes. */
 		deflate_set_costs_from_codes(c, &c->codes.lens);
 
+		/*
+		 * If the cost model didn't change, then another pass would just
+		 * find the same path again, and then stop because the cost
+		 * didn't improve.  Skip that pass.
+		 */
+		if (memcmp(&c->p.n.costs, &c->p.n.costs_saved,
+			   sizeof(c->p.n.costs)) == 0)
+			break;
 	} while (--num_passes_remaining);
 
 	*used_only_literals = false;
