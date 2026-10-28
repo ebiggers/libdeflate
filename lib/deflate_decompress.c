@@ -728,8 +728,13 @@ build_decode_table(u32 decode_table[],
 		   u16 *sorted_syms,
 		   unsigned *table_bits_ret)
 {
-	unsigned len_counts[DEFLATE_MAX_CODEWORD_LEN + 1];
-	unsigned offsets[DEFLATE_MAX_CODEWORD_LEN + 1];
+	union {
+		u16 c[4];
+		u64 w;
+	} part_counts[DEFLATE_MAX_CODEWORD_LEN + 1];
+	/* Initialized only to avoid a gcc -Wmaybe-uninitialized warning */
+	u16 len_counts[DEFLATE_MAX_CODEWORD_LEN + 1] = { 0 };
+	const unsigned part_len = num_syms / 4;
 	unsigned sym;		/* current symbol */
 	unsigned codeword;	/* current codeword, bit-reversed */
 	unsigned len;		/* current codeword length in bits */
@@ -740,52 +745,95 @@ build_decode_table(u32 decode_table[],
 	unsigned subtable_start;  /* start index of current subtable */
 	unsigned subtable_bits;   /* log2 of current subtable length */
 
-	/* Count how many codewords have each length, including 0. */
-	for (len = 0; len <= max_codeword_len; len++)
-		len_counts[len] = 0;
-	for (sym = 0; sym < num_syms; sym++)
-		len_counts[lens[sym]]++;
+	/*
+	 * Count how many codewords have each length, including 0.
+	 *
+	 * Consecutive symbols often have the same length, which would make a
+	 * simple counting loop a long chain of dependent increments of the same
+	 * counter.  To avoid that, split the symbols into 4 contiguous parts
+	 * (the last one also gets any remainder), and count the parts
+	 * separately in an interleaved way.
+	 */
+	memset(part_counts, 0, sizeof(part_counts));
+	for (sym = 0; sym < part_len; sym++) {
+		part_counts[lens[0 * part_len + sym]].c[0]++;
+		part_counts[lens[1 * part_len + sym]].c[1]++;
+		part_counts[lens[2 * part_len + sym]].c[2]++;
+		part_counts[lens[3 * part_len + sym]].c[3]++;
+	}
+	for (sym = 4 * part_len; sym < num_syms; sym++)
+		part_counts[lens[sym]].c[3]++;
+
+	/* Determine the actual maximum codeword length that was used. */
+	while (max_codeword_len > 1 && part_counts[max_codeword_len].w == 0)
+		max_codeword_len--;
 
 	/*
-	 * Determine the actual maximum codeword length that was used, and
-	 * decrease table_bits to it if allowed.
+	 * Make part_counts[] cumulative, in preparation for symbol sorting
+	 * (again using 4-way interleaving for performance).
+	 *
+	 * While doing so, also compute len_counts[] and codespace_used.
+	 *
+	 * Statically assert that codespace_used cannot overflow.
 	 */
-	while (max_codeword_len > 1 && len_counts[max_codeword_len] == 0)
-		max_codeword_len--;
-	if (table_bits_ret != NULL) {
-		table_bits = MIN(table_bits, max_codeword_len);
-		*table_bits_ret = table_bits;
+	STATIC_ASSERT(sizeof(codespace_used) == 4);
+	STATIC_ASSERT(UINT32_MAX / (1U << (DEFLATE_MAX_CODEWORD_LEN - 1)) >=
+		      DEFLATE_MAX_NUM_SYMS);
+	codespace_used = 0;
+	{
+		unsigned a = part_counts[0].c[0];
+		unsigned b = part_counts[0].c[1];
+		unsigned c = part_counts[0].c[2];
+		unsigned d = part_counts[0].c[3];
+
+		part_counts[0].c[0] = 0;
+		part_counts[0].c[1] = a;
+		part_counts[0].c[2] = a + b;
+		part_counts[0].c[3] = a + b + c;
+		len_counts[0] = a + b + c + d;
+		count = len_counts[0];
+	}
+	for (len = 1; len <= max_codeword_len; len++) {
+		unsigned a = part_counts[len].c[0];
+		unsigned b = part_counts[len].c[1];
+		unsigned c = part_counts[len].c[2];
+		unsigned d = part_counts[len].c[3];
+
+		part_counts[len].c[0] = count;
+		part_counts[len].c[1] = count + a;
+		part_counts[len].c[2] = count + a + b;
+		part_counts[len].c[3] = count + a + b + c;
+		len_counts[len] = a + b + c + d;
+		count += len_counts[len];
+		codespace_used = (codespace_used << 1) + len_counts[len];
 	}
 
 	/*
 	 * Sort the symbols primarily by increasing codeword length and
 	 * secondarily by increasing symbol value; or equivalently by their
 	 * codewords in lexicographic order, since a canonical code is assumed.
-	 *
-	 * For efficiency, also compute 'codespace_used' in the same pass over
-	 * 'len_counts[]' used to build 'offsets[]' for sorting.
 	 */
-
-	/* Ensure that 'codespace_used' cannot overflow. */
-	STATIC_ASSERT(sizeof(codespace_used) == 4);
-	STATIC_ASSERT(UINT32_MAX / (1U << (DEFLATE_MAX_CODEWORD_LEN - 1)) >=
-		      DEFLATE_MAX_NUM_SYMS);
-
-	offsets[0] = 0;
-	offsets[1] = len_counts[0];
-	codespace_used = 0;
-	for (len = 1; len < max_codeword_len; len++) {
-		offsets[len + 1] = offsets[len] + len_counts[len];
-		codespace_used = (codespace_used << 1) + len_counts[len];
+	for (sym = 0; sym < part_len; sym++) {
+		sorted_syms[part_counts[lens[0 * part_len + sym]].c[0]++] =
+			0 * part_len + sym;
+		sorted_syms[part_counts[lens[1 * part_len + sym]].c[1]++] =
+			1 * part_len + sym;
+		sorted_syms[part_counts[lens[2 * part_len + sym]].c[2]++] =
+			2 * part_len + sym;
+		sorted_syms[part_counts[lens[3 * part_len + sym]].c[3]++] =
+			3 * part_len + sym;
 	}
-	codespace_used = (codespace_used << 1) + len_counts[len];
-
-	for (sym = 0; sym < num_syms; sym++)
-		sorted_syms[offsets[lens[sym]]++] = sym;
-
-	sorted_syms += offsets[0]; /* Skip unused symbols */
+	for (sym = 4 * part_len; sym < num_syms; sym++)
+		sorted_syms[part_counts[lens[sym]].c[3]++] = sym;
+	sorted_syms += len_counts[0]; /* Skip unused symbols */
 
 	/* lens[] is done being used, so we can write to decode_table[] now. */
+
+	/* Decrease table_bits to max_codeword_len if allowed. */
+	if (table_bits_ret != NULL) {
+		table_bits = MIN(table_bits, max_codeword_len);
+		*table_bits_ret = table_bits;
+	}
 
 	/*
 	 * Check whether the lengths form a complete code (exactly fills the
