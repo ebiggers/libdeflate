@@ -3365,6 +3365,7 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 		unsigned num_matches;
 		u32 literal;
 		u32 best_cost_to_end;
+		u32 best_item;
 
 		cur_node--;
 		cache_ptr--;
@@ -3375,7 +3376,7 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 		/* It's always possible to choose a literal. */
 		best_cost_to_end = c->p.n.costs.literal[literal] +
 				   (cur_node + 1)->cost_to_end;
-		cur_node->item = (literal << OPTIMUM_OFFSET_SHIFT) | 1;
+		best_item = (literal << OPTIMUM_OFFSET_SHIFT) | 1;
 
 		/* Also consider matches if there are any. */
 		if (num_matches) {
@@ -3399,25 +3400,35 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 			match = cache_ptr - num_matches;
 			len = DEFLATE_MIN_MATCH_LEN;
 			do {
+				u32 offset_bits;
+
 				offset = match->offset;
 				offset_slot = c->p.n.offset_slot_full[offset];
 				offset_cost =
 					c->p.n.costs.offset_slot[offset_slot];
+				offset_bits = offset << OPTIMUM_OFFSET_SHIFT;
 				do {
+					bool better;
+
 					cost_to_end = offset_cost +
 						c->p.n.costs.length[len] +
 						(cur_node + len)->cost_to_end;
-					if (cost_to_end < best_cost_to_end) {
-						best_cost_to_end = cost_to_end;
-						cur_node->item = len |
-							(offset <<
-							 OPTIMUM_OFFSET_SHIFT);
-					}
+					/*
+					 * Whether this is the best choice so
+					 * far is hard to predict, so update the
+					 * best choice without branching.
+					 */
+					better = cost_to_end < best_cost_to_end;
+					best_cost_to_end = better ?
+						cost_to_end : best_cost_to_end;
+					best_item = better ?
+						(len | offset_bits) : best_item;
 				} while (++len <= match->length);
 			} while (++match != cache_ptr);
 			cache_ptr -= num_matches;
 		}
 		cur_node->cost_to_end = best_cost_to_end;
+		cur_node->item = best_item;
 	} while (cur_node != &c->p.n.optimum_nodes[0]);
 
 	deflate_reset_symbol_frequencies(c);

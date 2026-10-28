@@ -8,6 +8,10 @@
   trade-off, the memory usage of compressors at levels 5-9 increased by 192 KiB
   (64 KiB on 32-bit platforms).
 
+* Compression at levels 10-12 is now faster: about 15-20% at level 10 and
+  20-30% at levels 11 and 12, depending on the platform.  The compressed output
+  is unchanged.
+
 ## Version 1.26
 
 * Added support for compression level -1 as an alias for the default compression
