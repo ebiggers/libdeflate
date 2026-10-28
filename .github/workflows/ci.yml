@@ -274,8 +274,20 @@ jobs:
           sanitizer: --ubsan
         - target: zlib_decompress
           sanitizer:
+        - target: zlib_decompress
+          sanitizer: --asan
+        - target: zlib_decompress
+          sanitizer: --msan
+        - target: zlib_decompress
+          sanitizer: --ubsan
         - target: gzip_decompress
           sanitizer:
+        - target: gzip_decompress
+          sanitizer: --asan
+        - target: gzip_decompress
+          sanitizer: --msan
+        - target: gzip_decompress
+          sanitizer: --ubsan
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
