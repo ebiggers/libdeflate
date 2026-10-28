@@ -49,12 +49,11 @@ assertion_failed(const char *expr, const char *file, int line)
 	abort();
 }
 
-void
-begin_performance_test(void)
+/* Performance tests are skipped by default, since they can be flaky. */
+bool
+perf_tests_enabled(void)
 {
-	/* Skip performance tests by default, since they can be flaky. */
-	if (getenv("INCLUDE_PERF_TESTS") == NULL)
-		exit(0);
+	return getenv("INCLUDE_PERF_TESTS") != NULL;
 }
 
 static size_t

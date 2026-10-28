@@ -429,10 +429,16 @@ tmain(int argc, tchar *argv[])
 	u8 in[4096];
 	u8 out[10000];
 	u64 t, tz;
+	bool check_speed;
 
 	begin_program(argv);
 
-	begin_performance_test();
+	/*
+	 * Always do the decompressions, so that their results get checked.  But
+	 * compare their speed to zlib's only if performance tests are enabled,
+	 * since that can be flaky.
+	 */
+	check_speed = perf_tests_enabled();
 
 	/* static huffman case */
 	generate_empty_static_huffman_blocks(in, sizeof(in));
@@ -445,7 +451,8 @@ tmain(int argc, tchar *argv[])
 	 *	[static huffman, zlib      ]: 73651 KB/s
 	 */
 	putchar('\n');
-	ASSERT(t < tz);
+	if (check_speed)
+		ASSERT(t < tz);
 
 	/* dynamic huffman case */
 	generate_empty_dynamic_huffman_blocks(in, sizeof(in));
@@ -459,14 +466,16 @@ tmain(int argc, tchar *argv[])
 	 * FIXME: make it faster.
 	 */
 	putchar('\n');
-	ASSERT(t < 4 * tz);
+	if (check_speed)
+		ASSERT(t < 4 * tz);
 
 	/* original reproducer */
 	t = do_test_libdeflate("original repro", orig_repro, sizeof(orig_repro),
 			       out, sizeof(out));
 	tz = do_test_zlib("original repro", orig_repro, sizeof(orig_repro),
 			  out, sizeof(out));
-	ASSERT(t < tz);
+	if (check_speed)
+		ASSERT(t < tz);
 
 	return 0;
 }
