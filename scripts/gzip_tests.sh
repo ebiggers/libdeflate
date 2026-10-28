@@ -137,9 +137,11 @@ assert_equals() {
 begin_test 'Basic compression and decompression works'
 cp file orig
 gzip file
-[ ! -e file ] && [ -e file.gz ]
+[ ! -e file ]
+[ -e file.gz ]
 gunzip file.gz
-[ -e file ] && [ ! -e file.gz ]
+[ -e file ]
+[ ! -e file.gz ]
 cmp file orig
 
 
@@ -238,9 +240,11 @@ begin_test 'Compressing already-suffixed file requires -f or -c'
 gzip file
 gzip -c file.gz > c.gz
 gzip file.gz 2>&1 >/dev/null | grep -q 'already has .gz suffix'
-[ -e file.gz ] && [ ! -e file.gz.gz ]
+[ -e file.gz ]
+[ ! -e file.gz.gz ]
 gzip -f file.gz
-[ ! -e file.gz ] && [ -e file.gz.gz ]
+[ ! -e file.gz ]
+[ -e file.gz.gz ]
 cmp file.gz.gz c.gz
 
 
@@ -260,17 +264,21 @@ assert_error '\<not in gzip format\>' gunzip -f file.gz
 
 
 begin_test 'Decompressing unsuffixed file only works with -c'
-gzip file && mv file.gz file
+gzip file
+mv file.gz file
 assert_skipped gunzip file
 assert_skipped gunzip -f file
 gunzip -c file > orig
-mv file file.gz && gunzip file.gz && cmp file orig
+mv file file.gz
+gunzip file.gz
+cmp file orig
 
 
 begin_test '... unless there is a corresponding suffixed file'
 cp file orig
 gzip file
-[ ! -e file ] && [ -e file.gz ]
+[ ! -e file ]
+[ -e file.gz ]
 gunzip -c file > tmp
 cmp tmp orig
 rm tmp
@@ -279,7 +287,8 @@ gunzip -c file > tmp
 cmp tmp orig
 rm tmp file
 gunzip file
-[ -e file ] && [ ! -e file.gz ]
+[ -e file ]
+[ ! -e file.gz ]
 cmp file orig
 
 
@@ -301,9 +310,13 @@ begin_test '(gzip) symlink is rejected without -f or -c'
 ln -s file symlink1
 ln -s file symlink2
 assert_error 'Too many levels of symbolic links' gzip symlink1
-[ -e file ] && [ -e symlink1 ] && [ ! -e symlink1.gz ]
+[ -e file ]
+[ -e symlink1 ]
+[ ! -e symlink1.gz ]
 gzip -f symlink1
-[ -e file ] && [ ! -e symlink1 ] && [ -e symlink1.gz ]
+[ -e file ]
+[ ! -e symlink1 ]
+[ -e symlink1.gz ]
 gzip -c symlink2 > /dev/null
 
 
@@ -312,9 +325,13 @@ gzip file
 ln -s file.gz symlink1.gz
 ln -s file.gz symlink2.gz
 assert_error 'Too many levels of symbolic links' gunzip symlink1
-[ -e file.gz ] && [ -e symlink1.gz ] && [ ! -e symlink1 ]
+[ -e file.gz ]
+[ -e symlink1.gz ]
+[ ! -e symlink1 ]
 gunzip -f symlink1.gz
-[ -e file.gz ] && [ ! -e symlink1.gz ] && [ -e symlink1 ]
+[ -e file.gz ]
+[ ! -e symlink1.gz ]
+[ -e symlink1 ]
 gunzip -c symlink2.gz > /dev/null
 
 
@@ -380,9 +397,15 @@ cmp link.gz orig.gz
 begin_test 'Multiple files'
 cp file file2
 gzip file file2
-[ ! -e file ] && [ ! -e file2 ] && [ -e file.gz ] && [ -e file2.gz ]
+[ ! -e file ]
+[ ! -e file2 ]
+[ -e file.gz ]
+[ -e file2.gz ]
 gunzip file.gz file2.gz
-[ -e file ] && [ -e file2 ] && [ ! -e file.gz ] && [ ! -e file2.gz ]
+[ -e file ]
+[ -e file2 ]
+[ ! -e file.gz ]
+[ ! -e file2.gz ]
 
 
 begin_test 'Multiple files, continue on warning'
@@ -438,10 +461,14 @@ assert_error '\<(not in gzip format|crc error)\>' gunzip foo.gz
 for suf in .foo foo .blaaaaaaaaaaaaaaaargh; do
 	begin_test "Custom suffix: $suf"
 	gzip -S $suf file
-	[ ! -e file ] && [ ! -e file.gz ] && [ -e file$suf ]
+	[ ! -e file ]
+	[ ! -e file.gz ]
+	[ -e file$suf ]
 	assert_skipped gunzip file$suf
 	gunzip -S $suf file$suf
-	[ -e file ] && [ ! -e file.gz ] && [ ! -e file$suf ]
+	[ -e file ]
+	[ ! -e file.gz ]
+	[ ! -e file$suf ]
 done
 # DIFFERENCE: GNU gzip lower cases suffix, we don't
 
