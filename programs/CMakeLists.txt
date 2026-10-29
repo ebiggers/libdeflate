@@ -108,4 +108,8 @@ if(LIBDEFLATE_BUILD_TESTS)
         target_link_libraries(${PROG} PRIVATE libdeflate_test_utils)
         add_test(NAME ${PROG} COMMAND ${PROG})
     endforeach()
+
+    # Build chunked gzip streaming example
+    add_executable(example_chunked_gzip example_chunked_gzip.c)
+    target_link_libraries(example_chunked_gzip PRIVATE libdeflate_prog_utils)
 endif()
