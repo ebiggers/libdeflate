@@ -3528,18 +3528,21 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 		/* Save the cost model that gave 'best_true_cost'. */
 		c->p.n.costs_saved = c->p.n.costs;
 
-		/* Update the cost model from the Huffman codes. */
+		/*
+		 * Update the cost model from the Huffman codes.  Note that this
+		 * is helpful even on the last pass, since the cost model may be
+		 * used to start the optimization for the next block.
+		 */
 		deflate_set_costs_from_codes(c, &c->codes.lens);
 
-		/*
-		 * If the cost model didn't change, then another pass would just
-		 * find the same path again, and then stop because the cost
-		 * didn't improve.  Skip that pass.
-		 */
-		if (memcmp(&c->p.n.costs, &c->p.n.costs_saved,
-			   sizeof(c->p.n.costs)) == 0)
-			break;
-	} while (--num_passes_remaining);
+	} while (--num_passes_remaining &&
+		 /*
+		  * Continue only if the cost model actually changed.  If it
+		  * didn't, then the loop would just find the same path again
+		  * and stop because the cost didn't improve.
+		  */
+		 memcmp(&c->p.n.costs, &c->p.n.costs_saved,
+			sizeof(c->p.n.costs)) != 0);
 
 	*used_only_literals = false;
 	if (MIN(only_lits_cost, static_cost) < best_true_cost) {
