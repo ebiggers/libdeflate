@@ -3210,12 +3210,6 @@ deflate_set_default_costs(struct libdeflate_compressor *c,
 {
 	u32 i;
 
-	/*
-	 * Also zero the entries that are never used, so that cost models can
-	 * be compared with memcmp().
-	 */
-	memset(&c->p.n.costs, 0, sizeof(c->p.n.costs));
-
 	/* Literals */
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
 		c->p.n.costs.literal[i] = lit_cost;
@@ -3913,6 +3907,20 @@ deflate_init_offset_slot_full(struct libdeflate_compressor *c)
 	}
 }
 
+/* Do common initialization for the "near-optimal" compression levels. */
+static void
+deflate_init_near_optimal_compressor(struct libdeflate_compressor *c)
+{
+	c->impl = deflate_compress_near_optimal;
+	deflate_init_offset_slot_full(c);
+
+	/*
+	 * Initialize the entire costs struct including the never-used entries,
+	 * so that it can be compared using memcmp() later.
+	 */
+	memset(&c->p.n.costs, 0, sizeof(c->p.n.costs));
+}
+
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
 LIBDEFLATEAPI struct libdeflate_compressor *
@@ -4031,35 +4039,32 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		break;
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 10:
-		c->impl = deflate_compress_near_optimal;
+		deflate_init_near_optimal_compressor(c);
 		c->max_search_depth = 35;
 		c->nice_match_length = 75;
 		c->p.n.max_optim_passes = 2;
 		c->p.n.min_improvement_to_continue = 32;
 		c->p.n.min_bits_to_use_nonfinal_path = 32;
 		c->p.n.max_len_to_optimize_static_block = 0;
-		deflate_init_offset_slot_full(c);
 		break;
 	case 11:
-		c->impl = deflate_compress_near_optimal;
+		deflate_init_near_optimal_compressor(c);
 		c->max_search_depth = 100;
 		c->nice_match_length = 150;
 		c->p.n.max_optim_passes = 4;
 		c->p.n.min_improvement_to_continue = 16;
 		c->p.n.min_bits_to_use_nonfinal_path = 16;
 		c->p.n.max_len_to_optimize_static_block = 1000;
-		deflate_init_offset_slot_full(c);
 		break;
 	case 12:
 	default:
-		c->impl = deflate_compress_near_optimal;
+		deflate_init_near_optimal_compressor(c);
 		c->max_search_depth = 300;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		c->p.n.max_optim_passes = 10;
 		c->p.n.min_improvement_to_continue = 1;
 		c->p.n.min_bits_to_use_nonfinal_path = 1;
 		c->p.n.max_len_to_optimize_static_block = 10000;
-		deflate_init_offset_slot_full(c);
 		break;
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 	}
