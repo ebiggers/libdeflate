@@ -2,15 +2,31 @@
 
 ## [git master branch]
 
-* Compression at levels 5-9 is now faster on most data, with the largest
-  speedups at the highest levels: about 2-10% at level 5 and 30-55% at level 9,
-  depending on the platform.  The compressed output is unchanged.  As a
-  trade-off, the memory usage of compressors at levels 5-9 increased by 192 KiB
-  (64 KiB on 32-bit platforms).
+Significantly improved compression performance at levels 5-12.  The speedup
+varies greatly by compression level, platform, and source data.  However,
+typical results (for percentage improvement in throughput) are:
 
-* Compression at levels 10-12 is now faster: about 15-20% at level 10 and
-  20-30% at levels 11 and 12, depending on the platform.  The compressed output
-  is unchanged.
+| Level | Speedup |
+|-------|---------|
+|  5    |  8%     |
+|  6    | 19%     |
+|  7    | 34%     |
+|  8    | 43%     |
+|  9    | 49%     |
+| 10    | 20%     |
+| 11    | 28%     |
+| 12    | 33%     |
+
+The compressed output remains the same.
+
+As a tradeoff, the memory used per compressor at levels 5-9 has increased by
+about 30% (specifically, from 652 KiB to 844 KiB) in 64-bit builds, or by about
+10% in 32-bit builds.  There is no increase in memory use at levels 10-12.
+
+Decompression performance has also been slightly improved: up to 10-20% with
+very short DEFLATE block lengths, but 0.5-2.0% more typically.
+
+Thanks to Parker Loflin for these optimizations.
 
 ## Version 1.26
 
