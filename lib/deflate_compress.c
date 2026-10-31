@@ -387,8 +387,12 @@ struct deflate_costs {
 	/* The cost to output each possible literal */
 	u32 literal[DEFLATE_NUM_LITERALS];
 
-	/* The cost to output each possible match length */
-	u32 length[DEFLATE_MAX_MATCH_LEN + 1];
+	/*
+	 * The cost to output each possible match length.  Padded with 7 extra
+	 * entries at the end so that up to 8 entries can always be loaded at
+	 * once by SIMD code, even at DEFLATE_MAX_MATCH_LEN.
+	 */
+	u32 length[DEFLATE_MAX_MATCH_LEN + 1 + 7];
 
 	/* The cost to output a match offset of each possible offset slot */
 	u32 offset_slot[DEFLATE_NUM_OFFSET_SYMS];
@@ -542,9 +546,10 @@ struct libdeflate_compressor {
 			 *
 			 * This array must be large enough to accommodate the
 			 * worst-case number of nodes, which is MAX_BLOCK_LENGTH
-			 * plus 1 for the end-of-block node.
+			 * plus 1 for the end-of-block node, plus 7 extra
+			 * entries for 8-wide SIMD loads.
 			 */
-			u32 cost_to_end[MAX_BLOCK_LENGTH + 1];
+			u32 cost_to_end[MAX_BLOCK_LENGTH + 1 + 7];
 			u32 optimum_items[MAX_BLOCK_LENGTH + 1];
 #define OPTIMUM_OFFSET_SHIFT 9
 #define OPTIMUM_LEN_MASK (((u32)1 << OPTIMUM_OFFSET_SHIFT) - 1)
@@ -2924,6 +2929,9 @@ deflate_set_costs_from_codes(struct libdeflate_compressor *c,
 		bits += deflate_extra_length_bits[length_slot];
 		c->p.n.costs.length[i] = bits * BIT_COST;
 	}
+	memset(&c->p.n.costs.length[DEFLATE_MAX_MATCH_LEN + 1], 0,
+	       sizeof(c->p.n.costs.length) -
+	       (DEFLATE_MAX_MATCH_LEN + 1) * sizeof(c->p.n.costs.length[0]));
 
 	/* Offset slots */
 	for (i = 0; i < ARRAY_LEN(deflate_offset_slot_base); i++) {
@@ -3361,6 +3369,130 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 				offset_cost =
 					c->p.n.costs.offset_slot[offset_slot];
 				offset_bits = offset << OPTIMUM_OFFSET_SHIFT;
+			#ifdef __AVX2__
+				if (len < match->length) {
+					/*
+					 * Find the minimum-cost match length in
+					 * [len, match->length] using 8-wide
+					 * AVX2 vectors.  Pack (cost - base_cost)
+					 * in the high 23 bits and the length in
+					 * the low 9 bits (OPTIMUM_OFFSET_SHIFT)
+					 * of each 32-bit lane so that a single
+					 * _mm256_min_epu32() reduces both cost
+					 * and length simultaneously, breaking
+					 * ties in favor of the smaller length.
+					 *
+					 * Since choosing a literal at each byte
+					 * costs at most MAX_LITLEN_CODEWORD_LEN
+					 * * BIT_COST, cost_to_end[i + len] for
+					 * in-bounds positions differs from
+					 * cost_to_end[i + 1] by at most
+					 * DEFLATE_MAX_MATCH_LEN *
+					 * MAX_LITLEN_CODEWORD_LEN * BIT_COST <
+					 * 65536.  Thus subtracting base_cost =
+					 * cost_to_end[i + 1] - 65536 guarantees
+					 * no unsigned underflow or 23-bit
+					 * overflow, including for out-of-bounds
+					 * positions which have sentinel cost
+					 * 0x400000.
+					 */
+					static const u32 tail_masks[15] = {
+						0, 0, 0, 0, 0, 0, 0, 0,
+						~OPTIMUM_LEN_MASK,
+						~OPTIMUM_LEN_MASK,
+						~OPTIMUM_LEN_MASK,
+						~OPTIMUM_LEN_MASK,
+						~OPTIMUM_LEN_MASK,
+						~OPTIMUM_LEN_MASK,
+						~OPTIMUM_LEN_MASK,
+					};
+					const u32 base_cost =
+						c->p.n.cost_to_end[i + 1] - 65536;
+					__m256i v_len = _mm256_set1_epi32(
+						len - (base_cost << OPTIMUM_OFFSET_SHIFT));
+					__m256i v_best = _mm256_add_epi32(
+						_mm256_loadu_si256((const __m256i *)&c->p.n.costs.length[len]),
+						_mm256_loadu_si256((const __m256i *)&c->p.n.cost_to_end[i + len]));
+					__m128i best128;
+					u32 best;
+
+					STATIC_ASSERT(DEFLATE_MAX_MATCH_LEN *
+						      MAX_LITLEN_CODEWORD_LEN *
+						      BIT_COST < 65536);
+					STATIC_ASSERT(DEFLATE_MAX_MATCH_LEN <=
+						      OPTIMUM_LEN_MASK);
+
+					v_best = _mm256_add_epi32(
+						_mm256_slli_epi32(v_best, OPTIMUM_OFFSET_SHIFT),
+						v_len);
+					if (likely(len + 7 >= match->length)) {
+						v_best = _mm256_or_si256(
+							v_best,
+							_mm256_loadu_si256((const __m256i *)&tail_masks[7 + len - match->length]));
+					} else {
+						const __m256i v_step =
+							_mm256_set1_epi32(8);
+
+						for (len += 8;
+						     len + 7 <= match->length;
+						     len += 8) {
+							__m256i v_cost;
+
+							v_len = _mm256_add_epi32(
+								v_len, v_step);
+							v_cost = _mm256_add_epi32(
+								_mm256_loadu_si256((const __m256i *)&c->p.n.costs.length[len]),
+								_mm256_loadu_si256((const __m256i *)&c->p.n.cost_to_end[i + len]));
+							v_cost = _mm256_add_epi32(
+								_mm256_slli_epi32(v_cost, OPTIMUM_OFFSET_SHIFT),
+								v_len);
+							v_best = _mm256_min_epu32(
+								v_cost, v_best);
+						}
+						if (len <= match->length) {
+							__m256i v_cost;
+
+							len = match->length - 7;
+							v_len = _mm256_set1_epi32(
+								len - (base_cost << OPTIMUM_OFFSET_SHIFT));
+							v_cost = _mm256_add_epi32(
+								_mm256_loadu_si256((const __m256i *)&c->p.n.costs.length[len]),
+								_mm256_loadu_si256((const __m256i *)&c->p.n.cost_to_end[i + len]));
+							v_cost = _mm256_add_epi32(
+								_mm256_slli_epi32(v_cost, OPTIMUM_OFFSET_SHIFT),
+								v_len);
+							v_best = _mm256_min_epu32(
+								v_cost, v_best);
+						}
+					}
+					v_best = _mm256_add_epi32(
+						v_best,
+						_mm256_setr_epi32(0, 1, 2, 3,
+								  4, 5, 6, 7));
+					best128 = _mm_min_epu32(
+						_mm256_castsi256_si128(v_best),
+						_mm256_extracti128_si256(v_best, 1));
+					best128 = _mm_min_epu32(
+						best128,
+						_mm_shuffle_epi32(best128, _MM_SHUFFLE(1, 0, 3, 2)));
+					best128 = _mm_min_epu32(
+						best128,
+						_mm_shuffle_epi32(best128, _MM_SHUFFLE(2, 3, 0, 1)));
+					best = _mm_cvtsi128_si32(best128);
+					cost_to_end = offset_cost + base_cost +
+						      (best >> OPTIMUM_OFFSET_SHIFT);
+					len = (best & OPTIMUM_LEN_MASK);
+				} else {
+					cost_to_end = offset_cost +
+						c->p.n.costs.length[len] +
+						c->p.n.cost_to_end[i + len];
+				}
+				if (cost_to_end < best_cost_to_end) {
+					best_cost_to_end = cost_to_end;
+					best_item = len | offset_bits;
+				}
+				len = match->length + 1;
+			#else
 				do {
 					bool better;
 
@@ -3378,6 +3510,7 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 					best_item = better ?
 						(len | offset_bits) : best_item;
 				} while (++len <= match->length);
+			#endif
 			} while (++match != cache_ptr);
 			cache_ptr -= num_matches;
 		}
@@ -3435,9 +3568,9 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	 * matches extend beyond it.
 	 */
 	for (i = block_length;
-	     i <= MIN(block_length - 1 + DEFLATE_MAX_MATCH_LEN,
+	     i <= MIN(block_length - 1 + DEFLATE_MAX_MATCH_LEN + 7,
 		      ARRAY_LEN(c->p.n.cost_to_end) - 1); i++)
-		c->p.n.cost_to_end[i] = 0x80000000;
+		c->p.n.cost_to_end[i] = 0x00400000;
 
 	/*
 	 * Sometimes a static Huffman block ends up being cheapest, particularly
