@@ -75,7 +75,13 @@
 	(((1UL << BT_MATCHFINDER_HASH3_ORDER) * BT_MATCHFINDER_HASH3_WAYS + \
 	  (1UL << BT_MATCHFINDER_HASH4_ORDER)) * sizeof(mf_pos_t))
 
-/* Representation of a match found by the bt_matchfinder  */
+/*
+ * Representation of a match found by the bt_matchfinder.
+ *
+ * (In the match_cache field in struct deflate_compressor, which is an array of
+ * struct lz_match, this struct is also overloaded to hold the {num_matches,
+ * literal} pair at each position.  See the comment for match_cache.)
+ */
 struct lz_match {
 
 	/* The number of bytes matched.  */

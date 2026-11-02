@@ -387,8 +387,12 @@ struct deflate_costs {
 	/* The cost to output each possible literal */
 	u32 literal[DEFLATE_NUM_LITERALS];
 
-	/* The cost to output each possible match length */
-	u32 length[DEFLATE_MAX_MATCH_LEN + 1];
+	/*
+	 * The cost to output each possible match length.  Padded with 7 extra
+	 * entries at the end so that up to 8 entries can always be loaded at
+	 * once by SIMD code, even at DEFLATE_MAX_MATCH_LEN.
+	 */
+	u32 length[DEFLATE_MAX_MATCH_LEN + 1 + 7];
 
 	/* The cost to output a match offset of each possible offset slot */
 	u32 offset_slot[DEFLATE_NUM_OFFSET_SYMS];
@@ -554,8 +558,10 @@ struct libdeflate_compressor {
 			 * These arrays are initialized from end to beginning.
 			 * Their size must be at least the maximum block length,
 			 * plus one since the end-of-block has an entry.
+			 * cost_to_end also needs 7 extra entries to keep a
+			 * 256-bit SIMD load from the last entry in bounds.
 			 */
-			u32 cost_to_end[MAX_BLOCK_LENGTH + 1];
+			u32 cost_to_end[MAX_BLOCK_LENGTH + 1 + 7];
 			u32 optimum_items[MAX_BLOCK_LENGTH + 1];
 #define OPTIMUM_OFFSET_SHIFT 9
 #define OPTIMUM_LEN_MASK (((u32)1 << OPTIMUM_OFFSET_SHIFT) - 1)
@@ -3300,25 +3306,23 @@ deflate_set_initial_costs(struct libdeflate_compressor *c,
 		deflate_adjust_costs(c, lit_cost, len_sym_cost);
 }
 
+static forceinline u32
+deflate_get_offset_cost(struct libdeflate_compressor *c, u32 offset)
+{
+	return c->p.n.costs.offset_slot[c->p.n.offset_slot_full[offset]];
+}
+
 /*
- * Find the minimum-cost path through the graph of possible match/literal
- * choices for this block.
- *
- * Edge costs are evaluated using the cost model 'c->p.n.costs'.
- *
- * The algorithm works backwards, starting at the end node and proceeding
- * backwards one node at a time.  At each node, the minimum cost to reach the
- * end node is computed and the match/literal choice that begins that path is
- * saved.
+ * For each position 'i' from 'block_length - 1' to 0, compute cost_to_end[i]
+ * and optimum_items[i] by considering the literal and matches at that position.
  */
-static void
-deflate_find_min_cost_path(struct libdeflate_compressor *c,
-			   const u32 block_length,
-			   const struct lz_match *cache_ptr)
+static MAYBE_UNUSED void
+deflate_find_min_cost_path_default(struct libdeflate_compressor *c,
+				   const u32 block_length,
+				   const struct lz_match *cache_ptr)
 {
 	u32 i = block_length;
 
-	c->p.n.cost_to_end[i] = 0;
 	do {
 		unsigned num_matches;
 		u32 literal;
@@ -3326,7 +3330,6 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 		u32 best_item;
 
 		cache_ptr--;
-
 		num_matches = cache_ptr->length;
 		literal = cache_ptr->offset;
 
@@ -3334,39 +3337,30 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 		best_cost_to_end = c->p.n.costs.literal[literal] +
 				   c->p.n.cost_to_end[i];
 		best_item = (literal << OPTIMUM_OFFSET_SHIFT) | 1;
-
 		i--;
 
-		/* Also consider matches if there are any. */
+		/*
+		 * Also consider matches if there are any.
+		 *
+		 * Specifically, consider each length from the minimum
+		 * (DEFLATE_MIN_MATCH_LEN) to the length of the longest match
+		 * found at this position.  For each length, consider only the
+		 * smallest offset for which that length is available.  Although
+		 * this is not guaranteed to be optimal due to the possibility
+		 * of a larger offset costing less than a smaller offset to
+		 * code, this is a very useful heuristic.
+		 */
 		if (num_matches) {
-			const struct lz_match *match;
-			u32 len;
-			u32 offset;
-			u32 offset_slot;
-			u32 offset_cost;
-			u32 cost_to_end;
+			const struct lz_match *match = cache_ptr - num_matches;
+			u32 len = DEFLATE_MIN_MATCH_LEN;
 
-			/*
-			 * Consider each length from the minimum
-			 * (DEFLATE_MIN_MATCH_LEN) to the length of the longest
-			 * match found at this position.  For each length, we
-			 * consider only the smallest offset for which that
-			 * length is available.  Although this is not guaranteed
-			 * to be optimal due to the possibility of a larger
-			 * offset costing less than a smaller offset to code,
-			 * this is a very useful heuristic.
-			 */
-			match = cache_ptr - num_matches;
-			len = DEFLATE_MIN_MATCH_LEN;
 			do {
-				u32 offset_bits;
+				u32 offset = match->offset;
+				u32 offset_cost = deflate_get_offset_cost(c, offset);
+				u32 offset_bits = offset << OPTIMUM_OFFSET_SHIFT;
 
-				offset = match->offset;
-				offset_slot = c->p.n.offset_slot_full[offset];
-				offset_cost =
-					c->p.n.costs.offset_slot[offset_slot];
-				offset_bits = offset << OPTIMUM_OFFSET_SHIFT;
 				do {
+					u32 cost_to_end;
 					bool better;
 
 					cost_to_end = offset_cost +
@@ -3390,6 +3384,37 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 		c->p.n.optimum_items[i] = best_item;
 	} while (i != 0);
 
+}
+
+/* Include architecture-specific implementation(s) if available. */
+#if defined(ARCH_ARM64)
+#  include "arm/find_min_cost_path.h"
+#elif defined(ARCH_X86_32) || defined(ARCH_X86_64)
+#  include "x86/find_min_cost_path.h"
+#endif
+
+/*
+ * Find the minimum-cost path through the graph of possible match/literal
+ * choices for this block.
+ *
+ * Edge costs are evaluated using the cost model 'c->p.n.costs'.
+ *
+ * The algorithm works backwards, starting at the end node and proceeding
+ * backwards one node at a time.  At each node, the minimum cost to reach the
+ * end node is computed and the match/literal choice that begins that path is
+ * saved.
+ */
+static void
+deflate_find_min_cost_path(struct libdeflate_compressor *c,
+			   const u32 block_length,
+			   const struct lz_match *cache_ptr)
+{
+	c->p.n.cost_to_end[block_length] = 0;
+#ifdef deflate_find_min_cost_path_arch
+	deflate_find_min_cost_path_arch(c, block_length, cache_ptr);
+#else
+	deflate_find_min_cost_path_default(c, block_length, cache_ptr);
+#endif
 	deflate_reset_symbol_frequencies(c);
 	deflate_tally_item_list(c, block_length);
 	deflate_make_huffman_codes(&c->freqs, &c->codes);
@@ -3437,12 +3462,18 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 
 	/*
 	 * Force the block to really end at the desired length, even if some
-	 * matches extend beyond it.
+	 * matches extend beyond it.  This sentinel cost must be larger than the
+	 * cost of reaching the end of the block from the furthest position that
+	 * can reach past the end via literals (< 258 * 14 * 16 = 57792), while
+	 * also small enough that relative costs shifted left by
+	 * OPTIMUM_OFFSET_SHIFT (9) in the SIMD min-cost path implementations
+	 * cannot overflow a 32-bit unsigned integer (i.e., < 0x00800000 -
+	 * 65536 - max_length_cost).
 	 */
 	for (i = block_length;
-	     i <= MIN(block_length - 1 + DEFLATE_MAX_MATCH_LEN,
+	     i <= MIN(block_length - 1 + DEFLATE_MAX_MATCH_LEN + 7,
 		      ARRAY_LEN(c->p.n.cost_to_end) - 1); i++)
-		c->p.n.cost_to_end[i] = 0x80000000;
+		c->p.n.cost_to_end[i] = 0x00400000;
 
 	/*
 	 * Sometimes a static Huffman block ends up being cheapest, particularly
