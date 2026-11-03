@@ -237,7 +237,7 @@ typedef u32 (*crc32_func_t)(u32 crc, const u8 *p, size_t len);
 #ifdef arch_select_crc32_func
 static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len);
 
-static volatile crc32_func_t crc32_impl = dispatch_crc32;
+static LIBDEFLATE_ATOMIC(crc32_func_t) crc32_func = dispatch_crc32;
 
 /* Choose the best implementation at runtime. */
 static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len)
@@ -247,12 +247,13 @@ static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len)
 	if (f == NULL)
 		f = DEFAULT_IMPL;
 
-	crc32_impl = f;
+	LIBDEFLATE_ATOMIC_STORE_RELAXED(&crc32_func, f);
 	return f(crc, p, len);
 }
+#  define crc32_impl LIBDEFLATE_ATOMIC_LOAD_RELAXED(&crc32_func)
 #else
 /* The best implementation is statically known, so call it directly. */
-#define crc32_impl DEFAULT_IMPL
+#  define crc32_impl DEFAULT_IMPL
 #endif
 
 LIBDEFLATEAPI u32

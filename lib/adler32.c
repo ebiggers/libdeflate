@@ -135,7 +135,7 @@ typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
 #ifdef arch_select_adler32_func
 static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len);
 
-static volatile adler32_func_t adler32_impl = dispatch_adler32;
+static LIBDEFLATE_ATOMIC(adler32_func_t) adler32_func = dispatch_adler32;
 
 /* Choose the best implementation at runtime. */
 static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len)
@@ -145,12 +145,13 @@ static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len)
 	if (f == NULL)
 		f = DEFAULT_IMPL;
 
-	adler32_impl = f;
+	LIBDEFLATE_ATOMIC_STORE_RELAXED(&adler32_func, f);
 	return f(adler, p, len);
 }
+#  define adler32_impl LIBDEFLATE_ATOMIC_LOAD_RELAXED(&adler32_func)
 #else
 /* The best implementation is statically known, so call it directly. */
-#define adler32_impl DEFAULT_IMPL
+#  define adler32_impl DEFAULT_IMPL
 #endif
 
 LIBDEFLATEAPI u32

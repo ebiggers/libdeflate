@@ -86,7 +86,7 @@ static const struct cpu_feature x86_cpu_feature_table[] = {
 	{X86_CPU_FEATURE_AVXVNNI,	"avx_vnni"},
 };
 
-volatile u32 libdeflate_x86_cpu_features = 0;
+LIBDEFLATE_ATOMIC(u32) libdeflate_x86_cpu_features = 0;
 
 static inline bool
 os_supports_avx512(u64 xcr0)
@@ -207,7 +207,8 @@ out:
 	disable_cpu_features_for_testing(&features, x86_cpu_feature_table,
 					 ARRAY_LEN(x86_cpu_feature_table));
 
-	libdeflate_x86_cpu_features = features | X86_CPU_FEATURES_KNOWN;
+	LIBDEFLATE_ATOMIC_STORE_RELAXED(&libdeflate_x86_cpu_features,
+					features | X86_CPU_FEATURES_KNOWN);
 }
 
 #endif /* X86_CPU_FEATURES_KNOWN */

@@ -53,15 +53,19 @@
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 /* Runtime x86 CPU feature detection is supported. */
 #  define X86_CPU_FEATURES_KNOWN	(1U << 31)
-extern volatile u32 libdeflate_x86_cpu_features;
+extern LIBDEFLATE_ATOMIC(u32) libdeflate_x86_cpu_features;
 
 void libdeflate_init_x86_cpu_features(void);
 
 static inline u32 get_x86_cpu_features(void)
 {
-	if (libdeflate_x86_cpu_features == 0)
+	u32 features = LIBDEFLATE_ATOMIC_LOAD_RELAXED(&libdeflate_x86_cpu_features);
+
+	if (features == 0) {
 		libdeflate_init_x86_cpu_features();
-	return libdeflate_x86_cpu_features;
+		features = LIBDEFLATE_ATOMIC_LOAD_RELAXED(&libdeflate_x86_cpu_features);
+	}
+	return features;
 }
 /*
  * x86 intrinsics are also supported.  Include the headers needed to use them.
