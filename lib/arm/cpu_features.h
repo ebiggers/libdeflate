@@ -51,15 +51,19 @@
      (defined(_WIN32) && defined(ARCH_ARM64)))
 /* Runtime ARM CPU feature detection is supported. */
 #  define ARM_CPU_FEATURES_KNOWN	(1U << 31)
-extern volatile u32 libdeflate_arm_cpu_features;
+extern LIBDEFLATE_ATOMIC(u32) libdeflate_arm_cpu_features;
 
 void libdeflate_init_arm_cpu_features(void);
 
 static inline u32 get_arm_cpu_features(void)
 {
-	if (libdeflate_arm_cpu_features == 0)
+	u32 features = LIBDEFLATE_ATOMIC_LOAD_RELAXED(&libdeflate_arm_cpu_features);
+
+	if (features == 0) {
 		libdeflate_init_arm_cpu_features();
-	return libdeflate_arm_cpu_features;
+		features = LIBDEFLATE_ATOMIC_LOAD_RELAXED(&libdeflate_arm_cpu_features);
+	}
+	return features;
 }
 #else
 static inline u32 get_arm_cpu_features(void) { return 0; }

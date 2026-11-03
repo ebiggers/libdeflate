@@ -274,7 +274,7 @@ static bool arm_cpu_prefers_pmull(void)
 	return false;
 }
 
-volatile u32 libdeflate_arm_cpu_features = 0;
+LIBDEFLATE_ATOMIC(u32) libdeflate_arm_cpu_features = 0;
 
 void libdeflate_init_arm_cpu_features(void)
 {
@@ -286,7 +286,8 @@ void libdeflate_init_arm_cpu_features(void)
 	disable_cpu_features_for_testing(&features, arm_cpu_feature_table,
 					 ARRAY_LEN(arm_cpu_feature_table));
 
-	libdeflate_arm_cpu_features = features | ARM_CPU_FEATURES_KNOWN;
+	LIBDEFLATE_ATOMIC_STORE_RELAXED(&libdeflate_arm_cpu_features,
+					features | ARM_CPU_FEATURES_KNOWN);
 }
 
 #endif /* ARM_CPU_FEATURES_KNOWN */

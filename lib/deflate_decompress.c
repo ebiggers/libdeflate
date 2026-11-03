@@ -1147,7 +1147,7 @@ dispatch_decomp(struct libdeflate_decompressor * restrict d,
 		void * restrict out, size_t out_nbytes_avail,
 		size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
-static volatile decompress_func_t decompress_impl = dispatch_decomp;
+static LIBDEFLATE_ATOMIC(decompress_func_t) decompress_func = dispatch_decomp;
 
 /* Choose the best implementation at runtime. */
 static enum libdeflate_result
@@ -1161,10 +1161,11 @@ dispatch_decomp(struct libdeflate_decompressor * restrict d,
 	if (f == NULL)
 		f = DEFAULT_IMPL;
 
-	decompress_impl = f;
+	LIBDEFLATE_ATOMIC_STORE_RELAXED(&decompress_func, f);
 	return f(d, in, in_nbytes, out, out_nbytes_avail,
 		 actual_in_nbytes_ret, actual_out_nbytes_ret);
 }
+#  define decompress_impl LIBDEFLATE_ATOMIC_LOAD_RELAXED(&decompress_func)
 #else
 /* The best implementation is statically known, so call it directly. */
 #  define decompress_impl DEFAULT_IMPL

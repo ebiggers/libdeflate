@@ -39,6 +39,23 @@
 
 #include "../common_defs.h"
 
+/*
+ * Some compilers (e.g. MSVC) don't support C11 atomics.  Fall back to
+ * 'volatile' and plain assignments/reads.
+ */
+#ifdef __STDC_NO_ATOMICS__
+#  define LIBDEFLATE_ATOMIC(type)		volatile type
+#  define LIBDEFLATE_ATOMIC_LOAD_RELAXED(ptr)	(*(ptr))
+#  define LIBDEFLATE_ATOMIC_STORE_RELAXED(ptr, val) ((void)(*(ptr) = (val)))
+#else
+#  include <stdatomic.h>
+#  define LIBDEFLATE_ATOMIC(type)		_Atomic(type)
+#  define LIBDEFLATE_ATOMIC_LOAD_RELAXED(ptr)	\
+	atomic_load_explicit((ptr), memory_order_relaxed)
+#  define LIBDEFLATE_ATOMIC_STORE_RELAXED(ptr, val) \
+	atomic_store_explicit((ptr), (val), memory_order_relaxed)
+#endif
+
 typedef void *(*malloc_func_t)(size_t);
 typedef void (*free_func_t)(void *);
 
