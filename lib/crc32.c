@@ -233,9 +233,11 @@ typedef u32 (*crc32_func_t)(u32 crc, const u8 *p, size_t len);
 #endif
 
 #ifdef arch_select_crc32_func
+#include <stdatomic.h>
+
 static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len);
 
-static volatile crc32_func_t crc32_impl = dispatch_crc32;
+static _Atomic(crc32_func_t) crc32_impl = dispatch_crc32;
 
 /* Choose the best implementation at runtime. */
 static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len)
@@ -245,7 +247,7 @@ static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len)
 	if (f == NULL)
 		f = DEFAULT_IMPL;
 
-	crc32_impl = f;
+	atomic_store_explicit(&crc32_impl, f, memory_order_release);
 	return f(crc, p, len);
 }
 #else
@@ -258,5 +260,11 @@ libdeflate_crc32(u32 crc, const void *p, size_t len)
 {
 	if (p == NULL) /* Return initial value. */
 		return 0;
+#ifdef arch_select_crc32_func
+	crc32_func_t func = atomic_load_explicit(&crc32_impl,
+						 memory_order_acquire);
+	return ~func(~crc, p, len);
+#else
 	return ~crc32_impl(~crc, p, len);
+#endif
 }

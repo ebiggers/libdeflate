@@ -1141,13 +1141,15 @@ typedef enum libdeflate_result (*decompress_func_t)
 #endif
 
 #ifdef arch_select_decompress_func
+#include <stdatomic.h>
+
 static enum libdeflate_result
 dispatch_decomp(struct libdeflate_decompressor * restrict d,
 		const void * restrict in, size_t in_nbytes,
 		void * restrict out, size_t out_nbytes_avail,
 		size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
-static volatile decompress_func_t decompress_impl = dispatch_decomp;
+static _Atomic(decompress_func_t) decompress_impl = dispatch_decomp;
 
 /* Choose the best implementation at runtime. */
 static enum libdeflate_result
@@ -1161,7 +1163,7 @@ dispatch_decomp(struct libdeflate_decompressor * restrict d,
 	if (f == NULL)
 		f = DEFAULT_IMPL;
 
-	decompress_impl = f;
+	atomic_store_explicit(&decompress_impl, f, memory_order_release);
 	return f(d, in, in_nbytes, out, out_nbytes_avail,
 		 actual_in_nbytes_ret, actual_out_nbytes_ret);
 }
@@ -1185,8 +1187,15 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret)
 {
+#ifdef arch_select_decompress_func
+	decompress_func_t func = atomic_load_explicit(&decompress_impl,
+						      memory_order_acquire);
+	return func(d, in, in_nbytes, out, out_nbytes_avail,
+		    actual_in_nbytes_ret, actual_out_nbytes_ret);
+#else
 	return decompress_impl(d, in, in_nbytes, out, out_nbytes_avail,
 			       actual_in_nbytes_ret, actual_out_nbytes_ret);
+#endif
 }
 
 LIBDEFLATEAPI enum libdeflate_result

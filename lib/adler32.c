@@ -133,9 +133,11 @@ typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
 #endif
 
 #ifdef arch_select_adler32_func
+#include <stdatomic.h>
+
 static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len);
 
-static volatile adler32_func_t adler32_impl = dispatch_adler32;
+static _Atomic(adler32_func_t) adler32_impl = dispatch_adler32;
 
 /* Choose the best implementation at runtime. */
 static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len)
@@ -145,7 +147,7 @@ static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len)
 	if (f == NULL)
 		f = DEFAULT_IMPL;
 
-	adler32_impl = f;
+	atomic_store_explicit(&adler32_impl, f, memory_order_release);
 	return f(adler, p, len);
 }
 #else
@@ -158,5 +160,11 @@ libdeflate_adler32(u32 adler, const void *buffer, size_t len)
 {
 	if (buffer == NULL) /* Return initial value. */
 		return 1;
+#ifdef arch_select_adler32_func
+	adler32_func_t func = atomic_load_explicit(&adler32_impl,
+						   memory_order_acquire);
+	return func(adler, buffer, len);
+#else
 	return adler32_impl(adler, buffer, len);
+#endif
 }
