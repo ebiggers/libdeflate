@@ -103,6 +103,7 @@ if(LIBDEFLATE_BUILD_TESTS)
         test_invalid_streams
         test_litrunlen_overflow
         test_overread
+        test_size_edge_cases
         test_slow_decompression
         test_trailing_bytes
     )
