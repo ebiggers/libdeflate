@@ -81,6 +81,9 @@ libdeflate_alloc_compressor_ex(int compression_level,
  * writing tests that compare compressed data to a golden output, as this can
  * break when libdeflate is updated.  (This property isn't specific to
  * libdeflate; the same is true for zlib and other compression libraries too.)
+ *
+ * The input and output buffers must not be concurrently modified while this
+ * function is executing.  If they are, the behavior is undefined.
  */
 LIBDEFLATEAPI size_t
 libdeflate_deflate_compress(struct libdeflate_compressor *compressor,
@@ -219,6 +222,9 @@ enum libdeflate_result {
  * Decompression stops at the end of the DEFLATE stream (as indicated by the
  * BFINAL flag), even if it is actually shorter than 'in_nbytes' bytes.
  *
+ * The input and output buffers must not be concurrently modified while this
+ * function is executing.  If they are, the behavior is undefined.
+ *
  * libdeflate_deflate_decompress() can be used in cases where the actual
  * uncompressed size is known (recommended) or unknown (not recommended):
  *
@@ -331,6 +337,9 @@ libdeflate_free_decompressor(struct libdeflate_decompressor *decompressor);
  * data and returns the updated checksum.  When starting a new checksum, the
  * required initial value for 'adler' is 1.  This value is also returned when
  * 'buffer' is specified as NULL.
+ *
+ * The input buffer must not be concurrently modified while this function is
+ * executing.  If it is, the behavior is undefined.
  */
 LIBDEFLATEAPI uint32_t
 libdeflate_adler32(uint32_t adler, const void *buffer, size_t len);
@@ -341,6 +350,9 @@ libdeflate_adler32(uint32_t adler, const void *buffer, size_t len);
  * and returns the updated checksum.  When starting a new checksum, the required
  * initial value for 'crc' is 0.  This value is also returned when 'buffer' is
  * specified as NULL.
+ *
+ * The input buffer must not be concurrently modified while this function is
+ * executing.  If it is, the behavior is undefined.
  */
 LIBDEFLATEAPI uint32_t
 libdeflate_crc32(uint32_t crc, const void *buffer, size_t len);
