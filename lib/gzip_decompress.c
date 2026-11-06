@@ -98,7 +98,23 @@ libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *d,
 			return LIBDEFLATE_BAD_DATA;
 	}
 
-	/* CRC16 for gzip header */
+	/*
+	 * CRC of gzip header (lower 16 bits of a CRC-32 value).  For now this
+	 * is intentionally not checked, for several reasons:
+	 *
+	 * - It's symmetric with the compressor, which doesn't write it.
+	 *
+	 * - libdeflate doesn't use or return any of the header metadata.  It's
+	 *   parsed only to find the compressed data, which has its own full
+	 *   32-bit CRC that is checked (see below).
+	 *
+	 * - Invalid/malicious headers need to be handled anyway; checking the
+	 *   CRC isn't a shortcut.
+	 *
+	 * - Many other gzip implementations either don't check the header CRC,
+	 *   or didn't check it in older versions.  So there's a risk of
+	 *   interoperability failures with incorrect header CRCs.
+	 */
 	if (flg & GZIP_FHCRC) {
 		in_next += 2;
 		if (in_end - in_next < GZIP_FOOTER_SIZE)
