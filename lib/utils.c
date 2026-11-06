@@ -41,8 +41,13 @@ void *
 libdeflate_aligned_malloc(malloc_func_t malloc_func,
 			  size_t alignment, size_t size)
 {
-	void *ptr = (*malloc_func)(sizeof(void *) + alignment - 1 + size);
+	void *ptr;
 
+	if (unlikely(alignment < sizeof(void *) ||
+		     (alignment & (alignment - 1)) != 0 ||
+		     sizeof(void *) + alignment - 1 > SIZE_MAX - size))
+		return NULL;
+	ptr = (*malloc_func)(sizeof(void *) + alignment - 1 + size);
 	if (ptr) {
 		void *orig_ptr = ptr;
 
