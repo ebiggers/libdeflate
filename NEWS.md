@@ -2,31 +2,50 @@
 
 ## [git master branch]
 
-Significantly improved compression performance at levels 5-12.  The speedup
-varies greatly by compression level, platform, and source data.  However,
-typical results (for percentage improvement in throughput) are:
+* Significantly improved compression performance at levels 5-12.  The speedup
+  varies greatly by compression level, platform, and source data.  However,
+  typical results (for percentage improvement in throughput) are:
 
-| Level | Speedup |
-|-------|---------|
-|  5    |  8%     |
-|  6    | 19%     |
-|  7    | 34%     |
-|  8    | 43%     |
-|  9    | 49%     |
-| 10    | 20%     |
-| 11    | 28%     |
-| 12    | 33%     |
+  | Level | Speedup |
+  |-------|---------|
+  |  5    |  8%     |
+  |  6    | 19%     |
+  |  7    | 34%     |
+  |  8    | 43%     |
+  |  9    | 49%     |
+  | 10    | 20%     |
+  | 11    | 28%     |
+  | 12    | 33%     |
 
-The compressed output remains the same.
+  The compressed output remains the same.
 
-As a tradeoff, the memory used per compressor at levels 5-9 has increased by
-about 30% (specifically, from 652 KiB to 844 KiB) in 64-bit builds, or by about
-10% in 32-bit builds.  There is no increase in memory use at levels 10-12.
+  As a tradeoff, the memory used per compressor at levels 5-9 has increased by
+  about 30% (specifically, from 652 KiB to 844 KiB) in 64-bit builds, or by about
+  10% in 32-bit builds.  There is no increase in memory use at levels 10-12.
 
-Decompression performance has also been slightly improved: up to 10-20% with
-very short DEFLATE block lengths, but 0.5-2.0% more typically.
+  Decompression performance has also been slightly improved: up to 10-20% with
+  very short DEFLATE block lengths, but 0.5-2.0% more typically.
 
-Thanks to Parker Loflin for these optimizations.
+  Thanks to Parker Loflin for these optimizations.
+
+* The `libdeflate-gzip` program now reads its input files into memory instead of
+  memory mapping them, to ensure that they won't be concurrently modified during
+  compression or decompression.
+
+* The API documentation now explicitly mentions that input and output buffers
+  must not be concurrently modified.
+
+* The `libdeflate-gzip` program now initially creates files with mode `0600`;
+  restores the owner prior to restoring the mode; and strips the setuid, setgid,
+  and sticky bits.  This increases safety in certain cases.
+
+* The compression and decompression functions now reject sizes above 8 EiB in
+  64-bit binaries or 2 GiB in 32-bit binaries, to avoid undefined behavior in
+  the C code.  This only applies to cases where a single contiguous buffer is
+  that large; a series of smaller compressed chunks is perfectly fine.
+
+* The `*_compress_bound()` functions now clamp the returned size to `SIZE_MAX`
+  if the computed size would have been greater than that.
 
 ## Version 1.26
 
