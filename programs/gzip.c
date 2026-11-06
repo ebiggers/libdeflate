@@ -228,15 +228,14 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 	 * from each 2 bits generating a 258-byte match.  This is a hard upper
 	 * bound; the real upper bound is slightly smaller due to overhead.)
 	 */
-	if (compressed_size <= SIZE_MAX / 1032)
+	if (compressed_size <= PTRDIFF_MAX / 1032)
 		max_uncompressed_size = compressed_size * 1032;
 	else
-		max_uncompressed_size = SIZE_MAX;
+		max_uncompressed_size = PTRDIFF_MAX;
+	uncompressed_size = MIN(uncompressed_size, max_uncompressed_size);
 
 	do {
 		if (uncompressed_data == NULL) {
-			uncompressed_size = MIN(uncompressed_size,
-						max_uncompressed_size);
 			uncompressed_data = xmalloc(uncompressed_size);
 			if (uncompressed_data == NULL) {
 				msg("%"TS": file is probably too large to be "
@@ -256,17 +255,16 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 
 		if (result == LIBDEFLATE_INSUFFICIENT_SPACE) {
 			if (uncompressed_size >= max_uncompressed_size) {
-				msg("Bug in libdeflate_gzip_decompress_ex(): data expanded too much!");
+				if (max_uncompressed_size == PTRDIFF_MAX)
+					msg("%"TS": file corrupt or too large to be "
+					    "processed by this program", in->name);
+				else
+					msg("Bug in libdeflate_gzip_decompress_ex(): data expanded too much!");
 				ret = -1;
 				goto out;
 			}
-			if (uncompressed_size * 2 <= uncompressed_size) {
-				msg("%"TS": file corrupt or too large to be "
-				    "processed by this program", in->name);
-				ret = -1;
-				goto out;
-			}
-			uncompressed_size *= 2;
+			uncompressed_size = MIN(uncompressed_size * 2,
+						max_uncompressed_size);
 			free(uncompressed_data);
 			uncompressed_data = NULL;
 			continue;
