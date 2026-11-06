@@ -1185,6 +1185,13 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret)
 {
+	/*
+	 * Buffers larger than PTRDIFF_MAX cannot be accepted, since pointer
+	 * arithmetic would not be fully defined on such buffers.
+	 */
+	if (unlikely(in_nbytes > PTRDIFF_MAX || out_nbytes_avail > PTRDIFF_MAX))
+		return LIBDEFLATE_BAD_DATA;
+
 	return decompress_impl(d, in, in_nbytes, out, out_nbytes_avail,
 			       actual_in_nbytes_ret, actual_out_nbytes_ret);
 }

@@ -36,14 +36,20 @@ libdeflate_gzip_decompress_ex(struct libdeflate_decompressor *d,
 			      size_t *actual_out_nbytes_ret)
 {
 	const u8 *in_next = in;
-	const u8 * const in_end = in_next + in_nbytes;
+	const u8 *in_end;
 	u8 flg;
 	size_t actual_in_nbytes;
 	size_t actual_out_nbytes;
 	enum libdeflate_result result;
 
-	if (in_nbytes < GZIP_MIN_OVERHEAD)
+	/*
+	 * Buffers larger than PTRDIFF_MAX cannot be accepted, since pointer
+	 * arithmetic would not be fully defined on such buffers.  (Just check
+	 * 'in_nbytes' here; 'out_nbytes_avail' is checked later.)
+	 */
+	if (unlikely(in_nbytes < GZIP_MIN_OVERHEAD || in_nbytes > PTRDIFF_MAX))
 		return LIBDEFLATE_BAD_DATA;
+	in_end = in_next + in_nbytes;
 
 	/* ID1 */
 	if (*in_next++ != GZIP_ID1)

@@ -200,7 +200,8 @@ enum libdeflate_result {
 	LIBDEFLATE_SUCCESS = 0,
 
 	/* Decompression failed because the compressed data was invalid,
-	 * corrupt, or otherwise unsupported.  */
+	 * corrupt, or otherwise unsupported.  This is also returned if
+	 * 'in_nbytes' or 'out_nbytes_avail' is greater than PTRDIFF_MAX.  */
 	LIBDEFLATE_BAD_DATA = 1,
 
 	/* A NULL 'actual_out_nbytes_ret' was provided, but the data would have

@@ -39,8 +39,15 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 	unsigned level_hint;
 	size_t deflate_size;
 
-	if (out_nbytes_avail <= ZLIB_MIN_OVERHEAD)
+	if (unlikely(out_nbytes_avail <= ZLIB_MIN_OVERHEAD))
 		return 0;
+	/*
+	 * Clamp 'out_nbytes_avail' to PTRDIFF_MAX to ensure that pointer
+	 * arithmetic stays fully defined.  (libdeflate_deflate_compress()
+	 * handles checking for 'in_nbytes > PTRDIFF_MAX'.)
+	 */
+	if (unlikely(out_nbytes_avail > PTRDIFF_MAX))
+		out_nbytes_avail = PTRDIFF_MAX;
 
 	/* 2 byte header: CMF and FLG  */
 	hdr = (ZLIB_CM_DEFLATE << 8) | (ZLIB_CINFO_32K_WINDOW << 12);

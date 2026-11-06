@@ -4095,6 +4095,15 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	struct deflate_output_bitstream os;
 
 	/*
+	 * Buffers larger than PTRDIFF_MAX cannot be accepted, since pointer
+	 * arithmetic would not be fully defined on such buffers.
+	 */
+	if (unlikely(in_nbytes > PTRDIFF_MAX))
+		return 0;
+	if (unlikely(out_nbytes_avail > PTRDIFF_MAX))
+		out_nbytes_avail = PTRDIFF_MAX;
+
+	/*
 	 * For extremely short inputs, or for compression level 0, just output
 	 * uncompressed blocks.
 	 */

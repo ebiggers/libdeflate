@@ -36,14 +36,20 @@ libdeflate_zlib_decompress_ex(struct libdeflate_decompressor *d,
 			      size_t *actual_out_nbytes_ret)
 {
 	const u8 *in_next = in;
-	const u8 * const in_end = in_next + in_nbytes;
+	const u8 *in_end;
 	u16 hdr;
 	size_t actual_in_nbytes;
 	size_t actual_out_nbytes;
 	enum libdeflate_result result;
 
-	if (in_nbytes < ZLIB_MIN_OVERHEAD)
+	/*
+	 * Buffers larger than PTRDIFF_MAX cannot be accepted, since pointer
+	 * arithmetic would not be fully defined on such buffers.  (Just check
+	 * 'in_nbytes' here; 'out_nbytes_avail' is checked later.)
+	 */
+	if (unlikely(in_nbytes < ZLIB_MIN_OVERHEAD || in_nbytes > PTRDIFF_MAX))
 		return LIBDEFLATE_BAD_DATA;
+	in_end = in_next + in_nbytes;
 
 	/* 2 byte header: CMF and FLG  */
 	hdr = get_unaligned_be16(in_next);

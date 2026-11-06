@@ -38,8 +38,15 @@ libdeflate_gzip_compress(struct libdeflate_compressor *c,
 	u8 xfl;
 	size_t deflate_size;
 
-	if (out_nbytes_avail <= GZIP_MIN_OVERHEAD)
+	if (unlikely(out_nbytes_avail <= GZIP_MIN_OVERHEAD))
 		return 0;
+	/*
+	 * Clamp 'out_nbytes_avail' to PTRDIFF_MAX to ensure that pointer
+	 * arithmetic stays fully defined.  (libdeflate_deflate_compress()
+	 * handles checking for 'in_nbytes > PTRDIFF_MAX'.)
+	 */
+	if (unlikely(out_nbytes_avail > PTRDIFF_MAX))
+		out_nbytes_avail = PTRDIFF_MAX;
 
 	/* ID1 */
 	*out_next++ = GZIP_ID1;
