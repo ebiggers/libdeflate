@@ -176,14 +176,12 @@
 static u32 MAYBE_UNUSED
 crc32_slice8(u32 crc, const u8 *p, size_t len)
 {
-	const u8 * const end = p + len;
-	const u8 *end64;
+	while (len && ((uintptr_t)p & 7)) {
+		crc = (crc >> 8) ^ crc32_slice8_table[(u8)crc ^ *p++];
+		len--;
+	}
 
-	for (; ((uintptr_t)p & 7) && p != end; p++)
-		crc = (crc >> 8) ^ crc32_slice8_table[(u8)crc ^ *p];
-
-	end64 = p + ((end - p) & ~7);
-	for (; p != end64; p += 8) {
+	while (len >= 8) {
 		u32 v1 = le32_bswap(*(const u32 *)(p + 0));
 		u32 v2 = le32_bswap(*(const u32 *)(p + 4));
 
@@ -195,10 +193,14 @@ crc32_slice8(u32 crc, const u8 *p, size_t len)
 		      crc32_slice8_table[0x200 + (u8)(v2 >> 8)] ^
 		      crc32_slice8_table[0x100 + (u8)(v2 >> 16)] ^
 		      crc32_slice8_table[0x000 + (u8)(v2 >> 24)];
+		p += 8;
+		len -= 8;
 	}
 
-	for (; p != end; p++)
-		crc = (crc >> 8) ^ crc32_slice8_table[(u8)crc ^ *p];
+	while (len) {
+		crc = (crc >> 8) ^ crc32_slice8_table[(u8)crc ^ *p++];
+		len--;
+	}
 
 	return crc;
 }
