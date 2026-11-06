@@ -213,7 +213,8 @@ xopen_for_read(const tchar *path, bool symlink_ok, struct file_stream *strm)
 
 /* Open a file for writing, or set up standard output for writing */
 int
-xopen_for_write(const tchar *path, bool overwrite, struct file_stream *strm)
+xopen_for_write(const tchar *path, bool overwrite, bool owner_only,
+		struct file_stream *strm)
 {
 	int ret = -1;
 
@@ -237,7 +238,8 @@ xopen_for_write(const tchar *path, bool overwrite, struct file_stream *strm)
 		goto err;
 retry:
 	strm->fd = topen(path, O_WRONLY | O_BINARY | O_NOFOLLOW |
-				O_CREAT | O_EXCL, 0644);
+				O_CREAT | O_EXCL,
+			 owner_only ? 0600 : 0644);
 	if (strm->fd < 0) {
 		if (errno != EEXIST) {
 			msg_errno("Can't open %"TS" for writing", strm->name);

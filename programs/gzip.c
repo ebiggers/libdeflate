@@ -442,7 +442,7 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	if (ret != 0)
 		goto out_close_in;
 
-	ret = xopen_for_write(newpath, options->force, &out);
+	ret = xopen_for_write(newpath, options->force, oldpath != NULL, &out);
 	if (ret != 0)
 		goto out_close_in;
 
@@ -506,7 +506,7 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 	if (ret != 0)
 		goto out_close_in;
 
-	ret = xopen_for_write(newpath, options->force, &out);
+	ret = xopen_for_write(newpath, options->force, path != NULL, &out);
 	if (ret != 0)
 		goto out_close_in;
 

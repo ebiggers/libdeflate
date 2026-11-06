@@ -201,7 +201,8 @@ struct file_stream {
 
 int xopen_for_read(const tchar *path, bool symlink_ok,
 		   struct file_stream *strm);
-int xopen_for_write(const tchar *path, bool force, struct file_stream *strm);
+int xopen_for_write(const tchar *path, bool overwrite, bool owner_only,
+		    struct file_stream *strm);
 int read_file_contents(struct file_stream *strm, s64 st_size);
 
 ssize_t xread(struct file_stream *strm, void *buf, size_t count);
