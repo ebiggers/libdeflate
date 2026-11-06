@@ -328,7 +328,7 @@ static void
 restore_mode(struct file_stream *out, const stat_t *stbuf)
 {
 #ifndef _WIN32
-	if (fchmod(out->fd, stbuf->st_mode) != 0)
+	if (fchmod(out->fd, stbuf->st_mode & 0777) != 0)
 		msg_errno("%"TS": unable to preserve mode", out->name);
 #endif
 }
@@ -372,8 +372,8 @@ static void
 restore_metadata(struct file_stream *out, const tchar *newpath,
 		 const stat_t *stbuf)
 {
-	restore_mode(out, stbuf);
 	restore_owner_and_group(out, stbuf);
+	restore_mode(out, stbuf);
 	restore_timestamps(out, newpath, stbuf);
 }
 
