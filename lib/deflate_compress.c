@@ -2397,14 +2397,15 @@ deflate_compress_none(const u8 *in, size_t in_nbytes,
 		      u8 *out, size_t out_nbytes_avail)
 {
 	const u8 *in_next = in;
-	const u8 * const in_end = in + in_nbytes;
+	const u8 *in_end;
 	u8 *out_next = out;
-	u8 * const out_end = out + out_nbytes_avail;
+	u8 *out_end;
 
 	/*
 	 * If the input is zero-length, we still must output a block in order
 	 * for the output to be a valid DEFLATE stream.  Handle this case
-	 * specially to avoid potentially passing NULL to memcpy() below.
+	 * specially to avoid potentially passing NULL to memcpy() below, and
+	 * also to avoid the undefined 'NULL + 0' when doing 'in + in_nbytes'.
 	 */
 	if (unlikely(in_nbytes == 0)) {
 		if (out_nbytes_avail < 5)
@@ -2415,7 +2416,8 @@ deflate_compress_none(const u8 *in, size_t in_nbytes,
 		put_unaligned_le32(0xFFFF0000, out_next);
 		return 5;
 	}
-
+	in_end = in + in_nbytes;
+	out_end = out + out_nbytes_avail;
 	do {
 		u8 bfinal = 0;
 		size_t len = UINT16_MAX;
@@ -4102,6 +4104,14 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 		return 0;
 	if (unlikely(out_nbytes_avail > PTRDIFF_MAX))
 		out_nbytes_avail = PTRDIFF_MAX;
+
+	/*
+	 * If the output buffer is zero-length, then no compression is possible
+	 * anyway.  Handle this case specially to avoid executing 'NULL + 0'
+	 * which is undefined behavior in C.
+	 */
+	if (unlikely(out_nbytes_avail == 0))
+		return 0;
 
 	/*
 	 * For extremely short inputs, or for compression level 0, just output

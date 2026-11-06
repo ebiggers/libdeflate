@@ -1185,11 +1185,24 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret)
 {
+	u8 dummy[1];
+
 	/*
 	 * Buffers larger than PTRDIFF_MAX cannot be accepted, since pointer
 	 * arithmetic would not be fully defined on such buffers.
+	 *
+	 * Also sanitize zero-length buffers, so that decompress_impl() doesn't
+	 * do 'NULL + 0' which is undefined behavior before C29.
+	 * 'in_nbytes == 0' cannot be a valid DEFLATE stream, so just return
+	 * LIBDEFLATE_BAD_DATA right away for it.  'out_nbytes_avail == 0' is
+	 * potentially valid, since a DEFLATE stream can decompress to zero
+	 * bytes, so in that case just give 'out' a non-NULL address.
 	 */
-	if (unlikely(in_nbytes > PTRDIFF_MAX || out_nbytes_avail > PTRDIFF_MAX))
+	if (unlikely(in_nbytes == 0 || in_nbytes > PTRDIFF_MAX))
+		return LIBDEFLATE_BAD_DATA;
+	if (unlikely(out_nbytes_avail == 0))
+		out = dummy;
+	else if (unlikely(out_nbytes_avail > PTRDIFF_MAX))
 		return LIBDEFLATE_BAD_DATA;
 
 	return decompress_impl(d, in, in_nbytes, out, out_nbytes_avail,
