@@ -4181,6 +4181,8 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 	 * need 1 (empty) block, which gives the final expression below.
 	 */
 	STATIC_ASSERT(2 * MIN_BLOCK_LENGTH <= UINT16_MAX);
+	if (unlikely(in_nbytes > SIZE_MAX - (MIN_BLOCK_LENGTH - 1)))
+		return SIZE_MAX;
 	max_blocks = MAX(DIV_ROUND_UP(in_nbytes, MIN_BLOCK_LENGTH), 1);
 
 	/*
@@ -4191,5 +4193,7 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 	 * Therefore, the maximum number of overhead bytes is '5 * max_blocks'.
 	 * To get the final bound, add the number of uncompressed bytes.
 	 */
+	if (unlikely(in_nbytes > SIZE_MAX - (5 * max_blocks)))
+		return SIZE_MAX;
 	return (5 * max_blocks) + in_nbytes;
 }

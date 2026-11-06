@@ -85,6 +85,9 @@ LIBDEFLATEAPI size_t
 libdeflate_gzip_compress_bound(struct libdeflate_compressor *c,
 			       size_t in_nbytes)
 {
-	return GZIP_MIN_OVERHEAD +
-	       libdeflate_deflate_compress_bound(c, in_nbytes);
+	size_t bound = libdeflate_deflate_compress_bound(c, in_nbytes);
+
+	if (unlikely(bound > SIZE_MAX - GZIP_MIN_OVERHEAD))
+		return SIZE_MAX;
+	return bound + GZIP_MIN_OVERHEAD;
 }

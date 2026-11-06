@@ -98,6 +98,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *compressor,
  * necessarily be a number greater than or equal to 'in_nbytes'.  It may be an
  * overestimate of the true upper bound.  The return value is guaranteed to be
  * the same for all invocations with the same compressor and same 'in_nbytes'.
+ * If the bound would be greater than SIZE_MAX, then SIZE_MAX is returned.
  *
  * As a special case, 'compressor' may be NULL.  This causes the bound to be
  * taken across *any* libdeflate_compressor that could ever be allocated with
