@@ -34,7 +34,6 @@
 #  include <windows.h>
 #else
 #  include <unistd.h>
-#  include <sys/mman.h>
 #endif
 
 #ifndef O_BINARY
@@ -175,8 +174,8 @@ quote_path(const tchar *path)
 int
 xopen_for_read(const tchar *path, bool symlink_ok, struct file_stream *strm)
 {
-	strm->mmap_token = NULL;
-	strm->mmap_mem = NULL;
+	strm->contents = NULL;
+	strm->contents_size = 0;
 
 	if (path == NULL) {
 		strm->is_standard_stream = true;
@@ -218,8 +217,8 @@ xopen_for_write(const tchar *path, bool overwrite, struct file_stream *strm)
 {
 	int ret = -1;
 
-	strm->mmap_token = NULL;
-	strm->mmap_mem = NULL;
+	strm->contents = NULL;
+	strm->contents_size = 0;
 
 	if (path == NULL) {
 		strm->is_standard_stream = true;
@@ -273,25 +272,55 @@ err:
 	return ret;
 }
 
-/* Read the full contents of a file into memory */
-static int
-read_full_contents(struct file_stream *strm)
+/* Read the full contents of a file into memory. */
+int
+read_file_contents(struct file_stream *strm, s64 st_size)
 {
 	size_t filled = 0;
-	size_t capacity = 4096;
+	size_t capacity;
 	char *buf;
-	int ret;
+	ssize_t ret;
 
-	buf = xmalloc(capacity);
-	if (buf == NULL)
+	if (st_size > PTRDIFF_MAX - 1) {
+		msg("%"TS" is too large to be processed by this program",
+		    strm->name);
 		return -1;
+	}
+
+	if (st_size <= 0) {
+		/* If st_size <= 0, assume it might not be the real size. */
+		capacity = 4096;
+		buf = malloc(capacity);
+		if (buf == NULL)
+			goto oom;
+	} else {
+		/*
+		 * st_size > 0.  Try reading that much, plus 1 so that we can
+		 * tell whether EOF has really been reached or not.
+		 */
+		capacity = st_size + 1;
+		buf = malloc(capacity);
+		if (buf == NULL)
+			goto oom;
+		ret = xread(strm, buf, capacity);
+		if (ret < 0)
+			goto err;
+		filled = ret;
+		if (filled < capacity) {
+			strm->contents = buf;
+			strm->contents_size = filled;
+			return 0;
+		}
+		/* We didn't actually hit EOF by st_size, so keep going. */
+	}
+
 	do {
 		if (filled == capacity) {
 			char *newbuf;
 
-			if (capacity == SIZE_MAX)
+			if (capacity == PTRDIFF_MAX)
 				goto oom;
-			capacity += MIN(SIZE_MAX - capacity, capacity);
+			capacity += MIN(PTRDIFF_MAX - capacity, capacity);
 			newbuf = realloc(buf, capacity);
 			if (newbuf == NULL)
 				goto oom;
@@ -303,82 +332,24 @@ read_full_contents(struct file_stream *strm)
 		filled += ret;
 	} while (ret != 0);
 
-	strm->mmap_mem = buf;
-	strm->mmap_size = filled;
+	strm->contents = buf;
+	strm->contents_size = filled;
 	return 0;
 
 err:
 	free(buf);
-	return ret;
+	return -1;
 oom:
-	msg("Out of memory!  %"TS" is too large to be processed by "
-	    "this program as currently implemented.", strm->name);
-	ret = -1;
-	goto err;
-}
-
-/* Map the contents of a file into memory */
-int
-map_file_contents(struct file_stream *strm, u64 size)
-{
-	if (size == 0) /* mmap isn't supported on empty files */
-		return read_full_contents(strm);
-
-	if (size > SIZE_MAX) {
+	/*
+	 * Heuristic: if the file is large, complain about the file being too
+	 * large rather than being out of memory.
+	 */
+	if (capacity > 100000000)
 		msg("%"TS" is too large to be processed by this program",
 		    strm->name);
-		return -1;
-	}
-#ifdef _WIN32
-	strm->mmap_token = CreateFileMapping(
-				(HANDLE)(intptr_t)_get_osfhandle(strm->fd),
-				NULL, PAGE_READONLY, 0, 0, NULL);
-	if (strm->mmap_token == NULL) {
-		DWORD err = GetLastError();
-		if (err == ERROR_BAD_EXE_FORMAT) /* mmap unsupported */
-			return read_full_contents(strm);
-		msg("Unable create file mapping for %"TS": Windows error %u",
-		    strm->name, (unsigned int)err);
-		return -1;
-	}
-
-	strm->mmap_mem = MapViewOfFile((HANDLE)strm->mmap_token,
-				       FILE_MAP_READ, 0, 0, size);
-	if (strm->mmap_mem == NULL) {
-		msg("Unable to map %"TS" into memory: Windows error %u",
-		    strm->name, (unsigned int)GetLastError());
-		CloseHandle((HANDLE)strm->mmap_token);
-		return -1;
-	}
-#else /* _WIN32 */
-	strm->mmap_mem = mmap(NULL, size, PROT_READ, MAP_SHARED, strm->fd, 0);
-	if (strm->mmap_mem == MAP_FAILED) {
-		strm->mmap_mem = NULL;
-		if (errno == ENODEV /* standard */ ||
-		    errno == EINVAL /* macOS */) {
-			/* mmap isn't supported on this file */
-			return read_full_contents(strm);
-		}
-		if (errno == ENOMEM) {
-			msg("%"TS" is too large to be processed by this "
-			    "program", strm->name);
-		} else {
-			msg_errno("Unable to map %"TS" into memory",
-				  strm->name);
-		}
-		return -1;
-	}
-
-#if defined(HAVE_POSIX_MADVISE) || \
-	/* fallback detection method for direct compilation */ \
-	(!defined(HAVE_CONFIG_H) && defined(POSIX_MADV_SEQUENTIAL))
-	(void)posix_madvise(strm->mmap_mem, size, POSIX_MADV_SEQUENTIAL);
-#endif
-	strm->mmap_token = strm; /* anything that's not NULL */
-
-#endif /* !_WIN32 */
-	strm->mmap_size = size;
-	return 0;
+	else
+		msg("Out of memory while reading %"TS, strm->name);
+	goto err;
 }
 
 /*
@@ -439,18 +410,9 @@ xclose(struct file_stream *strm)
 		free(strm->name);
 	}
 
-	if (strm->mmap_token != NULL) {
-#ifdef _WIN32
-		UnmapViewOfFile(strm->mmap_mem);
-		CloseHandle((HANDLE)strm->mmap_token);
-#else
-		munmap(strm->mmap_mem, strm->mmap_size);
-#endif
-		strm->mmap_token = NULL;
-	} else {
-		free(strm->mmap_mem);
-	}
-	strm->mmap_mem = NULL;
+	free(strm->contents);
+	strm->contents = NULL;
+	strm->contents_size = 0;
 	strm->fd = -1;
 	strm->name = NULL;
 	return ret;

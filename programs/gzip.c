@@ -150,8 +150,8 @@ static int
 do_compress(struct libdeflate_compressor *compressor,
 	    struct file_stream *in, struct file_stream *out)
 {
-	const void *uncompressed_data = in->mmap_mem;
-	size_t uncompressed_size = in->mmap_size;
+	const void *uncompressed_data = in->contents;
+	size_t uncompressed_size = in->contents_size;
 	void *compressed_data;
 	size_t actual_compressed_size;
 	size_t max_compressed_size;
@@ -189,8 +189,8 @@ do_decompress(struct libdeflate_decompressor *decompressor,
 	      struct file_stream *in, struct file_stream *out,
 	      const struct options *options)
 {
-	const u8 *compressed_data = in->mmap_mem;
-	size_t compressed_size = in->mmap_size;
+	const u8 *compressed_data = in->contents;
+	size_t compressed_size = in->contents_size;
 	void *uncompressed_data = NULL;
 	size_t uncompressed_size;
 	size_t max_uncompressed_size;
@@ -448,8 +448,7 @@ decompress_file(struct libdeflate_decompressor *decompressor, const tchar *path,
 	if (ret != 0)
 		goto out_close_in;
 
-	/* TODO: need a streaming-friendly solution */
-	ret = map_file_contents(&in, stbuf.st_size);
+	ret = read_file_contents(&in, stbuf.st_size);
 	if (ret != 0)
 		goto out_close_out;
 
@@ -520,8 +519,7 @@ compress_file(struct libdeflate_compressor *compressor, const tchar *path,
 		goto out_close_out;
 	}
 
-	/* TODO: need a streaming-friendly solution */
-	ret = map_file_contents(&in, stbuf.st_size);
+	ret = read_file_contents(&in, stbuf.st_size);
 	if (ret != 0)
 		goto out_close_out;
 

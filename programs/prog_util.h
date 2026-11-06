@@ -67,8 +67,8 @@
    /* Note: when making changes here, update programs/CMakeLists.txt too. */
 #  if defined(__linux__)
      /*
-      * May be needed for clock_gettime(), posix_fadvise(), posix_madvise(),
-      * futimens(), and MAP_ANONYMOUS, depending on the C library version.
+      * May be needed for clock_gettime(), posix_fadvise(), futimens(), and
+      * MAP_ANONYMOUS, depending on the C library version.
       */
 #    undef _GNU_SOURCE
 #    define _GNU_SOURCE
@@ -195,15 +195,14 @@ struct file_stream {
 	int fd;
 	tchar *name;
 	bool is_standard_stream;
-	void *mmap_token;
-	void *mmap_mem;
-	size_t mmap_size;
+	void *contents;
+	size_t contents_size;
 };
 
 int xopen_for_read(const tchar *path, bool symlink_ok,
 		   struct file_stream *strm);
 int xopen_for_write(const tchar *path, bool force, struct file_stream *strm);
-int map_file_contents(struct file_stream *strm, u64 size);
+int read_file_contents(struct file_stream *strm, s64 st_size);
 
 ssize_t xread(struct file_stream *strm, void *buf, size_t count);
 int full_write(struct file_stream *strm, const void *buf, size_t count);
