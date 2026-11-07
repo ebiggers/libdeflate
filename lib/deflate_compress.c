@@ -108,6 +108,13 @@
 #define FAST_SEQ_STORE_LENGTH	8192
 
 /*
+ * For level 1: inputs at least this long are probed to choose how to check
+ * hash table entries; see deflate_fastest_few_matches().  On shorter inputs,
+ * the probe's cost on the inputs it rejects would no longer be negligible.
+ */
+#define FAST_PROBE_MIN_NBYTES		(16 << 20)
+
+/*
  * These are the maximum codeword lengths, in bits, the compressor will use for
  * each Huffman code.  The DEFLATE format defines limits for these.  However,
  * further limiting litlen codewords to 14 bits is beneficial, since it has
@@ -2528,6 +2535,278 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 }
 
 /*
+ * deflate_compress_fastest_adaptive() checks hash table entries in one of two
+ * ways: the default way, ht_matchfinder_longest_match(), or the branchless way,
+ * ht_matchfinder_longest_match_branchless().  It starts with the default way,
+ * which is faster while most entries are empty.  After every
+ * FAST_ADAPT_INTERVAL bytes, or at the end of a block if sooner, it chooses
+ * again: the branchless way if the interval had fewer matches than literals,
+ * else the default way.  The choice doesn't affect the output.
+ */
+#define FAST_ADAPT_INTERVAL	32768
+
+/* Return the number of literals chosen so far in the current block. */
+static forceinline u32
+deflate_num_literals(const struct libdeflate_compressor *c)
+{
+	u32 n = 0;
+	int i;
+
+	for (i = 0; i < DEFLATE_NUM_LITERALS; i++)
+		n += c->freqs.litlen[i];
+	return n;
+}
+
+/*
+ * Choose literals and matches for deflate_compress_fastest_adaptive(), from
+ * 'in_next' until 'in_stop' is reached or the sequence store is full, checking
+ * hash table entries the branchless way if 'branchless' is true.  Return the
+ * new 'in_next'.
+ */
+static forceinline const u8 *
+deflate_compress_fastest_interval(struct libdeflate_compressor * restrict c,
+				  const u8 *in_next, const u8 *in_stop,
+				  const u8 *in_end, const u8 **in_cur_base_p,
+				  u32 *next_hash_p, u32 *max_len_p,
+				  u32 *nice_len_p,
+				  struct deflate_sequence **seq_p,
+				  bool branchless)
+{
+	struct deflate_sequence *seq = *seq_p;
+	u32 max_len = *max_len_p;
+	u32 nice_len = *nice_len_p;
+
+	do {
+		u32 length;
+		u32 offset;
+		size_t remaining = in_end - in_next;
+
+		if (unlikely(remaining < DEFLATE_MAX_MATCH_LEN)) {
+			max_len = remaining;
+			if (max_len < HT_MATCHFINDER_REQUIRED_NBYTES) {
+				do {
+					deflate_choose_literal(c, *in_next++,
+							       false, seq);
+				} while (--max_len);
+				break;
+			}
+			nice_len = MIN(nice_len, max_len);
+		}
+		if (branchless)
+			length = ht_matchfinder_longest_match_branchless(
+					&c->p.f.ht_mf, in_cur_base_p, in_next,
+					max_len, nice_len, next_hash_p,
+					&offset);
+		else
+			length = ht_matchfinder_longest_match(
+					&c->p.f.ht_mf, in_cur_base_p, in_next,
+					max_len, nice_len, next_hash_p,
+					&offset);
+		if (length) {
+			/* Match found */
+			deflate_choose_match(c, length, offset, false, &seq);
+			ht_matchfinder_skip_bytes(&c->p.f.ht_mf, in_cur_base_p,
+						  in_next + 1, in_end,
+						  length - 1, next_hash_p);
+			in_next += length;
+		} else {
+			/* No match found */
+			deflate_choose_literal(c, *in_next++, false, seq);
+		}
+	} while (in_next < in_stop &&
+		 seq < &c->p.f.sequences[FAST_SEQ_STORE_LENGTH]);
+	*seq_p = seq;
+	*max_len_p = max_len;
+	*nice_len_p = nice_len;
+	return in_next;
+}
+
+/*
+ * Same as deflate_compress_fastest(), except that it checks hash table entries
+ * the default way or the branchless way, choosing per interval; see
+ * FAST_ADAPT_INTERVAL.
+ */
+static NOINLINE void
+deflate_compress_fastest_adaptive(struct libdeflate_compressor * restrict c,
+				  const u8 *in, size_t in_nbytes,
+				  struct deflate_output_bitstream *os)
+{
+	const u8 *in_next = in;
+	const u8 *in_end = in_next + in_nbytes;
+	const u8 *in_cur_base = in_next;
+	u32 max_len = DEFLATE_MAX_MATCH_LEN;
+	u32 nice_len = MIN(c->nice_match_length, max_len);
+	u32 next_hash = 0;
+	bool branchless = false;
+
+	ht_matchfinder_init(&c->p.f.ht_mf);
+
+	do {
+		/* Starting a new DEFLATE block */
+
+		const u8 * const in_block_begin = in_next;
+		const u8 * const in_max_block_end = choose_max_block_end(
+				in_next, in_end, FAST_SOFT_MAX_BLOCK_LENGTH);
+		struct deflate_sequence *seq = c->p.f.sequences;
+		u32 block_literals = 0;
+
+		deflate_begin_sequences(c, seq);
+
+		do {
+			/* Starting a new interval; see FAST_ADAPT_INTERVAL */
+
+			const u8 * const in_interval_end = in_next +
+				MIN(in_max_block_end - in_next,
+				    FAST_ADAPT_INTERVAL);
+			const struct deflate_sequence * const seq_begin = seq;
+			u32 literals;
+
+			/*
+			 * Pass constants, so each way gets its own loop.
+			 * likely() makes gcc favor the default way's loop when
+			 * allocating registers.
+			 */
+			if (likely(!branchless))
+				in_next = deflate_compress_fastest_interval(
+						c, in_next, in_interval_end,
+						in_end, &in_cur_base,
+						&next_hash, &max_len,
+						&nice_len, &seq, false);
+			else
+				in_next = deflate_compress_fastest_interval(
+						c, in_next, in_interval_end,
+						in_end, &in_cur_base,
+						&next_hash, &max_len,
+						&nice_len, &seq, true);
+			if (in_next == in_end)
+				break;
+			literals = deflate_num_literals(c) - block_literals;
+			block_literals += literals;
+			branchless = (u32)(seq - seq_begin) < literals;
+
+			/* Check if it's time to output another block. */
+		} while (in_next < in_max_block_end &&
+			 seq < &c->p.f.sequences[FAST_SEQ_STORE_LENGTH]);
+
+		deflate_finish_block(c, os, in_block_begin,
+				     in_next - in_block_begin,
+				     c->p.f.sequences, in_next == in_end);
+	} while (in_next != in_end && !os->overflow);
+}
+
+/* Parameters of deflate_fastest_few_matches() */
+#define FAST_PROBE_NUM_WINDOWS		4
+#define FAST_PROBE_WINDOW_SIZE		4096
+#define FAST_PROBE_HISTORY_SIZE		(MATCHFINDER_WINDOW_SIZE - \
+					 FAST_PROBE_WINDOW_SIZE)
+#define FAST_PROBE_CHECK_INTERVAL	1024
+#define FAST_PROBE_HASH_ORDER		12
+#define FAST_PROBE_HISTORY_HASH_ORDER	15
+#define FAST_PROBE_MIN_LITS_PER_MATCH	8
+
+/*
+ * Parse base[pos..end) greedily for deflate_fastest_few_matches(), using 'tab',
+ * a hash table of 2^hash_order entries, each the position relative to 'base' of
+ * the last sequence that had that hash.  The entries must be at most end - 4,
+ * but needn't be earlier positions: every candidate is checked by comparing
+ * bytes.  Return false if, after any FAST_PROBE_CHECK_INTERVAL bytes or at the
+ * end, there are no more than 'min_lits_per_match' literals per match.
+ */
+static forceinline bool
+deflate_probe_parse(mf_pos_t *tab, const u8 *base, u32 pos, u32 end,
+		    unsigned hash_order, u32 min_lits_per_match)
+{
+	u32 check = pos;
+	u32 lits = 0;
+	u32 matches = 0;
+
+	do {
+		check = MIN(check + FAST_PROBE_CHECK_INTERVAL, end - 3);
+		do {
+			const u32 seq = get_unaligned_le32(&base[pos]);
+			const u32 hash = lz_hash(seq, hash_order);
+			const u32 cand = tab[hash];
+
+			tab[hash] = pos;
+			if (get_unaligned_le32(&base[cand]) == seq &&
+			    cand < pos) {
+				pos += lz_extend(&base[pos], &base[cand], 4,
+						 end - pos);
+				matches++;
+			} else {
+				pos++;
+				lits++;
+			}
+		} while (pos < check);
+		if (lits <= min_lits_per_match * matches)
+			return false;
+	} while (pos < end - 3);
+	return true;
+}
+
+/*
+ * Return true if 'in' seems to have few matches, so that
+ * deflate_compress_fastest_adaptive() would be faster on it than
+ * deflate_compress_fastest().
+ *
+ * First, FAST_PROBE_NUM_WINDOWS windows of FAST_PROBE_WINDOW_SIZE bytes, spread
+ * evenly over the input, are parsed greedily, using a small hash table which
+ * the windows share.  Each must yield more than FAST_PROBE_MIN_LITS_PER_MATCH
+ * literals per match.  Since a window's matches can only come from the window
+ * itself, this finds far fewer matches than the real compressor; the threshold
+ * is set so that text, which yields at most about 6 here, never passes.
+ *
+ * But inputs whose matches mostly come from farther back would pass.  So the
+ * first window is parsed again, after inserting the FAST_PROBE_HISTORY_SIZE
+ * bytes before it into a larger hash table, so that matches can come from about
+ * as far back as in the real compressor.  It must then yield more than 2
+ * literals per match.  That is more than an interval needs for
+ * deflate_compress_fastest_adaptive() to choose the branchless way, since this
+ * parse still finds somewhat fewer matches than the real compressor.
+ *
+ * The hash tables are kept in c->p.f.ht_mf, which deflate_compress_fastest()
+ * and deflate_compress_fastest_adaptive() initialize afterwards.
+ */
+static bool
+deflate_fastest_few_matches(struct libdeflate_compressor *c,
+			    const u8 *in, size_t in_nbytes)
+{
+	mf_pos_t * const tab = (mf_pos_t *)&c->p.f.ht_mf;
+	const size_t stride = (in_nbytes - FAST_PROBE_WINDOW_SIZE) /
+			      FAST_PROBE_NUM_WINDOWS;
+	const u8 * const win0 = in + stride / 2;
+	const u8 *hist;
+	u32 pos;
+	int i;
+
+	STATIC_ASSERT(FAST_PROBE_MIN_NBYTES >= FAST_PROBE_WINDOW_SIZE +
+		      2 * FAST_PROBE_NUM_WINDOWS * FAST_PROBE_HISTORY_SIZE);
+	STATIC_ASSERT(FAST_PROBE_HISTORY_SIZE + FAST_PROBE_WINDOW_SIZE <=
+		      MATCHFINDER_WINDOW_SIZE);
+	STATIC_ASSERT(sizeof(tab[0]) << FAST_PROBE_HISTORY_HASH_ORDER <=
+		      sizeof(c->p.f.ht_mf));
+
+	memset(tab, 0, sizeof(tab[0]) << FAST_PROBE_HASH_ORDER);
+	for (i = 0; i < FAST_PROBE_NUM_WINDOWS; i++) {
+		if (!deflate_probe_parse(tab, win0 + i * stride, 0,
+					 FAST_PROBE_WINDOW_SIZE,
+					 FAST_PROBE_HASH_ORDER,
+					 FAST_PROBE_MIN_LITS_PER_MATCH))
+			return false;
+	}
+
+	hist = win0 - FAST_PROBE_HISTORY_SIZE;
+	memset(tab, 0, sizeof(tab[0]) << FAST_PROBE_HISTORY_HASH_ORDER);
+	for (pos = 0; pos < FAST_PROBE_HISTORY_SIZE; pos++)
+		tab[lz_hash(get_unaligned_le32(&hist[pos]),
+			    FAST_PROBE_HISTORY_HASH_ORDER)] = pos;
+	return deflate_probe_parse(tab, hist, FAST_PROBE_HISTORY_SIZE,
+				   FAST_PROBE_HISTORY_SIZE +
+				   FAST_PROBE_WINDOW_SIZE,
+				   FAST_PROBE_HISTORY_HASH_ORDER, 2);
+}
+
+/*
  * Whether the greedy and lazy compressors use multi-hop links in the hash
  * chains matchfinder (see 'next_tab' in hc_matchfinder.h).  Multi-hop links
  * make searching faster but inserting slower, so they pay off only for the
@@ -4128,8 +4407,17 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	os.end = os.next + out_nbytes_avail;
 	os.overflow = false;
 
-	/* Call the actual compression function. */
-	(*c->impl)(c, in, in_nbytes, &os);
+	/*
+	 * Call the actual compression function.  At level 1, large inputs that
+	 * seem to have few matches go to deflate_compress_fastest_adaptive();
+	 * see deflate_fastest_few_matches().
+	 */
+	if (c->impl == deflate_compress_fastest &&
+	    in_nbytes >= FAST_PROBE_MIN_NBYTES &&
+	    deflate_fastest_few_matches(c, in, in_nbytes))
+		deflate_compress_fastest_adaptive(c, in, in_nbytes, &os);
+	else
+		(*c->impl)(c, in, in_nbytes, &os);
 
 	/* Return 0 if the output buffer is too small. */
 	if (os.overflow)

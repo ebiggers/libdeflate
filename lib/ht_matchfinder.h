@@ -194,6 +194,130 @@ out:
 	return best_len;
 }
 
+/*
+ * Return a pointer to position 'node' if it is in the window, or else to a
+ * position in [in_base, in_next], so that as many bytes can be read from it as
+ * from in_next either way.  Set *stale_ret to nonzero iff 'node' is out of the
+ * window.  'cutoff' must be cur_pos - MATCHFINDER_WINDOW_SIZE, where cur_pos =
+ * in_next - in_base is in [0, MATCHFINDER_WINDOW_SIZE - 1].
+ *
+ * 'rel' is the position of 'node' relative to the oldest position in the
+ * window.  Since 'node' is older than cur_pos and no older than
+ * MATCHFINDER_INITVAL, 'rel' is in [0, MATCHFINDER_WINDOW_SIZE - 2] if 'node'
+ * is in the window and in [-MATCHFINDER_WINDOW_SIZE, -1] if not.  So
+ * 'rel & MATCHFINDER_WINDOW_SIZE' is nonzero iff 'node' is out of the window,
+ * and the oldest position plus ('rel' modulo the window size) is 'node' in the
+ * first case and 'node' + MATCHFINDER_WINDOW_SIZE, which is in [0, cur_pos], in
+ * the second.
+ */
+static forceinline const u8 *
+ht_matchfinder_node_ptr(const u8 *in_next, mf_pos_t node, mf_pos_t cutoff,
+			u32 *stale_ret)
+{
+	u32 rel = (u32)(node + ~cutoff);
+
+	*stale_ret = rel & MATCHFINDER_WINDOW_SIZE;
+	return in_next - ((MATCHFINDER_WINDOW_SIZE - 1) -
+			  (rel & (MATCHFINDER_WINDOW_SIZE - 1)));
+}
+
+/*
+ * Same as ht_matchfinder_longest_match(), except that if
+ * HT_MATCHFINDER_BUCKET_SIZE == 2, the bytes at the first entry, and at the
+ * second entry if those at the first don't match, are compared before checking
+ * whether the entry is in the window, so that the latter needs a branch only if
+ * the bytes match.  That is faster when such a branch would often be
+ * mispredicted, as on larger inputs with few matches.  Otherwise,
+ * ht_matchfinder_longest_match() is faster.
+ */
+static forceinline u32
+ht_matchfinder_longest_match_branchless(struct ht_matchfinder * const mf,
+					const u8 ** const in_base_p,
+					const u8 * const in_next,
+					const u32 max_len,
+					const u32 nice_len,
+					u32 * const next_hash,
+					u32 * const offset_ret)
+{
+#if HT_MATCHFINDER_BUCKET_SIZE == 2
+	u32 best_len = 0;
+	const u8 *best_matchptr = in_next;
+	u32 cur_pos = in_next - *in_base_p;
+	const u8 *in_base;
+	mf_pos_t cutoff;
+	u32 hash;
+	u32 seq;
+	mf_pos_t cur_node;
+	mf_pos_t to_insert;
+	const u8 *matchptr;
+	u32 stale;
+	u32 len;
+
+	if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
+		ht_matchfinder_slide_window(mf);
+		*in_base_p += MATCHFINDER_WINDOW_SIZE;
+		cur_pos = 0;
+	}
+	in_base = *in_base_p;
+	cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
+
+	hash = *next_hash;
+	*next_hash = lz_hash(get_unaligned_le32(in_next + 1),
+			     HT_MATCHFINDER_HASH_ORDER);
+	seq = load_u32_unaligned(in_next);
+	prefetchw(&mf->hash_tab[*next_hash]);
+
+	/*
+	 * Always copy the first entry to the second.  The second entry is
+	 * never newer than the first, so if the first is out of the window,
+	 * then so is the second, and replacing it changes nothing.
+	 */
+	to_insert = mf->hash_tab[hash][0];
+	cur_node = mf->hash_tab[hash][1];
+	mf->hash_tab[hash][0] = cur_pos;
+	mf->hash_tab[hash][1] = to_insert;
+
+	matchptr = ht_matchfinder_node_ptr(in_next, to_insert, cutoff, &stale);
+	if (load_u32_unaligned(matchptr) == seq) {
+		if (stale)
+			goto out;
+		best_len = lz_extend(in_next, matchptr, 4, max_len);
+		best_matchptr = matchptr;
+		if (cur_node <= cutoff || best_len >= nice_len)
+			goto out;
+		matchptr = &in_base[cur_node];
+		if (load_u32_unaligned(matchptr) == seq &&
+		    load_u32_unaligned(matchptr + best_len - 3) ==
+		    load_u32_unaligned(in_next + best_len - 3)) {
+			len = lz_extend(in_next, matchptr, 4, max_len);
+			if (len > best_len) {
+				best_len = len;
+				best_matchptr = matchptr;
+			}
+		}
+		goto out;
+	}
+	matchptr = ht_matchfinder_node_ptr(in_next, cur_node, cutoff, &stale);
+	if (load_u32_unaligned(matchptr) == seq) {
+		/*
+		 * Extend the match before checking 'stale', so that compilers
+		 * don't branch on 'stale' first.
+		 */
+		len = lz_extend(in_next, matchptr, 4, max_len);
+		if (!stale) {
+			best_len = len;
+			best_matchptr = matchptr;
+		}
+	}
+out:
+	*offset_ret = in_next - best_matchptr;
+	return best_len;
+#else
+	return ht_matchfinder_longest_match(mf, in_base_p, in_next, max_len,
+					    nice_len, next_hash, offset_ret);
+#endif
+}
+
 static forceinline void
 ht_matchfinder_skip_bytes(struct ht_matchfinder * const mf,
 			  const u8 ** const in_base_p,
