@@ -558,7 +558,7 @@ struct libdeflate_compressor {
 			 * optimum_items needs MAX_BLOCK_LENGTH entries; it
 			 * doesn't have an end-of-block entry.
 			 */
-			u32 cost_to_end[MAX_BLOCK_LENGTH + 1];
+			u32 cost_to_end[MAX_BLOCK_LENGTH + DEFLATE_MAX_MATCH_LEN];
 			u32 optimum_items[MAX_BLOCK_LENGTH];
 
 			/* The current cost model being used */
@@ -3430,6 +3430,8 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	struct deflate_sequence *seq = NULL;
 	u32 i;
 
+	ASSERT(block_length >= 1 && block_length <= MAX_BLOCK_LENGTH);
+
 	/*
 	 * On some data, using only literals (no matches) ends up being better
 	 * than what the iterative optimization algorithm produces.  Therefore,
@@ -3442,9 +3444,8 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	 * Force the block to really end at the desired length, even if some
 	 * matches extend beyond it.
 	 */
-	for (i = block_length;
-	     i <= MIN(block_length - 1 + DEFLATE_MAX_MATCH_LEN,
-		      ARRAY_LEN(c->p.n.cost_to_end) - 1); i++)
+	for (i = block_length; i <= block_length - 1 + DEFLATE_MAX_MATCH_LEN;
+	     i++)
 		c->p.n.cost_to_end[i] = 0x80000000;
 
 	/*
