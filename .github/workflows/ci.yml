@@ -224,7 +224,7 @@ jobs:
         DESTDIR=build/install cmake --install build --verbose
 
   cpu-features-regression-tests:
-    name: Test building adler32.c and crc32.c with various flags
+    name: Test building adler32.c, crc32.c, and deflate_compress.c with various flags
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
@@ -235,7 +235,7 @@ jobs:
     - name: Compile tests
       run: |
         cflags="-O0 -Wall -Werror"
-        for file in lib/adler32.c lib/crc32.c; do
+        for file in lib/adler32.c lib/crc32.c lib/deflate_compress.c; do
           echo "arm32, default options, file=$file"
           arm-linux-gnueabihf-gcc -c $cflags $file
           for arch in armv4 armv4t armv5t armv5te armv5tej armv6 armv6j armv6k \
