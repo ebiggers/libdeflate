@@ -294,6 +294,7 @@ typedef size_t machine_word_t;
 #define ARRAY_LEN(A)		(sizeof(A) / sizeof((A)[0]))
 #define MIN(a, b)		((a) <= (b) ? (a) : (b))
 #define MAX(a, b)		((a) >= (b) ? (a) : (b))
+#define MAX3(a, b, c)		MAX(MAX((a), (b)), (c))
 #define DIV_ROUND_UP(n, d)	(((n) + (d) - 1) / (d))
 #define STATIC_ASSERT(expr)	((void)sizeof(char[1 - 2 * !(expr)]))
 #define ALIGN(n, a)		(((n) + (a) - 1) & ~((a) - 1))

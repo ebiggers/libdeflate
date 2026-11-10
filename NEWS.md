@@ -13,20 +13,20 @@
   |  7    | 34%     |
   |  8    | 43%     |
   |  9    | 49%     |
-  | 10    | 20%     |
-  | 11    | 28%     |
-  | 12    | 33%     |
+  | 10    | 40%     |
+  | 11    | 49%     |
+  | 12    | 66%     |
 
   The compressed output remains the same.
 
   As a tradeoff, the memory used per compressor at levels 5-9 has increased by
-  about 30% (specifically, from 652 KiB to 844 KiB) in 64-bit builds, or by about
-  10% in 32-bit builds.  There is no increase in memory use at levels 10-12.
+  about 30% (from 652 KiB to 844 KiB) in 64-bit builds, or by about 10% in
+  32-bit builds.  There is a negligible increase in memory use at levels 10-12.
 
   Decompression performance has also been slightly improved: up to 10-20% with
   very short DEFLATE block lengths, but 0.5-2.0% more typically.
 
-  Thanks to Parker Loflin for these optimizations.
+  Thanks to Parker Loflin for many of these optimizations.
 
 * The `libdeflate-gzip` program now reads its input files into memory instead of
   memory mapping them, to ensure that they won't be concurrently modified during
