@@ -460,12 +460,19 @@ static forceinline u64 bswap64(u64 v)
  * (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=67366).  However, we no longer
  * consider that one case important enough to maintain different code for.
  * If you run into it, please just use a newer version of gcc (or use clang).
+ *
+ * MSVC compiles small constant-size memcpy() calls to loads and stores only if
+ * memcpy() is an intrinsic function.  /Oi makes it one, and /O2 implies /Oi,
+ * but /O1 doesn't.  So make it one explicitly.
  */
 
 #ifdef FREESTANDING
 #  define MEMCOPY	__builtin_memcpy
 #else
 #  define MEMCOPY	memcpy
+#  if defined(_MSC_VER) && !defined(__clang__)
+#    pragma intrinsic(memcpy)
+#  endif
 #endif
 
 /* Unaligned loads and stores without endianness conversion */
