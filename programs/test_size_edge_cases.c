@@ -1,7 +1,7 @@
 /*
  * test_size_edge_cases.c
  *
- * Copyright 2026 Eric Biggers
+ * Copyright 2026 Google LLC
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
