@@ -3199,29 +3199,30 @@ static const struct {
 
 /*
  * Choose the default costs for literal and length symbols.  These symbols are
- * both part of the litlen alphabet.
+ * both part of the litlen alphabet.  This assumes that
+ * c->freqs.litlen[0..DEFLATE_NUM_LITERALS - 1] already contains the byte
+ * frequencies for the current block.
  */
 static void
-deflate_choose_default_litlen_costs(struct libdeflate_compressor *c,
-				    const u8 *block_begin, u32 block_length,
+deflate_choose_default_litlen_costs(const struct libdeflate_compressor *c,
+				    u32 block_length,
 				    u32 *lit_cost, u32 *len_sym_cost)
 {
 	u32 num_used_literals = 0;
 	u32 literal_freq = block_length;
 	u32 match_freq = 0;
+	u32 total_freq = 0;
 	u32 cutoff;
 	u32 i;
 
 	/* Calculate the number of distinct literals that exist in the data. */
-	memset(c->freqs.litlen, 0,
-	       DEFLATE_NUM_LITERALS * sizeof(c->freqs.litlen[0]));
 	cutoff = literal_freq >> 11; /* Ignore literals used very rarely. */
-	for (i = 0; i < block_length; i++)
-		c->freqs.litlen[block_begin[i]]++;
 	for (i = 0; i < DEFLATE_NUM_LITERALS; i++) {
 		if (c->freqs.litlen[i] > cutoff)
 			num_used_literals++;
+		total_freq += c->freqs.litlen[i];
 	}
+	ASSERT(total_freq == block_length);
 	if (num_used_literals == 0)
 		num_used_literals = 1;
 
@@ -3233,7 +3234,6 @@ deflate_choose_default_litlen_costs(struct libdeflate_compressor *c,
 	 * heuristic used by the greedy and lazy parsers, to avoid counting too
 	 * many matches when literals are cheaper than short matches.
 	 */
-	match_freq = 0;
 	i = choose_min_match_len(num_used_literals, c->max_search_depth);
 	for (; i < ARRAY_LEN(c->p.n.match_len_freqs); i++) {
 		match_freq += c->p.n.match_len_freqs[i];
@@ -3391,14 +3391,32 @@ deflate_adjust_costs(struct libdeflate_compressor *c,
 		deflate_adjust_costs_impl(c, lit_cost, len_sym_cost, 0);
 }
 
+/*
+ * Set the initial cost model c->p.n.costs for a new block.
+ *
+ * Inputs:
+ *   - 'block_length' is the block length in bytes
+ *   - 'c->freqs.litlen[0..DEFLATE_NUM_LITERALS - 1]' are the byte frequencies
+ *     for the new block
+ *   - 'c->p.n.match_len_freqs' are the estimated match length frequencies for
+ *     the new block
+ *   - 'c->max_search_depth' is the matchfinder's maximum search depth
+ *   - If '!is_first_block', 'c->p.n.costs' is the cost model from the previous
+ *     block
+ *   - If '!is_first_block', 'c->p.n.prev_observations',
+ *     'c->p.n.prev_num_observations', and 'c->split_stats' are the block split
+ *     statistics for the previous and new blocks
+ *
+ * Outputs:
+ *   - 'c->p.n.costs' is the cost model to use to start optimizing the new block
+ */
 static void
 deflate_set_initial_costs(struct libdeflate_compressor *c,
-			  const u8 *block_begin, u32 block_length,
-			  bool is_first_block)
+			  u32 block_length, bool is_first_block)
 {
 	u32 lit_cost, len_sym_cost;
 
-	deflate_choose_default_litlen_costs(c, block_begin, block_length,
+	deflate_choose_default_litlen_costs(c, block_length,
 					    &lit_cost, &len_sym_cost);
 	if (is_first_block)
 		deflate_set_default_costs(c, lit_cost, len_sym_cost);
@@ -3557,6 +3575,13 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	deflate_choose_all_literals(c, block_begin, block_length);
 	only_lits_cost = deflate_compute_true_cost(c);
 
+	/*
+	 * Initialize c->p.n.costs for this block.  Do this before the static
+	 * block check below, which overwrites c->freqs, so that the byte
+	 * frequencies from deflate_choose_all_literals() can be reused.
+	 */
+	deflate_set_initial_costs(c, block_length, is_first_block);
+
 	/* Initialize cost_to_end to 0 for end-of-block. */
 	c->p.n.cost_to_end[block_length] = 0;
 
@@ -3592,9 +3617,6 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 		/* Restore c->p.n.costs. */
 		c->p.n.costs = c->p.n.costs_saved;
 	}
-
-	/* Initialize c->p.n.costs with default costs. */
-	deflate_set_initial_costs(c, block_begin, block_length, is_first_block);
 
 	do {
 		/*
