@@ -2013,17 +2013,19 @@ deflate_flush_block(struct libdeflate_compressor *c,
 			u32 length = c->p.n.optimum_items[i] & OPTIMUM_LEN_MASK;
 			u32 offset = c->p.n.optimum_items[i] >> OPTIMUM_OFFSET_SHIFT;
 
-			if (length == 1) {
+			/* See the comment in deflate_tally_item_list(). */
+			if (length < DEFLATE_MIN_MATCH_LEN) {
 				/* Literal */
 				ADD_BITS(codes->codewords.litlen[offset],
 					 codes->lens.litlen[offset]);
 				FLUSH_BITS();
+				i++;
 			} else {
 				/* Match */
 				WRITE_MATCH(c, codes, length, offset,
 					    c->p.n.offset_slot_full[offset]);
+				i += length;
 			}
-			i += length;
 		} while (i != block_length);
 	} else
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
@@ -2943,16 +2945,23 @@ deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 		u32 length = c->p.n.optimum_items[i] & OPTIMUM_LEN_MASK;
 		u32 offset = c->p.n.optimum_items[i] >> OPTIMUM_OFFSET_SHIFT;
 
-		if (length == 1) {
+		/*
+		 * For a literal (length 1), advance by a constant so that the
+		 * next load doesn't wait for this item's length.  The test
+		 * isn't 'length == 1' because MSVC then turns 'i++' back into
+		 * 'i += length'.
+		 */
+		if (length < DEFLATE_MIN_MATCH_LEN) {
 			/* Literal */
 			c->freqs.litlen[offset]++;
+			i++;
 		} else {
 			/* Match */
 			c->freqs.litlen[DEFLATE_FIRST_LEN_SYM +
 					deflate_length_slot[length]]++;
 			c->freqs.offset[c->p.n.offset_slot_full[offset]]++;
+			i += length;
 		}
-		i += length;
 	} while (i != block_length);
 
 	/* Tally the end-of-block symbol. */
