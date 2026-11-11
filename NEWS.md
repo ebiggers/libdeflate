@@ -28,6 +28,9 @@
 
   Thanks to Parker Loflin for many of these optimizations.
 
+* The library now uses C11 atomics (when supported by the compiler) to avoid
+  ThreadSanitizer warnings during CPU feature detection and dynamic dispatch.
+
 * The `libdeflate-gzip` program now reads its input files into memory instead of
   memory mapping them, to ensure that they won't be concurrently modified during
   compression or decompression.
