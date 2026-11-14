@@ -158,12 +158,22 @@
 #define MATCH_CACHE_LENGTH	(SOFT_MAX_BLOCK_LENGTH * 5)
 
 /*
- * These constants define how the entries in optimum_items[] and length_costs[]
- * are packed.  The costs in cost_to_end[] are also left-shifted by
- * OPTIMUM_OFFSET_SHIFT.
+ * OPTIMUM_LEN_SHIFT and OPTIMUM_OFFSET_MASK define how the match length and
+ * offset are packed in the entries of optimum_items[] that represent matches.
+ * The maximum match offset fits in 16 bits, so set OPTIMUM_OFFSET_MASK to be
+ * the low 16 bits (rather than low 23) to improve code generation.
  */
-#define OPTIMUM_OFFSET_SHIFT	9
-#define OPTIMUM_LEN_MASK	(((u32)1 << OPTIMUM_OFFSET_SHIFT) - 1)
+#define OPTIMUM_LEN_SHIFT	23
+#define OPTIMUM_OFFSET_MASK	0xffff
+
+/*
+ * PACKED_COST_SHIFT is the amount by which costs are left-shifted in
+ * cost_to_end[], length_costs[], and the return value of
+ * deflate_min_packed_cost().  PACKED_COST_LEN_MASK is the mask for the low bits
+ * which are used to hold a match length in the latter two cases.
+ */
+#define PACKED_COST_SHIFT	9
+#define PACKED_COST_LEN_MASK	(((u32)1 << PACKED_COST_SHIFT) - 1)
 
 /*
  * This is the maximum value of c->p.n.costs.literal[lit] for any literal.
@@ -218,7 +228,7 @@
 #define MAX_MATCH_SPAN_COST	(DEFLATE_MAX_MATCH_LEN * MAX_LITERAL_COST)
 
 /* See find_min_cost_path_template.h for the explanation of these values */
-#define REBASE_THRESHOLD	((u32)1 << (32 - OPTIMUM_OFFSET_SHIFT - 1))
+#define REBASE_THRESHOLD	((u32)1 << (32 - PACKED_COST_SHIFT - 1))
 #define REBASE_MARGIN		((u32)1 << 17)
 
 /*
@@ -276,8 +286,17 @@ check_buildtime_parameters(void)
 	STATIC_ASSERT(MIN_BLOCK_LENGTH * MAX_MATCHES_PER_POS <=
 		      MATCH_CACHE_LENGTH);
 
-	/* Match lengths must fit in OPTIMUM_LEN_MASK. */
-	STATIC_ASSERT(DEFLATE_MAX_MATCH_LEN <= OPTIMUM_LEN_MASK);
+	/* Match lengths must fit in PACKED_COST_LEN_MASK. */
+	STATIC_ASSERT(DEFLATE_MAX_MATCH_LEN <= PACKED_COST_LEN_MASK);
+
+	/*
+	 * The maximum match length, maximum match offset, and maximum literal
+	 * must fit in the space allocated for them in optimum_items[].
+	 */
+	STATIC_ASSERT(DEFLATE_MAX_MATCH_LEN <= (u32)~0 >> OPTIMUM_LEN_SHIFT);
+	STATIC_ASSERT(OPTIMUM_OFFSET_MASK <= ((u32)1 << OPTIMUM_LEN_SHIFT) - 1);
+	STATIC_ASSERT(DEFLATE_MAX_MATCH_OFFSET <= OPTIMUM_OFFSET_MASK);
+	STATIC_ASSERT(DEFLATE_NUM_LITERALS <= (u32)1 << OPTIMUM_LEN_SHIFT);
 
 	/* Block costs must fit in UINT32_MAX. */
 	STATIC_ASSERT((u64)MAX_BLOCK_LENGTH * MAX_LITERAL_COST <= UINT32_MAX);
@@ -288,8 +307,8 @@ check_buildtime_parameters(void)
 	 */
 	STATIC_ASSERT(REBASE_MARGIN >= MAX_MATCH_SPAN_COST &&
 		      REBASE_MARGIN < REBASE_THRESHOLD);
-	STATIC_ASSERT(REBASE_THRESHOLD + MAX_LENGTH_COST <
-		      ((u32)1 << (32 - OPTIMUM_OFFSET_SHIFT)));
+	STATIC_ASSERT(REBASE_THRESHOLD + MAX_LENGTH_COST <=
+		      (u32)~0 >> PACKED_COST_SHIFT);
 #endif
 
 	/* The definition of MAX_BLOCK_LENGTH assumes this. */
@@ -632,8 +651,8 @@ struct libdeflate_compressor {
 			 * cost_to_end[i] is the minimum cost to reach
 			 * end-of-block from position i in the block, in units
 			 * of 1/BIT_COST bits and left-shifted by
-			 * OPTIMUM_OFFSET_SHIFT.  The left shift truncates the
-			 * cost to its low '32 - OPTIMUM_OFFSET_SHIFT' bits; see
+			 * PACKED_COST_SHIFT.  The left shift truncates the cost
+			 * to its low '32 - PACKED_COST_SHIFT' bits; see
 			 * find_min_cost_path_template.h.
 			 *
 			 * cost_to_end needs MAX_BLOCK_LENGTH +
@@ -647,11 +666,14 @@ struct libdeflate_compressor {
 			 *
 			 * optimum_items[i] is the first literal or match on the
 			 * minimum-cost path from position i to end-of-block.
-			 * If it's a literal, then its low OPTIMUM_OFFSET_SHIFT
-			 * bits contain the value 1, and its high bits contain
-			 * the literal's value.  If it's a match, then its low
-			 * OPTIMUM_OFFSET_SHIFT bits contain the match length,
-			 * and its high bits contain the match offset.
+			 * If it's a literal, then it just contains the literal
+			 * value.  If it's a match, then the bits selected by
+			 * OPTIMUM_OFFSET_MASK contain the match offset, and the
+			 * high '32 - OPTIMUM_LEN_SHIFT' bits contain the match
+			 * length.  (Since match lengths cannot be 0 and the
+			 * maximum literal is below '1 << OPTIMUM_LEN_SHIFT',
+			 * this format is unambiguous.)
+			 *
 			 * optimum_items needs MAX_BLOCK_LENGTH entries; it
 			 * doesn't have an end-of-block entry.
 			 */
@@ -2008,23 +2030,28 @@ deflate_flush_block(struct libdeflate_compressor *c,
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	if (sequences == NULL) {
 		/* Output the literals and matches from the minimum-cost path */
-		u32 i = 0;
-		do {
-			u32 length = c->p.n.optimum_items[i] & OPTIMUM_LEN_MASK;
-			u32 offset = c->p.n.optimum_items[i] >> OPTIMUM_OFFSET_SHIFT;
+		size_t i = 0;
 
-			if (length == 1) {
+		do {
+			u32 item = c->p.n.optimum_items[i];
+
+			if (item < DEFLATE_NUM_LITERALS) {
 				/* Literal */
-				ADD_BITS(codes->codewords.litlen[offset],
-					 codes->lens.litlen[offset]);
+				ADD_BITS(codes->codewords.litlen[item],
+					 codes->lens.litlen[item]);
 				FLUSH_BITS();
+				i++;
 			} else {
 				/* Match */
+				u32 length = item >> OPTIMUM_LEN_SHIFT;
+				u32 offset = item & OPTIMUM_OFFSET_MASK;
+
 				WRITE_MATCH(c, codes, length, offset,
 					    c->p.n.offset_slot_full[offset]);
+				i += length;
 			}
-			i += length;
-		} while (i != block_length);
+		} while (i < block_length);
+		ASSERT(i == block_length);
 	} else
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 	{
@@ -2937,23 +2964,27 @@ deflate_compress_lazy2(struct libdeflate_compressor * restrict c,
 static void
 deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 {
-	u32 i = 0;
+	size_t i = 0;
 
 	do {
-		u32 length = c->p.n.optimum_items[i] & OPTIMUM_LEN_MASK;
-		u32 offset = c->p.n.optimum_items[i] >> OPTIMUM_OFFSET_SHIFT;
+		u32 item = c->p.n.optimum_items[i];
 
-		if (length == 1) {
+		if (item < DEFLATE_NUM_LITERALS) {
 			/* Literal */
-			c->freqs.litlen[offset]++;
+			c->freqs.litlen[item]++;
+			i++;
 		} else {
 			/* Match */
+			u32 length = item >> OPTIMUM_LEN_SHIFT;
+			u32 offset = item & OPTIMUM_OFFSET_MASK;
+
 			c->freqs.litlen[DEFLATE_FIRST_LEN_SYM +
 					deflate_length_slot[length]]++;
 			c->freqs.offset[c->p.n.offset_slot_full[offset]]++;
+			i += length;
 		}
-		i += length;
-	} while (i != block_length);
+	} while (i < block_length);
+	ASSERT(i == block_length);
 
 	/* Tally the end-of-block symbol. */
 	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
@@ -3478,7 +3509,7 @@ deflate_min_packed_cost_default(const u32 *length_costs, const u32 *cost_to_end,
  *   - 'c->p.n.cost_to_end[block_length]' is assumed to have been set to 0
  *   - The sentinel entries 'c->p.n.cost_to_end[block_length + 1 ..
  *     block_length + DEFLATE_MAX_MATCH_LEN - 1]' are assumed to have been set
- *     to a value 'cost << OPTIMUM_OFFSET_SHIFT' where
+ *     to a value 'cost << PACKED_COST_SHIFT' where
  *     'MAX_MATCH_SPAN_COST <= cost < REBASE_THRESHOLD'
  *   - The COST_SIMD_PADDING entries after the sentinel entries are assumed to
  *     have been initialized (to any value)
@@ -3513,9 +3544,9 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 	for (i = 1; i < DEFLATE_MAX_MATCH_LEN; i++) {
 		u32 sentinel = c->p.n.cost_to_end[block_length + i];
 
-		ASSERT(sentinel >> OPTIMUM_OFFSET_SHIFT >= MAX_MATCH_SPAN_COST);
-		ASSERT(sentinel >> OPTIMUM_OFFSET_SHIFT < REBASE_THRESHOLD);
-		ASSERT((sentinel & OPTIMUM_LEN_MASK) == 0);
+		ASSERT(sentinel >> PACKED_COST_SHIFT >= MAX_MATCH_SPAN_COST);
+		ASSERT(sentinel >> PACKED_COST_SHIFT < REBASE_THRESHOLD);
+		ASSERT((sentinel & PACKED_COST_LEN_MASK) == 0);
 	}
 
 	/* Call the function instantiated from find_min_cost_path_template.h. */
@@ -3589,7 +3620,7 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	 * Initialize sentinel values past block_length so that matches
 	 * extending past block_length aren't chosen.  Any cost that is at least
 	 * MAX_MATCH_SPAN_COST but less than REBASE_THRESHOLD, and shifted left
-	 * by OPTIMUM_OFFSET_SHIFT, works.
+	 * by PACKED_COST_SHIFT, works.
 	 *
 	 * Also initialize the COST_SIMD_PADDING entries.  Their value doesn't
 	 * matter; just set them to the sentinel value too.
@@ -3597,7 +3628,7 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	for (i = block_length + 1;
 	     i < block_length + DEFLATE_MAX_MATCH_LEN + COST_SIMD_PADDING; i++)
 		c->p.n.cost_to_end[i] = (REBASE_THRESHOLD / 2) <<
-					OPTIMUM_OFFSET_SHIFT;
+					PACKED_COST_SHIFT;
 	STATIC_ASSERT(REBASE_THRESHOLD / 2 >= MAX_MATCH_SPAN_COST);
 
 	/*

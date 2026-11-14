@@ -48,7 +48,7 @@
  *	(c->p.n.costs.length[len] << 9) | len
  *
  * That is, its high 23 bits contain the length's cost, and its low 9
- * (OPTIMUM_OFFSET_SHIFT in the code) bits contain the length.
+ * (PACKED_COST_SHIFT in the code) bits contain the length.
  *
  * Then, in 'cost_to_end[i]' we store 'cost[i]' (the minimum cost to reach
  * end-of-block from position 'i') shifted left by 9, using the high 23 bits:
@@ -142,7 +142,7 @@ FUNCNAME(struct libdeflate_compressor *c, const u32 block_length,
 #endif
 	for (i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++)
 		length_costs[i] = (u32)((c->p.n.costs.length[i] <<
-					 OPTIMUM_OFFSET_SHIFT) | i);
+					 PACKED_COST_SHIFT) | i);
 
 	/*
 	 * Initialize padding entries to accommodate SIMD loads.  The value
@@ -166,10 +166,11 @@ FUNCNAME(struct libdeflate_compressor *c, const u32 block_length,
 
 		num_matches = cache_ptr->length;
 		literal = cache_ptr->offset;
+		ASSERT(literal < DEFLATE_NUM_LITERALS);
 
 		/* It's always possible to choose a literal. */
 		best_cost_to_end += c->p.n.costs.literal[literal];
-		best_item = (literal << OPTIMUM_OFFSET_SHIFT) | 1;
+		best_item = literal;
 
 		i--;
 
@@ -212,23 +213,33 @@ FUNCNAME(struct libdeflate_compressor *c, const u32 block_length,
 						&c->p.n.cost_to_end[i],
 						len, match_len);
 				match_cost = c->p.n.costs.offset_slot[offset_slot] +
-					     (packed_best >> OPTIMUM_OFFSET_SHIFT);
+					     (packed_best >> PACKED_COST_SHIFT);
 				if (match_cost < best_cost_to_end) {
 					best_cost_to_end = match_cost;
-					best_item = (packed_best & OPTIMUM_LEN_MASK) |
-						    (offset << OPTIMUM_OFFSET_SHIFT);
+
+					/*
+					 * Since 'OPTIMUM_LEN_SHIFT >=
+					 * 32 - PACKED_COST_SHIFT',
+					 * 'packed_best << OPTIMUM_LEN_SHIFT'
+					 * discards the cost bits without having
+					 * to do '& PACKED_COST_LEN_MASK' first.
+					 */
+					STATIC_ASSERT(OPTIMUM_LEN_SHIFT >=
+						      (32 - PACKED_COST_SHIFT));
+					best_item = (packed_best <<
+						     OPTIMUM_LEN_SHIFT) | offset;
 				}
 				len = match_len + 1;
 			} while (++match != cache_ptr);
 			cache_ptr -= num_matches;
 		}
 		/*
-		 * Store the absolute cost shifted left by OPTIMUM_OFFSET_SHIFT.
+		 * Store the absolute cost shifted left by PACKED_COST_SHIFT.
 		 * This truncates the cost to its low 23 bits, which is safe, as
 		 * explained in this function's comment.
 		 */
 		c->p.n.cost_to_end[i] =
-			(best_cost_to_end + base_cost) << OPTIMUM_OFFSET_SHIFT;
+			(best_cost_to_end + base_cost) << PACKED_COST_SHIFT;
 		c->p.n.optimum_items[i] = best_item;
 
 		/*
@@ -241,7 +252,7 @@ FUNCNAME(struct libdeflate_compressor *c, const u32 block_length,
 
 			best_cost_to_end = REBASE_MARGIN;
 			base_cost += delta;
-			delta <<= OPTIMUM_OFFSET_SHIFT;
+			delta <<= PACKED_COST_SHIFT;
 			/* Disable unrolling on clang to avoid code bloat. */
 #ifdef __clang__
 #  pragma clang loop unroll(disable)
