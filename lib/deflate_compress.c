@@ -2032,7 +2032,53 @@ deflate_flush_block(struct libdeflate_compressor *c,
 		/* Output the literals and matches from the minimum-cost path */
 		size_t i = 0;
 
-		do {
+		while (CAN_BUFFER(4 * MAX_LITLEN_CODEWORD_LEN) &&
+		       i + 4 <= block_length) {
+			u32 item = c->p.n.optimum_items[i];
+			u32 length;
+			u32 offset;
+
+			if (item < DEFLATE_NUM_LITERALS) {
+				/* First literal */
+				ADD_BITS(codes->codewords.litlen[item],
+					 codes->lens.litlen[item]);
+				item = c->p.n.optimum_items[i + 1];
+				if (item < DEFLATE_NUM_LITERALS) {
+					/* Second literal */
+					ADD_BITS(codes->codewords.litlen[item],
+						 codes->lens.litlen[item]);
+					item = c->p.n.optimum_items[i + 2];
+					if (item < DEFLATE_NUM_LITERALS) {
+						/* Third literal */
+						ADD_BITS(codes->codewords.litlen[item],
+							 codes->lens.litlen[item]);
+						item = c->p.n.optimum_items[i + 3];
+						if (item < DEFLATE_NUM_LITERALS) {
+							/* Fourth literal */
+							ADD_BITS(codes->codewords.litlen[item],
+								 codes->lens.litlen[item]);
+							i += 4;
+							FLUSH_BITS();
+							continue;
+						}
+						i += 3;
+					} else {
+						i += 2;
+					}
+				} else {
+					i++;
+				}
+				FLUSH_BITS();
+			}
+			/* Match */
+			length = item >> OPTIMUM_LEN_SHIFT;
+			offset = item & OPTIMUM_OFFSET_MASK;
+			WRITE_MATCH(c, codes, length, offset,
+				    c->p.n.offset_slot_full[offset]);
+			i += length;
+		}
+
+		while (i < block_length) {
 			u32 item = c->p.n.optimum_items[i];
 
 			if (item < DEFLATE_NUM_LITERALS) {
@@ -2050,7 +2096,7 @@ deflate_flush_block(struct libdeflate_compressor *c,
 					    c->p.n.offset_slot_full[offset]);
 				i += length;
 			}
-		} while (i < block_length);
+		}
 		ASSERT(i == block_length);
 	} else
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
