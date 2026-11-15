@@ -293,6 +293,9 @@ hc_matchfinder_slide_window(struct hc_matchfinder *mf, bool multi_hop)
  *	If a match is found, its offset is returned in this location.
  * @multi_hop
  *	Whether to use multi-hop links; see 'next_tab'.
+ * @cost_aware
+ *	Whether to avoid overwriting a much closer match with a match that is
+ *	only 1..3 bytes longer.  Must be a compile-time constant.
  *
  * Return the length of the match found, or 'best_len' if no match longer than
  * 'best_len' was found.
@@ -307,10 +310,13 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 			     const u32 max_search_depth,
 			     u32 * const next_hashes,
 			     u32 * const offset_ret,
-			     const bool multi_hop)
+			     const bool multi_hop,
+			     const bool cost_aware)
 {
 	u32 depth_remaining = max_search_depth;
 	const u8 *best_matchptr = in_next;
+	const u32 orig_best_len = best_len;
+	u32 longest_len = best_len;
 	mf_pos_t cur_node3, cur_node4;
 	hc_link_t cur_link = 0; /* nodes after cur_node4 (if multi_hop) */
 	hc_link_t next_link = 0; /* link of the last node in 'cur_link' */
@@ -398,27 +404,16 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 		}							\
 	} while (0)
 
-	if (best_len < 4) {  /* No match of length >= 4 found yet?  */
-
-		/* Check for a length 3 match if needed.  */
-
-		if (cur_node3 <= cutoff)
-			goto out;
+	/*
+	 * Search 'hash4_tab' first so that 'in_base[cur_node3]' only needs to
+	 * be loaded when no length 4+ match was found (or when a very close
+	 * length 3 match can beat a distant length 4 match).
+	 */
+	if (longest_len < 4) {
+		if (cur_node4 <= cutoff)
+			goto check_len3;
 
 		seq4 = load_u32_unaligned(in_next);
-
-		if (best_len < 3) {
-			matchptr = &in_base[cur_node3];
-			if (load_u24_unaligned(matchptr) == loaded_u32_to_u24(seq4)) {
-				best_len = 3;
-				best_matchptr = matchptr;
-			}
-		}
-
-		/* Check for a length 4 match.  */
-
-		if (cur_node4 <= cutoff)
-			goto out;
 
 		HC_BEGIN_WALK();
 		for (;;) {
@@ -431,25 +426,29 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 			/* The first 4 bytes did not match.  Keep trying.  */
 			HC_ADVANCE();
 			if (cur_node4 <= cutoff || !--depth_remaining)
-				goto out;
+				goto check_len3;
 		}
 
 		/* Found a match of length >= 4.  Extend it to its full length.  */
 		best_matchptr = matchptr;
 		best_len = lz_extend(in_next, best_matchptr, 4, max_len);
-		if (best_len >= nice_len)
+		longest_len = best_len;
+		if (longest_len >= nice_len)
 			goto out;
 		HC_ADVANCE();
 		if (cur_node4 <= cutoff || !--depth_remaining)
-			goto out;
+			goto check_len3;
 	} else {
-		if (cur_node4 <= cutoff || best_len >= nice_len)
+		if (cur_node4 <= cutoff || longest_len >= nice_len)
 			goto out;
 		HC_BEGIN_WALK();
 	}
 
-	/* Check for matches of length >= 5.  */
-
+	/*
+	 * Check for matches of length >= 5.  Since hash chains are ordered by
+	 * strictly increasing offset, a candidate further down the chain can
+	 * only be worthwhile if it is strictly longer than 'longest_len'.
+	 */
 	for (;;) {
 		for (;;) {
 			matchptr = &in_base[cur_node4];
@@ -460,19 +459,19 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 			 * the one which would extend the match length by 1, is
 			 * the most important.)  */
 		#if UNALIGNED_ACCESS_IS_FAST
-			if ((load_u32_unaligned(matchptr + best_len - 3) ==
-			     load_u32_unaligned(in_next + best_len - 3)) &&
+			if ((load_u32_unaligned(matchptr + longest_len - 3) ==
+			     load_u32_unaligned(in_next + longest_len - 3)) &&
 			    (load_u32_unaligned(matchptr) ==
 			     load_u32_unaligned(in_next)))
 		#else
-			if (matchptr[best_len] == in_next[best_len])
+			if (matchptr[longest_len] == in_next[longest_len])
 		#endif
 				break;
 
 			/* Continue to the next node in the list.  */
 			HC_ADVANCE();
 			if (cur_node4 <= cutoff || !--depth_remaining)
-				goto out;
+				goto check_len3;
 		}
 
 	#if UNALIGNED_ACCESS_IS_FAST
@@ -481,21 +480,66 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 		len = 0;
 	#endif
 		len = lz_extend(in_next, matchptr, len, max_len);
-		if (len > best_len) {
-			/* This is the new longest match.  */
-			best_len = len;
-			best_matchptr = matchptr;
-			if (best_len >= nice_len)
+		if (len > longest_len) {
+			longest_len = len;
+			if (!cost_aware || len - best_len >= 4) {
+				best_len = len;
+				best_matchptr = matchptr;
+			} else {
+				u32 d = len - best_len;
+				u32 old_off = MAX(48U,
+						  (u32)(in_next - best_matchptr));
+				u32 new_off = (u32)(in_next - matchptr);
+				unsigned sh = (d == 1) ?
+					((best_len == 10 || best_len == 18 ||
+					  best_len == 34) ? 2 : 3) :
+					(d == 2) ? 7 : 10;
+
+				if (new_off <= (old_off << sh)) {
+					best_len = len;
+					best_matchptr = matchptr;
+				}
+			}
+			if (longest_len >= nice_len) {
+				best_len = longest_len;
+				best_matchptr = matchptr;
 				goto out;
+			}
 		}
 
 		/* Continue to the next node in the list.  */
 		HC_ADVANCE();
 		if (cur_node4 <= cutoff || !--depth_remaining)
-			goto out;
+			goto check_len3;
 	}
 #undef HC_BEGIN_WALK
 #undef HC_ADVANCE
+
+check_len3:
+	if (orig_best_len < 3 && cur_node3 > cutoff) {
+		if (best_len < 4) {
+			matchptr = &in_base[cur_node3];
+			if (load_u24_unaligned(matchptr) ==
+			    load_u24_unaligned(in_next)) {
+				best_len = 3;
+				best_matchptr = matchptr;
+			}
+		} else if (cost_aware && best_len == 4) {
+			u32 off3 = cur_pos - (s32)cur_node3;
+
+			if (off3 <= 256 &&
+			    (u32)(in_next - best_matchptr) >
+			    (MAX(48U, off3) << 4)) {
+				matchptr = &in_base[cur_node3];
+				if (load_u24_unaligned(matchptr) ==
+				    load_u24_unaligned(in_next)) {
+					best_len = 3;
+					best_matchptr = matchptr;
+				}
+			}
+		}
+	}
+
 out:
 	*offset_ret = in_next - best_matchptr;
 	return best_len;

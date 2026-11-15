@@ -2728,7 +2728,8 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 						c->max_search_depth,
 						next_hashes,
 						&offset,
-						GREEDY_MULTI_HOP);
+						GREEDY_MULTI_HOP,
+						false);
 
 			if (length >= min_len &&
 			    (length > DEFLATE_MIN_MATCH_LEN ||
@@ -2947,7 +2948,8 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						c->max_search_depth,
 						next_hashes,
 						&cur_offset,
-						LAZY_MULTI_HOP);
+						LAZY_MULTI_HOP,
+						true);
 			if (cur_len < min_len ||
 			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
 			     !lazy_accept_len3_match(
@@ -3009,7 +3011,8 @@ have_cur_match:
 						c->max_search_depth >> 1,
 						next_hashes,
 						&next_offset,
-						LAZY_MULTI_HOP);
+						LAZY_MULTI_HOP,
+						true);
 			if (next_len >= cur_len &&
 			    4 * (int)(next_len - cur_len) +
 			    (cur_offset_cost -
@@ -3041,7 +3044,8 @@ have_cur_match:
 						c->max_search_depth >> 2,
 						next_hashes,
 						&next_offset,
-						LAZY_MULTI_HOP);
+						LAZY_MULTI_HOP,
+						true);
 				if (next_len >= cur_len &&
 				    4 * (int)(next_len - cur_len) +
 				    (cur_offset_cost -
