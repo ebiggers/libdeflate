@@ -2762,6 +2762,115 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 	} while (in_next != in_end && !os->overflow);
 }
 
+/*
+ * Return the approximate relative bit cost of encoding a match offset in
+ * DEFLATE: the number of extra bits minus log2 of the offset slot's frequency
+ * seen so far in the current block (the log2(total_matches) term cancels when
+ * subtracting two offset costs).
+ */
+static forceinline int
+lazy_offset_cost(const struct libdeflate_compressor *c, u32 offset)
+{
+	unsigned slot = deflate_get_offset_slot(offset);
+
+	return (int)deflate_extra_offset_bits[slot] -
+	       (int)bsr32(c->freqs.offset[slot] | 1);
+}
+
+static forceinline int
+lazy_len_cost(const struct libdeflate_compressor *c, u32 len)
+{
+	unsigned slot = deflate_length_slot[len];
+
+	return (int)deflate_extra_length_bits[slot] -
+	       (int)bsr32(c->freqs.litlen[DEFLATE_FIRST_LEN_SYM + slot] | 1);
+}
+
+static forceinline int
+clamp_codeword_len_x2(int len_x2, int max_len_x2)
+{
+	return MIN(max_len_x2, MAX(2, len_x2));
+}
+
+/*
+ * Return an approximation of 2 * log2(x) for x >= 1, using the integer log2
+ * plus the most significant mantissa bit (0.5-bit precision).
+ */
+static forceinline int
+log2_x2(u32 x)
+{
+	unsigned b = bsr32(x | 1);
+
+	return (int)(2 * b + ((x >> (b ? b - 1 : 0)) & (b != 0)));
+}
+
+static forceinline int
+litlen_sym_cost_x2(const struct libdeflate_compressor *c, int log2_litlen_x2,
+		   unsigned sym)
+{
+	int cost_x2 = log2_litlen_x2 - log2_x2(c->freqs.litlen[sym] | 1);
+
+	return clamp_codeword_len_x2(cost_x2, 2 * MAX_LITLEN_CODEWORD_LEN);
+}
+
+/*
+ * Decide whether a length-3 match at @in_next with @cur_offset is worth
+ * choosing over three literals, based on the symbol frequencies observed so far
+ * in the current block.
+ */
+static forceinline bool
+lazy_accept_len3_match(const struct libdeflate_compressor *c,
+		       const u8 *in_next, u32 cur_offset, u32 num_matches)
+{
+	u32 num_litlen = c->split_stats.num_observations +
+			 c->split_stats.num_new_observations;
+	int log2_litlen_x2;
+	int lits_cost_x2;
+	u32 freq_len3;
+	int len3_cost_x2;
+	unsigned oslot;
+	int off_cw_x2;
+	int off_cost_x2;
+
+	/*
+	 * Early in the block, the frequency counters don't have enough samples
+	 * yet for per-symbol cost estimation to be reliable.  Fall back to the
+	 * 8192-byte offset cutoff.
+	 */
+	if (unlikely(num_litlen < 512))
+		return cur_offset <= 8192;
+
+	/*
+	 * Use 0.5-bit precision (log2_x2) so summing three literal costs vs.
+	 * one length symbol cost doesn't accumulate up to 2 bits of integer
+	 * bsr32() truncation bias right below powers of two.
+	 */
+	log2_litlen_x2 = log2_x2(num_litlen);
+
+	lits_cost_x2 = litlen_sym_cost_x2(c, log2_litlen_x2, in_next[0]) +
+		       litlen_sym_cost_x2(c, log2_litlen_x2, in_next[1]) +
+		       litlen_sym_cost_x2(c, log2_litlen_x2, in_next[2]);
+
+	/*
+	 * Floor the length-3 symbol's frequency at half the length-4 symbol's
+	 * frequency so a temporarily low count early in the block doesn't
+	 * inflate len3_cost_x2 and permanently starve length-3 matches.
+	 */
+	freq_len3 = MAX(c->freqs.litlen[DEFLATE_FIRST_LEN_SYM],
+			c->freqs.litlen[DEFLATE_FIRST_LEN_SYM + 1] >> 1);
+	len3_cost_x2 = clamp_codeword_len_x2(log2_litlen_x2 -
+					     log2_x2(freq_len3 | 1),
+					     2 * MAX_LITLEN_CODEWORD_LEN);
+
+	oslot = deflate_get_offset_slot(cur_offset);
+	off_cw_x2 = clamp_codeword_len_x2(log2_x2(num_matches | 1) -
+					  log2_x2(c->freqs.offset[oslot] | 1),
+					  2 * MAX_OFFSET_CODEWORD_LEN);
+	off_cost_x2 = off_cw_x2 + 2 * (int)deflate_extra_offset_bits[oslot];
+
+	return len3_cost_x2 + off_cost_x2 + 1 <= lits_cost_x2;
+}
+
 static forceinline void
 deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			      const u8 *in, size_t in_nbytes,
@@ -2792,11 +2901,23 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 		min_len = calculate_min_match_len(in_next,
 						  in_max_block_end - in_next,
 						  c->max_search_depth);
+		/*
+		 * Printable ASCII text (e.g. CSS, JSON, source code) typically
+		 * has 55..79 distinct frequent byte values, where choose_min_match_len()
+		 * returns 4 even though literals cost ~6.8 bits.  Since the lazy
+		 * parser filters unprofitable length-3 matches per symbol via
+		 * lazy_accept_len3_match(), allow length-3 matches whenever
+		 * min_len == 4 while keeping min_len >= 5 on low-alphabet data.
+		 */
+		if (min_len == 4)
+			min_len = 3;
 		do {
 			u32 cur_len;
 			u32 cur_offset;
 			u32 next_len;
 			u32 next_offset;
+			int cur_offset_cost;
+			int cur_len_cost;
 
 			/*
 			 * Recalculate the minimum match length if it hasn't
@@ -2806,6 +2927,8 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 				min_len = recalculate_min_match_len(
 						&c->freqs,
 						c->max_search_depth);
+				if (min_len == 4)
+					min_len = 3;
 				next_recalc_min_len +=
 					MIN(in_end - next_recalc_min_len,
 					    in_next - in_block_begin);
@@ -2827,7 +2950,9 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						LAZY_MULTI_HOP);
 			if (cur_len < min_len ||
 			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
-			     cur_offset > 8192)) {
+			     !lazy_accept_len3_match(
+					c, in_next, cur_offset,
+					(u32)(seq - c->p.g.sequences)))) {
 				/* No match found.  Choose a literal. */
 				deflate_choose_literal(c, *in_next++, true,
 						       seq);
@@ -2872,6 +2997,8 @@ have_cur_match:
 			 */
 			adjust_max_and_nice_len(&max_len, &nice_len,
 						in_end - in_next);
+			cur_offset_cost = lazy_offset_cost(c, cur_offset);
+			cur_len_cost = lazy_len_cost(c, cur_len);
 			next_len = hc_matchfinder_longest_match(
 						&c->p.g.hc_mf,
 						&in_cur_base,
@@ -2885,8 +3012,9 @@ have_cur_match:
 						LAZY_MULTI_HOP);
 			if (next_len >= cur_len &&
 			    4 * (int)(next_len - cur_len) +
-			    ((int)bsr32(cur_offset) -
-			     (int)bsr32(next_offset)) > 2) {
+			    (cur_offset_cost -
+			     lazy_offset_cost(c, next_offset)) +
+			    (cur_len_cost - lazy_len_cost(c, next_len)) > 2) {
 				/*
 				 * Found a better match at the next position.
 				 * Output a literal.  Then the next match
@@ -2916,8 +3044,10 @@ have_cur_match:
 						LAZY_MULTI_HOP);
 				if (next_len >= cur_len &&
 				    4 * (int)(next_len - cur_len) +
-				    ((int)bsr32(cur_offset) -
-				     (int)bsr32(next_offset)) > 6) {
+				    (cur_offset_cost -
+				     lazy_offset_cost(c, next_offset)) +
+				    (cur_len_cost -
+				     lazy_len_cost(c, next_len)) > 5) {
 					/*
 					 * There's a much better match two
 					 * positions ahead, so use two literals.
@@ -4214,8 +4344,8 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		break;
 	case 6:
 		c->impl = deflate_compress_lazy;
-		c->max_search_depth = 35;
-		c->nice_match_length = 65;
+		c->max_search_depth = 32;
+		c->nice_match_length = 120;
 		break;
 	case 7:
 		c->impl = deflate_compress_lazy;
