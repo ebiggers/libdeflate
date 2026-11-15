@@ -199,6 +199,15 @@ typedef size_t machine_word_t;
 #  define forceinline		inline
 #endif
 
+/* noinline - prevent a function from being inlined, if possible */
+#if defined(__GNUC__) || __has_attribute(noinline)
+#  define noinline		__attribute__((noinline))
+#elif defined(_MSC_VER)
+#  define noinline		__declspec(noinline)
+#else
+#  define noinline
+#endif
+
 /* MAYBE_UNUSED - mark a function or variable as maybe unused */
 #if defined(__GNUC__) || __has_attribute(unused)
 #  define MAYBE_UNUSED		__attribute__((unused))

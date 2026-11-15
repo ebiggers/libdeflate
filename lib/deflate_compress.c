@@ -2872,6 +2872,194 @@ lazy_accept_len3_match(const struct libdeflate_compressor *c,
 	return len3_cost_x2 + off_cost_x2 + 1 <= lits_cost_x2;
 }
 
+/*
+ * Out-of-line slow path for deflate_choose_match_lazy() when the chosen match
+ * can extend backward across a preceding literal or overlap the preceding
+ * match:
+ *   1. Absorb matching preceding literals into the match.
+ *   2. If the extended match overlaps all (or all but 1..3 bytes) of an
+ *      adjacent preceding match, dissolve the preceding match into 0..3
+ *      literals plus the extended current match, eliminating an entire match
+ *      token.
+ *   3. Otherwise, check shifting shared overlap bytes from the preceding match
+ *      to the current match to snap onto lower extra-bit / higher-frequency
+ *      length slots (e.g. 10, 18, 34, 66, 130).
+ */
+static noinline void
+deflate_choose_match_overlap(struct libdeflate_compressor *c,
+			     const u8 *in_begin, const u8 *match_start,
+			     u32 length, u32 offset,
+			     struct deflate_sequence *sequences,
+			     struct deflate_sequence **seq_p)
+{
+	struct deflate_sequence *seq = *seq_p;
+	const u8 *mp = match_start - offset;
+
+	for (;;) {
+		u32 lits = seq->litrunlen_and_length & SEQ_LITRUNLEN_MASK;
+		struct deflate_sequence *prev;
+		u32 prev_lits;
+		u32 prev_len;
+		u32 prev_oslot;
+		u32 max_ov;
+		size_t avail;
+		u32 ov;
+		u32 rem;
+
+		if (lits > 0) {
+			u32 max_b = MIN(lits, DEFLATE_MAX_MATCH_LEN - length);
+			u32 b = 0;
+
+			avail = (size_t)(match_start - in_begin) - offset;
+			if (avail < max_b)
+				max_b = (u32)avail;
+			while (b < max_b && match_start[-1] == mp[-1]) {
+				match_start--;
+				mp--;
+				c->freqs.litlen[*match_start]--;
+				length++;
+				b++;
+			}
+			lits -= b;
+			seq->litrunlen_and_length = lits;
+			if (lits > 0 || length >= DEFLATE_MAX_MATCH_LEN ||
+			    match_start <= in_begin + offset ||
+			    match_start[-1] != mp[-1])
+				break;
+		}
+
+		if (seq <= sequences)
+			break;
+
+		prev = seq - 1;
+		prev_lits = prev->litrunlen_and_length & SEQ_LITRUNLEN_MASK;
+		prev_len = prev->litrunlen_and_length >> SEQ_LENGTH_SHIFT;
+		prev_oslot = prev->offset_slot;
+
+		max_ov = MIN(prev_len, DEFLATE_MAX_MATCH_LEN - length);
+		avail = (size_t)(match_start - in_begin) - offset;
+		if (avail < max_ov)
+			max_ov = (u32)avail;
+		if (max_ov == 0)
+			break;
+
+		ov = 1;
+		while (UNALIGNED_ACCESS_IS_FAST &&
+		       ov + WORDBYTES <= max_ov &&
+		       load_word_unaligned(match_start - ov - WORDBYTES) ==
+		       load_word_unaligned(mp - ov - WORDBYTES))
+			ov += WORDBYTES;
+		while (ov < max_ov &&
+		       *(match_start - ov - 1) == *(mp - ov - 1))
+			ov++;
+
+		rem = prev_len - ov;
+		if (rem <= 1 ||
+		    (rem == 2 && prev_oslot >= 8) ||
+		    (rem == 3 && prev_oslot >= 20)) {
+			const u8 *p_start = match_start - prev_len;
+			u32 j;
+
+			c->freqs.litlen[DEFLATE_FIRST_LEN_SYM +
+					deflate_length_slot[prev_len]]--;
+			c->freqs.offset[prev_oslot]--;
+			for (j = 0; j < rem; j++)
+				c->freqs.litlen[p_start[j]]++;
+			match_start -= ov;
+			mp -= ov;
+			length += ov;
+			seq = prev;
+			seq->litrunlen_and_length = prev_lits + rem;
+			if (rem == 0 && length < DEFLATE_MAX_MATCH_LEN &&
+			    match_start > in_begin + offset &&
+			    match_start[-1] == mp[-1])
+				continue;
+			break;
+		}
+
+		if (prev_len > 3) {
+			u32 best_k = 0;
+			int base_c = lazy_len_cost(c, prev_len) +
+				     lazy_len_cost(c, length);
+			int base_eb =
+				deflate_extra_length_bits[deflate_length_slot[prev_len]] +
+				deflate_extra_length_bits[deflate_length_slot[length]];
+			u32 r1 = prev_len - 1;
+			u32 nl1 = length + 1;
+			int cc1 = lazy_len_cost(c, r1) + lazy_len_cost(c, nl1);
+			int eb1 =
+				deflate_extra_length_bits[deflate_length_slot[r1]] +
+				deflate_extra_length_bits[deflate_length_slot[nl1]];
+			u32 target_r;
+			u32 k2;
+
+			if (cc1 < base_c || (cc1 == base_c && eb1 < base_eb)) {
+				base_c = cc1;
+				base_eb = eb1;
+				best_k = 1;
+			}
+			target_r = (prev_len > 130) ? 130 :
+				   (prev_len > 66)  ? 66  :
+				   (prev_len > 34)  ? 34  :
+				   (prev_len > 18)  ? 18  :
+				   (prev_len > 10)  ? 10  :
+				   MAX(3, prev_len - ov);
+			k2 = prev_len - target_r;
+			if (k2 > 1 && k2 <= ov && prev_len - k2 >= 3) {
+				u32 r2 = prev_len - k2;
+				u32 nl2 = length + k2;
+				int cc2 = lazy_len_cost(c, r2) +
+					  lazy_len_cost(c, nl2);
+				int eb2 =
+					deflate_extra_length_bits[deflate_length_slot[r2]] +
+					deflate_extra_length_bits[deflate_length_slot[nl2]];
+
+				if (cc2 < base_c ||
+				    (cc2 == base_c && eb2 < base_eb))
+					best_k = k2;
+			}
+			if (best_k > 0) {
+				u32 r = prev_len - best_k;
+
+				c->freqs.litlen[DEFLATE_FIRST_LEN_SYM +
+						deflate_length_slot[prev_len]]--;
+				c->freqs.litlen[DEFLATE_FIRST_LEN_SYM +
+						deflate_length_slot[r]]++;
+				prev->litrunlen_and_length =
+					prev_lits | (r << SEQ_LENGTH_SHIFT);
+				length += best_k;
+			}
+		}
+		break;
+	}
+
+	deflate_choose_match(c, length, offset, true, &seq);
+	*seq_p = seq;
+}
+
+static forceinline void
+deflate_choose_match_lazy(struct libdeflate_compressor *c,
+			  const u8 *in_begin, const u8 *match_start,
+			  u32 length, u32 offset,
+			  struct deflate_sequence *sequences,
+			  struct deflate_sequence **seq_p,
+			  u32 max_lit_gate)
+{
+	/*
+	 * Gate on litrunlen_and_length <= max_lit_gate in a register before
+	 * reading match_start[-offset - 1] from the 32 KiB window.
+	 */
+	if (((*seq_p)->litrunlen_and_length <= max_lit_gate) &&
+	    match_start > in_begin + offset &&
+	    match_start[-1] == *(match_start - offset - 1) &&
+	    likely(length < DEFLATE_MAX_MATCH_LEN)) {
+		deflate_choose_match_overlap(c, in_begin, match_start, length,
+					     offset, sequences, seq_p);
+		return;
+	}
+	deflate_choose_match(c, length, offset, true, seq_p);
+}
+
 static forceinline void
 deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			      const u8 *in, size_t in_nbytes,
@@ -2968,8 +3156,10 @@ have_cur_match:
 			 * If it's very long, choose it immediately.
 			 */
 			if (cur_len >= nice_len) {
-				deflate_choose_match(c, cur_len, cur_offset,
-						     true, &seq);
+				deflate_choose_match_lazy(c, in, in_next - 1,
+							  cur_len, cur_offset,
+							  c->p.g.sequences,
+							  &seq, lazy2 ? 2 : 1);
 				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
 							  &in_cur_base,
 							  in_next,
@@ -3068,8 +3258,10 @@ have_cur_match:
 				 * No better match at either of the next 2
 				 * positions.  Output the current match.
 				 */
-				deflate_choose_match(c, cur_len, cur_offset,
-						     true, &seq);
+				deflate_choose_match_lazy(c, in, in_next - 3,
+							  cur_len, cur_offset,
+							  c->p.g.sequences,
+							  &seq, 2);
 				if (cur_len > 3) {
 					hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
 								  &in_cur_base,
@@ -3085,8 +3277,10 @@ have_cur_match:
 				 * No better match at the next position.  Output
 				 * the current match.
 				 */
-				deflate_choose_match(c, cur_len, cur_offset,
-						     true, &seq);
+				deflate_choose_match_lazy(c, in, in_next - 2,
+							  cur_len, cur_offset,
+							  c->p.g.sequences,
+							  &seq, 1);
 				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
 							  &in_cur_base,
 							  in_next,
