@@ -43,7 +43,8 @@
  * will be included, and compression levels 10-12 will use it.  This algorithm
  * usually produces a compression ratio significantly better than the other
  * algorithms.  However, it is slow.  If this parameter is defined to 0, then
- * levels 10-12 will be the same as level 9 and will use the lazy2 algorithm.
+ * levels 10-12 will be the same as level 9 and will use the deep lazy
+ * algorithm.
  */
 #define SUPPORT_NEAR_OPTIMAL_PARSING	1
 
@@ -66,7 +67,7 @@
 #define MIN_BLOCK_LENGTH	5000
 
 /*
- * For the greedy, lazy, lazy2, and near-optimal compressors: This is the soft
+ * For the greedy, lazy, and near-optimal compressors: This is the soft
  * maximum block length, in uncompressed bytes.  The compressor will try to end
  * blocks at this length, but it may go slightly past it if there is a match
  * that straddles this limit or if the input data ends soon after this limit.
@@ -81,7 +82,7 @@
 #define SOFT_MAX_BLOCK_LENGTH	300000
 
 /*
- * For the greedy, lazy, and lazy2 compressors: this is the length of the
+ * For the greedy and lazy compressors: this is the length of the
  * sequence store, which is an array where the compressor temporarily stores
  * matches that it's going to use in the current block.  This value is the
  * maximum number of matches that can be used in a block.  If the sequence store
@@ -260,14 +261,12 @@
 
 /*
  * The largest block length we will ever use is when the final block is of
- * length SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH - 1, or when any block is of
- * length SOFT_MAX_BLOCK_LENGTH + 1 + DEFLATE_MAX_MATCH_LEN.  The latter case
- * occurs when the lazy2 compressor chooses two literals and a maximum-length
- * match, starting at SOFT_MAX_BLOCK_LENGTH - 1.
+ * length SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH - 1 (which also exceeds any
+ * block extended past SOFT_MAX_BLOCK_LENGTH by lazy match deferrals).
  */
 #define MAX_BLOCK_LENGTH	\
 	MAX(SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH - 1,	\
-	    SOFT_MAX_BLOCK_LENGTH + 1 + DEFLATE_MAX_MATCH_LEN)
+	    SOFT_MAX_BLOCK_LENGTH + 65 + DEFLATE_MAX_MATCH_LEN)
 
 static forceinline void
 check_buildtime_parameters(void)
@@ -3053,14 +3052,13 @@ deflate_choose_match_lazy(struct libdeflate_compressor *c,
 			  const u8 *in_begin, const u8 *match_start,
 			  u32 length, u32 offset,
 			  struct deflate_sequence *sequences,
-			  struct deflate_sequence **seq_p,
-			  u32 max_lit_gate)
+			  struct deflate_sequence **seq_p)
 {
 	/*
-	 * Gate on litrunlen_and_length <= max_lit_gate in a register before
-	 * reading match_start[-offset - 1] from the 32 KiB window.
+	 * Gate on litrunlen_and_length <= 1 in a register before reading
+	 * match_start[-offset - 1] from the 32 KiB window.
 	 */
-	if (((*seq_p)->litrunlen_and_length <= max_lit_gate) &&
+	if (((*seq_p)->litrunlen_and_length <= 1) &&
 	    match_start > in_begin + offset &&
 	    match_start[-1] == *(match_start - offset - 1) &&
 	    likely(length < DEFLATE_MAX_MATCH_LEN)) {
@@ -3074,7 +3072,8 @@ deflate_choose_match_lazy(struct libdeflate_compressor *c,
 static forceinline void
 deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			      const u8 *in, size_t in_nbytes,
-			      struct deflate_output_bitstream *os, bool lazy2)
+			      struct deflate_output_bitstream *os,
+			      bool allow_same_end)
 {
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
@@ -3120,6 +3119,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			u32 cur_offset;
 			u32 next_len;
 			u32 next_offset;
+			u32 min_next_len_m1;
 			int cur_offset_cost;
 			int cur_len_cost;
 
@@ -3178,7 +3178,7 @@ have_cur_match:
 				deflate_choose_match_lazy(c, in, in_next - 1,
 							  cur_len, cur_offset,
 							  c->p.g.sequences,
-							  &seq, lazy2 ? 2 : 1);
+							  &seq);
 				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
 							  &in_cur_base,
 							  in_next,
@@ -3197,6 +3197,12 @@ have_cur_match:
 			 * position, we use a reduced 'lazy_search_depth' when
 			 * checking the *next* position.
 			 *
+			 * When 'allow_same_end' is enabled and the current
+			 * match has a distant offset (>= 2048), also consider
+			 * a match of length 'cur_len - 1' at the next position,
+			 * which reaches the exact same end byte while trading
+			 * one literal for a much cheaper match offset.
+			 *
 			 * Note: it's possible to structure the code such that
 			 * there's only one call to longest_match(), which
 			 * handles both the "find the initial match" and "try to
@@ -3208,11 +3214,14 @@ have_cur_match:
 						in_end - in_next);
 			cur_offset_cost = lazy_offset_cost(c, cur_offset);
 			cur_len_cost = lazy_len_cost(c, cur_len);
+			min_next_len_m1 = (allow_same_end &&
+					   cur_offset >= 2048 && cur_len >= 6) ?
+					  (cur_len - 2) : (cur_len - 1);
 			next_len = hc_matchfinder_longest_match(
 						&c->p.g.hc_mf,
 						&in_cur_base,
 						in_next++,
-						cur_len - 1,
+						min_next_len_m1,
 						max_len,
 						nice_len,
 						lazy_search_depth,
@@ -3220,8 +3229,8 @@ have_cur_match:
 						&next_offset,
 						LAZY_MULTI_HOP,
 						true);
-			if (next_len >= cur_len &&
-			    4 * (int)(next_len - cur_len) +
+			if (next_len > min_next_len_m1 &&
+			    4 * ((int)next_len - (int)cur_len) +
 			    (cur_offset_cost -
 			     lazy_offset_cost(c, next_offset)) +
 			    (cur_len_cost - lazy_len_cost(c, next_len)) > 2) {
@@ -3237,76 +3246,24 @@ have_cur_match:
 				goto have_cur_match;
 			}
 
-			if (lazy2) {
-				/* In lazy2 mode, look ahead another position */
-				adjust_max_and_nice_len(&max_len, &nice_len,
-							in_end - in_next);
-				next_len = hc_matchfinder_longest_match(
-						&c->p.g.hc_mf,
-						&in_cur_base,
-						in_next++,
-						cur_len - 1,
-						max_len,
-						nice_len,
-						lazy_search_depth >> 1,
-						next_hashes,
-						&next_offset,
-						LAZY_MULTI_HOP,
-						true);
-				if (next_len >= cur_len &&
-				    4 * (int)(next_len - cur_len) +
-				    (cur_offset_cost -
-				     lazy_offset_cost(c, next_offset)) +
-				    (cur_len_cost -
-				     lazy_len_cost(c, next_len)) > 5) {
-					/*
-					 * There's a much better match two
-					 * positions ahead, so use two literals.
-					 */
-					deflate_choose_literal(
-						c, *(in_next - 3), true, seq);
-					deflate_choose_literal(
-						c, *(in_next - 2), true, seq);
-					cur_len = next_len;
-					cur_offset = next_offset;
-					goto have_cur_match;
-				}
-				/*
-				 * No better match at either of the next 2
-				 * positions.  Output the current match.
-				 */
-				deflate_choose_match_lazy(c, in, in_next - 3,
-							  cur_len, cur_offset,
-							  c->p.g.sequences,
-							  &seq, 2);
-				if (cur_len > 3) {
-					hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
-								  &in_cur_base,
-								  in_next,
-								  in_end,
-								  cur_len - 3,
-								  next_hashes,
-								  LAZY_MULTI_HOP);
-					in_next += cur_len - 3;
-				}
-			} else { /* !lazy2 */
-				/*
-				 * No better match at the next position.  Output
-				 * the current match.
-				 */
-				deflate_choose_match_lazy(c, in, in_next - 2,
-							  cur_len, cur_offset,
-							  c->p.g.sequences,
-							  &seq, 1);
-				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
-							  &in_cur_base,
-							  in_next,
-							  in_end,
-							  cur_len - 2,
-							  next_hashes,
-							  LAZY_MULTI_HOP);
-				in_next += cur_len - 2;
-			}
+			/*
+			 * No better match at the next position.  Output the
+			 * current match.  (2..3-byte delayed matches that
+			 * extend further are handled retroactively by
+			 * deflate_choose_match_overlap().)
+			 */
+			deflate_choose_match_lazy(c, in, in_next - 2,
+						  cur_len, cur_offset,
+						  c->p.g.sequences, &seq);
+			hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
+						  &in_cur_base,
+						  in_next,
+						  in_end,
+						  cur_len - 2,
+						  next_hashes,
+						  LAZY_MULTI_HOP);
+			in_next += cur_len - 2;
+
 			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
 			 seq < &c->p.g.sequences[SEQ_STORE_LENGTH] &&
@@ -3320,9 +3277,8 @@ have_cur_match:
 }
 
 /*
- * This is the "lazy" DEFLATE compressor.  Before choosing a match, it checks to
- * see if there's a better match at the next position.  If yes, it outputs a
- * literal and continues to the next position.  If no, it outputs the match.
+ * This is the "lazy" DEFLATE compressor (levels 5-6).  Before choosing a match,
+ * it checks whether there is a better match at the next position.
  */
 static void
 deflate_compress_lazy(struct libdeflate_compressor * restrict c,
@@ -3333,14 +3289,14 @@ deflate_compress_lazy(struct libdeflate_compressor * restrict c,
 }
 
 /*
- * The lazy2 compressor.  This is similar to the regular lazy one, but it looks
- * for a better match at the next 2 positions rather than the next 1.  This
- * makes it take slightly more time, but compress some inputs slightly more.
+ * Deep lazy DEFLATE compressor (levels 7-9), which additionally considers
+ * replacing a distant match with a literal plus a much closer (cur_len - 1)
+ * match reaching the same end position.
  */
 static void
-deflate_compress_lazy2(struct libdeflate_compressor * restrict c,
-		       const u8 *in, size_t in_nbytes,
-		       struct deflate_output_bitstream *os)
+deflate_compress_lazy_deep(struct libdeflate_compressor * restrict c,
+			   const u8 *in, size_t in_nbytes,
+			   struct deflate_output_bitstream *os)
 {
 	deflate_compress_lazy_generic(c, in, in_nbytes, os, true);
 }
@@ -4555,10 +4511,10 @@ libdeflate_alloc_compressor_ex(int compression_level,
 	case 5:
 		c->impl = deflate_compress_lazy;
 		c->max_search_depth = 16;
-		c->lazy_search_depth = 8;
-		c->nice_match_length = 30;
-		c->max_lazy_len = 30;
-		c->close_match_len = DEFLATE_MAX_MATCH_LEN + 1;
+		c->lazy_search_depth = 6;
+		c->nice_match_length = 64;
+		c->max_lazy_len = 14;
+		c->close_match_len = 6;
 		break;
 	case 6:
 		c->impl = deflate_compress_lazy;
@@ -4569,31 +4525,31 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		c->close_match_len = 7;
 		break;
 	case 7:
-		c->impl = deflate_compress_lazy;
+		c->impl = deflate_compress_lazy_deep;
 		c->max_search_depth = 100;
-		c->lazy_search_depth = 50;
-		c->nice_match_length = 130;
-		c->max_lazy_len = 130;
-		c->close_match_len = DEFLATE_MAX_MATCH_LEN + 1;
+		c->lazy_search_depth = 32;
+		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
+		c->max_lazy_len = 32;
+		c->close_match_len = 8;
 		break;
 	case 8:
-		c->impl = deflate_compress_lazy2;
+		c->impl = deflate_compress_lazy_deep;
 		c->max_search_depth = 300;
-		c->lazy_search_depth = 150;
+		c->lazy_search_depth = 100;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
-		c->max_lazy_len = DEFLATE_MAX_MATCH_LEN;
-		c->close_match_len = DEFLATE_MAX_MATCH_LEN + 1;
+		c->max_lazy_len = 36;
+		c->close_match_len = 8;
 		break;
 	case 9:
 #if !SUPPORT_NEAR_OPTIMAL_PARSING
 	default:
 #endif
-		c->impl = deflate_compress_lazy2;
+		c->impl = deflate_compress_lazy_deep;
 		c->max_search_depth = 600;
-		c->lazy_search_depth = 300;
+		c->lazy_search_depth = 200;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
-		c->max_lazy_len = DEFLATE_MAX_MATCH_LEN;
-		c->close_match_len = DEFLATE_MAX_MATCH_LEN + 1;
+		c->max_lazy_len = 40;
+		c->close_match_len = 8;
 		break;
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 10:
