@@ -541,10 +541,21 @@ struct libdeflate_compressor {
 	u32 max_search_depth;
 
 	/*
-	 * The "nice" match length: if a match of this length is found, choose
-	 * it immediately without further consideration
+	 * The "nice" match length: if a match of this length is found, stop
+	 * searching the matchfinder immediately
 	 */
 	u32 nice_match_length;
+
+	/*
+	 * Lazy parser parameters:
+	 *   lazy_search_depth: max matchfinder depth when probing the next pos
+	 *   max_lazy_len: choose matches >= this length without lazy lookahead
+	 *   close_match_len: choose matches >= this length with offset <= 256
+	 *                    without lazy lookahead
+	 */
+	u32 lazy_search_depth;
+	u32 max_lazy_len;
+	u32 close_match_len;
 
 	/* Frequency counters for the current block */
 	struct deflate_freqs freqs;
@@ -3068,6 +3079,10 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 	const u8 *in_next = in;
 	const u8 *in_end = in_next + in_nbytes;
 	const u8 *in_cur_base = in_next;
+	const u32 max_search_depth = c->max_search_depth;
+	const u32 lazy_search_depth = c->lazy_search_depth;
+	const u32 max_lazy_len = c->max_lazy_len;
+	const u32 close_match_len = c->close_match_len;
 	u32 max_len = DEFLATE_MAX_MATCH_LEN;
 	u32 nice_len = MIN(c->nice_match_length, max_len);
 	u32 next_hashes[2] = {0, 0};
@@ -3089,7 +3104,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 		deflate_begin_sequences(c, seq);
 		min_len = calculate_min_match_len(in_next,
 						  in_max_block_end - in_next,
-						  c->max_search_depth);
+						  max_search_depth);
 		/*
 		 * Printable ASCII text (e.g. CSS, JSON, source code) typically
 		 * has 55..79 distinct frequent byte values, where choose_min_match_len()
@@ -3115,7 +3130,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			if (in_next >= next_recalc_min_len) {
 				min_len = recalculate_min_match_len(
 						&c->freqs,
-						c->max_search_depth);
+						max_search_depth);
 				if (min_len == 4)
 					min_len = 3;
 				next_recalc_min_len +=
@@ -3133,7 +3148,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						min_len - 1,
 						max_len,
 						nice_len,
-						c->max_search_depth,
+						max_search_depth,
 						next_hashes,
 						&cur_offset,
 						LAZY_MULTI_HOP,
@@ -3152,10 +3167,14 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 
 have_cur_match:
 			/*
-			 * We have a match at the current position.
-			 * If it's very long, choose it immediately.
+			 * We have a match at the current position.  Choose it
+			 * immediately if it is >= nice_len, >= max_lazy_len, or
+			 * already long and close enough that lazy deferral is
+			 * rarely worthwhile.
 			 */
-			if (cur_len >= nice_len) {
+			if (cur_len >= nice_len ||
+			    cur_len >= max_lazy_len ||
+			    (cur_len >= close_match_len && cur_offset <= 256)) {
 				deflate_choose_match_lazy(c, in, in_next - 1,
 							  cur_len, cur_offset,
 							  c->p.g.sequences,
@@ -3175,10 +3194,8 @@ have_cur_match:
 			 * Try to find a better match at the next position.
 			 *
 			 * Note: since we already have a match at the *current*
-			 * position, we use only half the 'max_search_depth'
-			 * when checking the *next* position.  This is a useful
-			 * trade-off because it's more worthwhile to use a
-			 * greater search depth on the initial match.
+			 * position, we use a reduced 'lazy_search_depth' when
+			 * checking the *next* position.
 			 *
 			 * Note: it's possible to structure the code such that
 			 * there's only one call to longest_match(), which
@@ -3198,7 +3215,7 @@ have_cur_match:
 						cur_len - 1,
 						max_len,
 						nice_len,
-						c->max_search_depth >> 1,
+						lazy_search_depth,
 						next_hashes,
 						&next_offset,
 						LAZY_MULTI_HOP,
@@ -3231,7 +3248,7 @@ have_cur_match:
 						cur_len - 1,
 						max_len,
 						nice_len,
-						c->max_search_depth >> 2,
+						lazy_search_depth >> 1,
 						next_hashes,
 						&next_offset,
 						LAZY_MULTI_HOP,
@@ -4538,22 +4555,34 @@ libdeflate_alloc_compressor_ex(int compression_level,
 	case 5:
 		c->impl = deflate_compress_lazy;
 		c->max_search_depth = 16;
+		c->lazy_search_depth = 8;
 		c->nice_match_length = 30;
+		c->max_lazy_len = 30;
+		c->close_match_len = DEFLATE_MAX_MATCH_LEN + 1;
 		break;
 	case 6:
 		c->impl = deflate_compress_lazy;
 		c->max_search_depth = 32;
-		c->nice_match_length = 120;
+		c->lazy_search_depth = 10;
+		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
+		c->max_lazy_len = 24;
+		c->close_match_len = 7;
 		break;
 	case 7:
 		c->impl = deflate_compress_lazy;
 		c->max_search_depth = 100;
+		c->lazy_search_depth = 50;
 		c->nice_match_length = 130;
+		c->max_lazy_len = 130;
+		c->close_match_len = DEFLATE_MAX_MATCH_LEN + 1;
 		break;
 	case 8:
 		c->impl = deflate_compress_lazy2;
 		c->max_search_depth = 300;
+		c->lazy_search_depth = 150;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
+		c->max_lazy_len = DEFLATE_MAX_MATCH_LEN;
+		c->close_match_len = DEFLATE_MAX_MATCH_LEN + 1;
 		break;
 	case 9:
 #if !SUPPORT_NEAR_OPTIMAL_PARSING
@@ -4561,7 +4590,10 @@ libdeflate_alloc_compressor_ex(int compression_level,
 #endif
 		c->impl = deflate_compress_lazy2;
 		c->max_search_depth = 600;
+		c->lazy_search_depth = 300;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
+		c->max_lazy_len = DEFLATE_MAX_MATCH_LEN;
+		c->close_match_len = DEFLATE_MAX_MATCH_LEN + 1;
 		break;
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 10:
