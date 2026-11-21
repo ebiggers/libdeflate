@@ -199,6 +199,15 @@ typedef size_t machine_word_t;
 #  define forceinline		inline
 #endif
 
+/* NO_UNROLL_LOOP - hint that a loop should not be unrolled */
+#ifdef __clang__
+#  define NO_UNROLL_LOOP	_Pragma("clang loop unroll(disable)")
+#elif GCC_PREREQ(8, 1)
+#  define NO_UNROLL_LOOP	_Pragma("GCC unroll 0")
+#else
+#  define NO_UNROLL_LOOP
+#endif
+
 /* MAYBE_UNUSED - mark a function or variable as maybe unused */
 #if defined(__GNUC__) || __has_attribute(unused)
 #  define MAYBE_UNUSED		__attribute__((unused))
