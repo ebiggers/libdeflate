@@ -4,10 +4,13 @@
 #include "cpu_features.h"
 
 /*
- * BMI2 optimized decompression function.
+ * BMI, BMI2, LZCNT, and SSSE3 optimized decompression function.  The main
+ * benefit comes from BMI2; the others are included because they provide a
+ * slight benefit too and all real CPUs with BMI2 also support them.
  *
- * With gcc and clang we just compile the whole function with
- * __attribute__((target("bmi2"))), and the compiler uses bmi2 automatically.
+ * With gcc and clang we just compile the whole function with the appropriate
+ * target attribute, and we mostly (but not always) rely on the compiler
+ * generating the instructions automatically rather than using intrinsics.
  *
  * With MSVC, there is no target function attribute, but it's still possible to
  * use bmi2 intrinsics explicitly.  Currently we mostly don't, but there's a
@@ -18,7 +21,7 @@
 #if defined(__GNUC__) || defined(__clang__) || MSVC_PREREQ(1930)
 #  define deflate_decompress_bmi2	deflate_decompress_bmi2
 #  define SUFFIX			_bmi2
-#  define ATTRIBUTES			_target_attribute("bmi2")
+#  define ATTRIBUTES			_target_attribute("bmi2,bmi,lzcnt,ssse3")
    /*
     * Even with __attribute__((target("bmi2"))), gcc doesn't reliably use the
     * bzhi instruction for 'word & BITMASK(count)'.  So use the bzhi intrinsic

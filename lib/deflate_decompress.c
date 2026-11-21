@@ -38,8 +38,9 @@
  * - Other optimizations to remove unnecessary branches
  * - Only full-buffer decompression is supported, so the code doesn't need to
  *   support stopping and resuming decompression.
- * - On x86_64, a version of the decompression routine is compiled with BMI2
- *   instructions enabled and is used automatically at runtime when supported.
+ * - On x86, a version of the decompression routine is compiled with BMI2,
+ *   BMI, LZCNT, and SSSE3 enabled and is used automatically at runtime when
+ *   supported.
  */
 
 #include "lib_common.h"
