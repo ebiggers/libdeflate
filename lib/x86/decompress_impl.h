@@ -17,7 +17,7 @@
  */
 #if defined(__GNUC__) || defined(__clang__) || MSVC_PREREQ(1930)
 #  define deflate_decompress_bmi2	deflate_decompress_bmi2
-#  define FUNCNAME			deflate_decompress_bmi2
+#  define SUFFIX			_bmi2
 #  define ATTRIBUTES			_target_attribute("bmi2")
    /*
     * Even with __attribute__((target("bmi2"))), gcc doesn't reliably use the
