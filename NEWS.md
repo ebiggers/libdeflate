@@ -2,31 +2,36 @@
 
 ## [git master branch]
 
-* Significantly improved compression performance at levels 5-12.  The speedup
-  varies greatly by compression level, platform, and source data.  However,
-  typical results (for percentage improvement in throughput) are:
+* Significantly improved compression and decompression performance, due to a
+  variety of different optimizations.
 
-  | Level | Speedup |
-  |-------|---------|
-  |  5    |  8%     |
-  |  6    | 19%     |
-  |  7    | 34%     |
-  |  8    | 43%     |
-  |  9    | 49%     |
-  | 10    | 40%     |
-  | 11    | 49%     |
-  | 12    | 66%     |
+  The speedup varies by compression level, compiler, CPU, and source data.
+  However, benchmarks on `x86_64` (specifically: an AMD Ryzen 9 9950X processor,
+  clang 23.1.5 at `-O2`, and measuring geometric mean throughput across a corpus
+  of different file types) showed the following changes:
+
+  | Level | Compression | Decompression |
+  |------:|------------:|--------------:|
+  |     5 |      +7.24% |       +21.97% |
+  |     6 |     +19.97% |       +22.01% |
+  |     7 |     +39.34% |       +22.04% |
+  |     8 |     +54.09% |       +22.02% |
+  |     9 |     +61.55% |       +22.74% |
+  |    10 |     +31.18% |       +22.40% |
+  |    11 |     +50.61% |       +21.71% |
+  |    12 |     +67.02% |       +21.42% |
+
+  ARM64 got much faster as well.
 
   The compressed output remains the same.
 
-  As a tradeoff, the memory used per compressor at levels 5-9 has increased by
-  about 30% (from 652 KiB to 844 KiB) in 64-bit builds, or by about 10% in
-  32-bit builds.  There is a negligible increase in memory use at levels 10-12.
+  As a tradeoff, memory usage has increased a bit: each compressor at levels 5-9
+  is now about 30% larger (increased from 652 KiB to 844 KiB) in 64-bit builds,
+  or about 10% larger in 32-bit builds.  Each decompressor is now about 70%
+  larger (increased from 11.3 KiB to 19.3 KiB).
 
-  Decompression performance has also been slightly improved: up to 10-20% with
-  very short DEFLATE block lengths, but 0.5-2.0% more typically.
-
-  Thanks to Parker Loflin for many of these optimizations.
+  Thanks to Parker Loflin for several of these optimizations, including the
+  large compression throughput improvements at levels 5-9.
 
 * The library now uses C11 atomics (when supported by the compiler) to avoid
   ThreadSanitizer warnings during CPU feature detection and dynamic dispatch.
