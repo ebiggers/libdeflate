@@ -536,14 +536,11 @@ static const u32 precode_decode_results[] = {
  *	  'bitbuf >>= (u8)entry' (letting the mask fold into the shift
  *	  instruction).
  *
- *	- The flags in bits 15-13 are arranged to be 0 when the
- *	  "remaining codeword length" in bits 11-8 is needed, making this value
- *	  fairly easily accessible as well via a shift and downcast.
- *
- *	- Similarly, bits 13-12 are 0 when the "subtable bits" in bits 11-8 are
- *	  needed, making it possible to extract this value with '& 0x3F' rather
- *	  than '& 0xF'.  This value is only used as a shift amount, so this can
- *	  save an 'and' instruction as the masking by 0x3F happens implicitly.
+ *	- Bit 12 is 0, allowing the "remaining codeword length" and "number of
+ *	  subtable bits" in bits 11-8 to be extracted with '& 0x1F' rather than
+ *	  '& 0xF'.  When used to shift a 32-bit value, this masking happens
+ *	  implicitly on most architectures via the shift amount being truncated,
+ *	  saving an 'and' instruction.
  *
  * litlen_decode_results[] contains the static part of the entry for each
  * symbol.  make_decode_table_entry() produces the final entries.
