@@ -33,7 +33,9 @@
  *
  * - Word accesses rather than byte accesses when reading input
  * - Word accesses rather than byte accesses when copying matches
- * - Faster Huffman decoding combined with various DEFLATE-specific tricks
+ * - Faster Huffman decoding combined with various DEFLATE-specific tricks,
+ *   including decoding 2 litlen symbols (2 literals, or a literal followed by
+ *   a match length) with a single table lookup when they fit in the table
  * - Larger bitbuffer variable that doesn't need to be refilled as often
  * - Other optimizations to remove unnecessary branches
  * - Only full-buffer decompression is supported, so the code doesn't need to
@@ -317,28 +319,58 @@ do {									\
  *
  * FASTLOOP_MAX_BYTES_WRITTEN is the worst-case maximum number of output bytes
  * that are written to during each iteration of the fastloop.  The worst case is
- * 2 literals, then a match of length DEFLATE_MAX_MATCH_LEN, then up to
- * FASTLOOP_MAX_MATCH_OVERRUN bytes of intentional overrun during match copying.
+ * 4 literals (consisting of 2 fast literal lookups with 2 literals each), then
+ * a match of length DEFLATE_MAX_MATCH_LEN (note: a fused literal+length entry
+ * emits at most 1 + SHORT_LENSYM_MAX_MATCH_LEN == 131 <= DEFLATE_MAX_MATCH_LEN),
+ * then up to FASTLOOP_MAX_MATCH_OVERRUN bytes of intentional overrun during
+ * match copying.
+ *
+ * This also covers the smaller "overruns" that happen before the match copy:
+ * WRITE_FASTLOOP_LITERALS() always stores 2 bytes even for a single literal,
+ * and decoding a length entry stores a dummy byte at 'out_next' when there is
+ * no fused literal.  These bytes are always followed by more output (another
+ * literal or the match itself) or by the match copy's own overrun.  An
+ * iteration that decodes only literals writes at most 3 * 2 == 6 bytes.
  */
 #define FASTLOOP_MAX_MATCH_OVERRUN	MAX(5 * WORDBYTES - 1, 3 * 16 - 1)
 #define FASTLOOP_MAX_BYTES_WRITTEN	\
-	(2 + DEFLATE_MAX_MATCH_LEN + FASTLOOP_MAX_MATCH_OVERRUN)
+	(4 + DEFLATE_MAX_MATCH_LEN + FASTLOOP_MAX_MATCH_OVERRUN)
 
 /*
- * This is the worst-case maximum number of input bytes that are read during
- * each iteration of the fastloop.  To get this value, we first compute the
- * greatest number of bits that can be refilled during a loop iteration.  The
- * refill at the beginning can add at most MAX_BITSLEFT, and the amount that can
- * be refilled later is no more than the maximum amount that can be consumed by
- * 2 literals that don't need a subtable, then a match.  We convert this value
- * to bytes, rounding up; this gives the maximum number of bytes that 'in_next'
- * can be advanced.  Finally, we add sizeof(bitbuf_t) to account for
- * REFILL_BITS_BRANCHLESS() reading a word past 'in_next'.
+ * Worst-case maximum number of input bytes that may be read before 'in_next'
+ * is checked against 'in_fastloop_end' at the end of a fastloop iteration.
+ *
+ * On the first iteration, REFILL_BITS_IN_FASTLOOP() runs once before the loop
+ * and up to twice more during the iteration; on later iterations, 'bitsleft'
+ * already starts at >= CONSUMABLE_NBITS from the previous iteration's final
+ * refill.  In either case, 'bitsleft' starts >= 0 and ends <= MAX_BITSLEFT,
+ * and at most '(2 * LITLEN_TABLEBITS) + LENGTH_MAXBITS + OFFSET_MAXBITS' bits
+ * can be consumed in between (2 extra fast literal lookups on 64-bit, then a
+ * match; 32-bit skips the extra lookups so this bound is slightly conservative
+ * there).  Thus, at most 'MAX_BITSLEFT + consumed_max' bits can be added to
+ * 'bitsleft', advancing 'in_next' by at most that many bytes (rounded up).
+ * Finally, adding sizeof(bitbuf_t) accounts for the last
+ * REFILL_BITS_BRANCHLESS() reading a word at 'in_next' before advancing it.
  */
 #define FASTLOOP_MAX_BYTES_READ					\
 	(DIV_ROUND_UP(MAX_BITSLEFT + (2 * LITLEN_TABLEBITS) +	\
 		      LENGTH_MAXBITS + OFFSET_MAXBITS, 8) +	\
 	 sizeof(bitbuf_t))
+
+/*
+ * Minimum remaining uncompressed output buffer space (in bytes) required (in
+ * addition to 'in_next < in_fastloop_end') before generating compound
+ * (2-literal and fused literal+length) entries and allowing the litlen main
+ * table to grow from LITLEN_SMALL_TABLEBITS (11) up to LITLEN_TABLEBITS (12).
+ * For smaller blocks/buffers, the extra table-building work outweighs the
+ * fastloop speedup.
+ *
+ * This is purely a performance heuristic.  Correctness doesn't depend on it,
+ * since the generic (non-fast) loop supports compound entries too.  Note that
+ * it's based on the remaining output buffer space rather than the size of the
+ * block, since the latter isn't known in advance.
+ */
+#define COMPOUND_LITLEN_MIN_OUT_BYTES	8192
 
 /*****************************************************************************
  *                              Huffman decoding                             *
@@ -392,14 +424,17 @@ do {									\
  * constant, as many CPUs can take the low byte more easily than the low 9 bits.
  *
  * zlib treats its equivalents of TABLEBITS as maximum values; whenever it
- * builds a table, it caps the actual table_bits to the longest codeword.  This
- * makes sense in theory, as there's no need for the table to be any larger than
- * needed to support the longest codeword.  However, having the table bits be a
- * compile-time constant is beneficial to the performance of the decode loop, so
- * there is a trade-off.  libdeflate currently uses the dynamic table_bits
- * strategy for the litlen table only, due to its larger maximum size.
- * PRECODE_TABLEBITS and OFFSET_TABLEBITS are smaller, so going dynamic there
- * isn't as useful, and OFFSET_TABLEBITS=8 is useful as mentioned above.
+ * builds a table, it caps the actual table_bits to the longest codeword.
+ * However, having the table bits be a compile-time constant is beneficial to
+ * the performance of the decode loop, so there is a trade-off.  libdeflate uses
+ * dynamic table_bits for the litlen table only, due to its larger maximum size:
+ * when compound entries are disabled (or none fit in LITLEN_TABLEBITS bits),
+ * the main table is capped at min(LITLEN_SMALL_TABLEBITS, max_codeword_len);
+ * when compound entries are generated, table_bits is expanded up to
+ * LITLEN_TABLEBITS as needed to fit the longest codeword and the longest
+ * compound pair <= LITLEN_TABLEBITS bits.  PRECODE_TABLEBITS and
+ * OFFSET_TABLEBITS are smaller, so going dynamic there isn't as useful, and
+ * OFFSET_TABLEBITS=8 is useful as mentioned above.
  *
  * Each TABLEBITS value has a corresponding ENOUGH value that gives the
  * worst-case maximum number of decode table entries, including the main table
@@ -413,8 +448,9 @@ do {									\
  */
 #define PRECODE_TABLEBITS	7
 #define PRECODE_ENOUGH		128	/* enough 19 7 7	*/
-#define LITLEN_TABLEBITS	11
-#define LITLEN_ENOUGH		2342	/* enough 288 11 15	*/
+#define LITLEN_SMALL_TABLEBITS	11	/* enough 288 11 15 = 2342 */
+#define LITLEN_TABLEBITS	12
+#define LITLEN_ENOUGH		4382	/* enough 288 12 15	*/
 #define OFFSET_TABLEBITS	8
 #define OFFSET_ENOUGH		402	/* enough 32 8 15	*/
 
@@ -463,14 +499,126 @@ static const u32 precode_decode_results[] = {
 /* Indicates a literal entry in the litlen decode table */
 #define HUFFDEC_LITERAL			0x80000000
 
-/* Indicates that HUFFDEC_SUBTABLE_POINTER or HUFFDEC_END_OF_BLOCK is set */
+/*
+ * Indicates that HUFFDEC_SUBTABLE_POINTER or HUFFDEC_END_OF_BLOCK is set.
+ *
+ * In litlen decode table entries, this bit overlaps the low bit of the 1st
+ * literal.  So it's meaningful only when HUFFDEC_LITERAL is not set.
+ */
 #define HUFFDEC_EXCEPTIONAL		0x00008000
 
-/* Indicates a subtable pointer entry in the litlen or offset decode table */
+/*
+ * Indicates a subtable pointer entry in the litlen or offset decode table.
+ * Unlike HUFFDEC_EXCEPTIONAL and HUFFDEC_END_OF_BLOCK, this bit is never set
+ * in literal, length, or end-of-block entries, so it may be tested before
+ * HUFFDEC_LITERAL when convenient (as done in the generic loop).
+ */
 #define HUFFDEC_SUBTABLE_POINTER	0x00004000
 
-/* Indicates an end-of-block entry in the litlen decode table */
+/*
+ * Indicates an end-of-block entry in the litlen decode table when
+ * HUFFDEC_EXCEPTIONAL is also set.
+ *
+ * When HUFFDEC_LITERAL and HUFFDEC_EXCEPTIONAL are both clear (i.e. a length
+ * entry), this same bit serves as HUFFDEC_LIT_LENGTH, indicating a fused
+ * (literal, length) entry.  Because (HUFFDEC_LIT_LENGTH >> 8) == 0x20, this bit
+ * lies just outside the 5-bit field extracted by '(entry >> 8) & 0x1F' (bits
+ * 12-8), so it doesn't disturb the codeword length stored there.  Since this
+ * bit is overloaded, HUFFDEC_END_OF_BLOCK may be tested only after
+ * HUFFDEC_EXCEPTIONAL has been found to be set.
+ */
 #define HUFFDEC_END_OF_BLOCK		0x00002000
+#define HUFFDEC_LIT_LENGTH_SHIFT	13
+#define HUFFDEC_LIT_LENGTH		(1U << HUFFDEC_LIT_LENGTH_SHIFT)
+
+/* Indicates a 2-literal entry in the litlen decode table */
+#define HUFFDEC_DOUBLE_LITERAL_SHIFT	12
+#define HUFFDEC_DOUBLE_LITERAL		(1U << HUFFDEC_DOUBLE_LITERAL_SHIFT)
+
+/* Location of the literal value(s) in litlen decode table literal entries */
+#define HUFFDEC_LITERAL1_SHIFT		15
+#define HUFFDEC_LITERAL1_MASK		(0xFFU << HUFFDEC_LITERAL1_SHIFT)
+#define HUFFDEC_LITERAL2_SHIFT		23
+#define HUFFDEC_LITERAL2_MASK		(0xFFU << HUFFDEC_LITERAL2_SHIFT)
+
+/*
+ * Range of litlen match-length symbols eligible for fusion into a single
+ * (literal, length) decode table entry.  Symbols 257..280 have length_base in
+ * 3..115 (<= 127, fitting in bits 22-16 below the 8-bit literal in bits 30-23)
+ * and at most 4 extra bits, so total consumed bits <= LITLEN_TABLEBITS + 4
+ * (16 <= LENGTH_MAXFASTBITS), and total output bytes written is at most
+ * 1 + 115 + 15 == 131 <= DEFLATE_MAX_MATCH_LEN.
+ */
+#define FIRST_SHORT_LENSYM		257
+#define LAST_SHORT_LENSYM		280
+#define MAX_NUM_SHORT_LENSYMS		(LAST_SHORT_LENSYM - FIRST_SHORT_LENSYM + 1)
+#define SHORT_LENSYM_BASE_MASK		0x7FU
+#define SHORT_LENSYM_MAX_MATCH_LEN	(115 + ((1U << 4) - 1))
+
+/*
+ * Temporary state used by build_decode_table() when generating compound
+ * (2-literal and fused literal+length) litlen decode table entries:
+ *
+ * - lit_start[len] and lit_end[len] delimit the range of short_lits[] (see
+ *   below) that holds the literals whose codewords have length 'len'.
+ *
+ * - lensym_start[len] and lensym_end[len] likewise delimit the range of
+ *   short_lensym_res[] and short_lensym_cw[] that holds the "short" length
+ *   symbols (FIRST_SHORT_LENSYM..LAST_SHORT_LENSYM) whose codewords have
+ *   length 'len'.  short_lensym_res[] holds their litlen_decode_results[]
+ *   values, and short_lensym_cw[] holds their (bit-reversed) codewords.
+ *
+ * - min_lit_cw_len and min_lensym_cw_len are the shortest codeword lengths of
+ *   any literal and any short length symbol, respectively, or
+ *   LITLEN_TABLEBITS + 1 if there is no such symbol of length < table_bits.
+ *
+ * Ranges for codeword lengths that have no such symbols are empty (start ==
+ * end == 0).  Since each symbol in a pair needs at least 1 bit, only codeword
+ * lengths up to SHORT_LIT_MAX_CW_LEN == LITLEN_TABLEBITS - 1 are needed.
+ */
+struct litlen_compound_syms {
+	u16 lit_start[LITLEN_TABLEBITS];
+	u16 lit_end[LITLEN_TABLEBITS];
+	u8 lensym_start[LITLEN_TABLEBITS];
+	u8 lensym_end[LITLEN_TABLEBITS];
+	u32 short_lensym_res[MAX_NUM_SHORT_LENSYMS];
+	u16 short_lensym_cw[MAX_NUM_SHORT_LENSYMS];
+	unsigned min_lit_cw_len;
+	unsigned min_lensym_cw_len;
+};
+
+/*
+ * Format of the temporary short_lits[] entries that build_decode_table() uses
+ * to generate compound (2-literal and fused literal+length) entries of the
+ * litlen decode table:
+ *
+ *	Bit 22-15:  literal value (at HUFFDEC_LITERAL1_SHIFT)
+ *	Bit 10-0:   codeword (bit-reversed)
+ *
+ * All other bits are 0, so the literal value can be isolated with
+ * '~SHORT_LIT_CODEWORD_MASK' (and shifted left for the 2nd literal).  Since
+ * each of the 2 literals uses at least 1 bit and the total codeword length is
+ * at most LITLEN_TABLEBITS, the codeword length of each one is at most
+ * LITLEN_TABLEBITS - 1.
+ */
+#define SHORT_LIT_MAX_CW_LEN		(LITLEN_TABLEBITS - 1)
+#define SHORT_LIT_CODEWORD_MASK		((1U << SHORT_LIT_MAX_CW_LEN) - 1)
+#define MAKE_SHORT_LIT(sym, codeword)	\
+	(((u32)(sym) << HUFFDEC_LITERAL1_SHIFT) | (codeword))
+
+/*
+ * Write the 1 or 2 literals given by the literal entry 'entry' to 'out_next',
+ * and advance 'out_next' by the number of literals.  For efficiency, this
+ * always writes 2 bytes, even if there is only 1 literal.  (In that case, the
+ * extra byte is 0 and is written just past the new 'out_next'.)  Therefore,
+ * this can be used only in the fastloop, where such overruns are allowed.
+ */
+#define WRITE_FASTLOOP_LITERALS(entry)					\
+do {									\
+	put_unaligned_le16((u16)((entry) >> HUFFDEC_LITERAL1_SHIFT),	\
+			   out_next);					\
+	out_next += 1 + (((entry) >> HUFFDEC_DOUBLE_LITERAL_SHIFT) & 1);\
+} while (0)
 
 /* Maximum number of bits that can be consumed by decoding a match length */
 #define LENGTH_MAXBITS		(DEFLATE_MAX_LITLEN_CODEWORD_LEN + \
@@ -482,27 +630,33 @@ static const u32 precode_decode_results[] = {
  * Here is the format of our litlen decode table entries.  Bits not explicitly
  * described contain zeroes:
  *
- *	Literals:
+ *	Literals (1 or 2 literals):
  *		Bit 31:     1 (HUFFDEC_LITERAL)
- *		Bit 23-16:  literal value
- *		Bit 15:     0 (!HUFFDEC_EXCEPTIONAL)
+ *		Bit 30-23:  2nd literal value (if HUFFDEC_DOUBLE_LITERAL; 0 otherwise)
+ *		Bit 22-15:  1st literal value (overlaps HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     0 (!HUFFDEC_SUBTABLE_POINTER)
  *		Bit 13:     0 (!HUFFDEC_END_OF_BLOCK)
- *		Bit 11-8:   remaining codeword length [not used]
- *		Bit 3-0:    remaining codeword length
- *	Lengths:
+ *		Bit 12:     1 if 2 literals (HUFFDEC_DOUBLE_LITERAL), else 0
+ *		Bit 11-8:   remaining codeword length (0 if double literal) [not used]
+ *		Bit 3-0:    remaining codeword length (1st + 2nd if double literal)
+ *	Lengths (plain or fused literal+length):
  *		Bit 31:     0 (!HUFFDEC_LITERAL)
- *		Bit 24-16:  length base value
+ *		Bit 30-23:  preceding literal (if HUFFDEC_LIT_LENGTH), else
+ *		            bits 24-23 hold upper bits of length_base (25-30 zero)
+ *		Bit 22-16:  length base value (3..115 if HUFFDEC_LIT_LENGTH;
+ *		            low 7 bits of 3..258 otherwise)
  *		Bit 15:     0 (!HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     0 (!HUFFDEC_SUBTABLE_POINTER)
- *		Bit 13:     0 (!HUFFDEC_END_OF_BLOCK)
- *		Bit 11-8:   remaining codeword length
+ *		Bit 13:     1 if preceding literal present (HUFFDEC_LIT_LENGTH)
+ *		Bit 12:     0 (!HUFFDEC_DOUBLE_LITERAL)
+ *		Bit 11-8:   remaining codeword length (lit+len sum if fused)
  *		Bit 4-0:    remaining codeword length + number of extra bits
  *	End of block:
  *		Bit 31:     0 (!HUFFDEC_LITERAL)
  *		Bit 15:     1 (HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     0 (!HUFFDEC_SUBTABLE_POINTER)
  *		Bit 13:     1 (HUFFDEC_END_OF_BLOCK)
+ *		Bit 12:     0 (!HUFFDEC_DOUBLE_LITERAL)
  *		Bit 11-8:   remaining codeword length [not used]
  *		Bit 3-0:    remaining codeword length
  *	Subtable pointer:
@@ -511,6 +665,7 @@ static const u32 precode_decode_results[] = {
  *		Bit 15:     1 (HUFFDEC_EXCEPTIONAL)
  *		Bit 14:     1 (HUFFDEC_SUBTABLE_POINTER)
  *		Bit 13:     0 (!HUFFDEC_END_OF_BLOCK)
+ *		Bit 12:     0 (!HUFFDEC_DOUBLE_LITERAL)
  *		Bit 11-8:   number of subtable bits
  *		Bit 3-0:    number of main table bits
  *
@@ -523,24 +678,35 @@ static const u32 precode_decode_results[] = {
  *	- The HUFFDEC_* flags enable easily distinguishing between the different
  *	  types of entries.  The HUFFDEC_LITERAL flag enables a fast path for
  *	  literals; the high bit is used for this, as some CPUs can test the
- *	  high bit more easily than other bits.  The HUFFDEC_EXCEPTIONAL flag
- *	  makes it possible to detect the two unlikely cases (subtable pointer
- *	  and end of block) in a single bit flag test.
+ *	  high bit more easily than other bits.  Once literals have been
+ *	  excluded, the HUFFDEC_EXCEPTIONAL flag makes it possible to detect
+ *	  the two unlikely cases (subtable pointer and end of block) in a
+ *	  single bit flag test.  (HUFFDEC_EXCEPTIONAL must not be tested
+ *	  before HUFFDEC_LITERAL, as it overlaps the low bit of the 1st
+ *	  literal.)
+ *
+ *	- The literal value(s) are located such that
+ *	  'entry >> HUFFDEC_LITERAL1_SHIFT' has the 1st literal in bits 7-0 and
+ *	  the 2nd literal (or 0 for single-literal entries) in bits 15-8, so
+ *	  WRITE_FASTLOOP_LITERALS() can store both in order via a single
+ *	  put_unaligned_le16() call (even on big-endian CPUs).
  *
  *	- The low byte is the number of bits that need to be removed from the
  *	  bitstream, including any extra bits so that they don't need to be
- *	  removed separately.  Also, its value is always less than 32 (so bits
- *	  7-5 are always 0).  This enables the micro-optimizations of doing
- *	  'bitsleft -= entry' instead of 'bitsleft -= (u8)entry', and
- *	  'bitbuf >>= entry & (BITBUF_NBITS - 1)' instead of
- *	  'bitbuf >>= (u8)entry' (letting the mask fold into the shift
- *	  instruction).
+ *	  removed separately.  Ignoring bits 8+ of 'bitsleft' allows
+ *	  'bitsleft -= entry' instead of 'bitsleft -= (u8)entry'.  Furthermore,
+ *	  the low byte is always less than 32 (so bits 7-5 are always 0), which
+ *	  allows 'bitbuf >>= entry & (BITBUF_NBITS - 1)' instead of
+ *	  'bitbuf >>= (u8)entry' on both 32-bit and 64-bit platforms (letting
+ *	  the mask fold into the shift instruction) and allows
+ *	  EXTRACT_VARBITS8(word, entry) to use 'entry' without masking to u8.
  *
- *	- Bit 12 is 0, allowing the "remaining codeword length" and "number of
- *	  subtable bits" in bits 11-8 to be extracted with '& 0x1F' rather than
- *	  '& 0xF'.  When used to shift a 32-bit value, this masking happens
- *	  implicitly on most architectures via the shift amount being truncated,
- *	  saving an 'and' instruction.
+ *	- Bit 12 is 0 when either the "remaining codeword length" or "number of
+ *	  subtable bits" in bits 11-8 is needed (i.e. on length and subtable
+ *	  pointer entries), allowing bits 11-8 to be extracted with '& 0x1F'
+ *	  rather than '& 0xF'.  When used to shift a 32-bit value, this masking
+ *	  happens implicitly on most architectures via the shift amount being
+ *	  truncated, saving an 'and' instruction.
  *
  * litlen_decode_results[] contains the static part of the entry for each
  * symbol.  make_decode_table_entry() produces the final entries.
@@ -548,7 +714,8 @@ static const u32 precode_decode_results[] = {
 static const u32 litlen_decode_results[] = {
 
 	/* Literals */
-#define ENTRY(literal)	(HUFFDEC_LITERAL | ((u32)literal << 16))
+#define ENTRY(literal)	(HUFFDEC_LITERAL | \
+			 ((u32)(literal) << HUFFDEC_LITERAL1_SHIFT))
 	ENTRY(0)   , ENTRY(1)   , ENTRY(2)   , ENTRY(3)   ,
 	ENTRY(4)   , ENTRY(5)   , ENTRY(6)   , ENTRY(7)   ,
 	ENTRY(8)   , ENTRY(9)   , ENTRY(10)  , ENTRY(11)  ,
