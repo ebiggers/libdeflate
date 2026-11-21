@@ -733,6 +733,9 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 		REFILL_BITS_IN_FASTLOOP();
 
+#ifdef COPY_MATCH
+		COPY_MATCH(dst, src, offset, out_next);
+#else
 		/*
 		 * Copy the match.  On most CPUs the fastest method is a
 		 * word-at-a-time copy, unconditionally copying about 5 words
@@ -835,6 +838,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 				*dst++ = *src++;
 			} while (dst < out_next);
 		}
+#endif /* !COPY_MATCH */
 	} while (in_next < in_fastloop_end && out_next < out_fastloop_end);
 
 	ctx->in_next = in_next;
@@ -1276,3 +1280,4 @@ block_done:
 #undef ATTRIBUTES
 #undef EXTRACT_VARBITS
 #undef EXTRACT_VARBITS8
+#undef COPY_MATCH
