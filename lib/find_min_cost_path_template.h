@@ -134,12 +134,12 @@ FUNCNAME(struct libdeflate_compressor *c, const u32 block_length,
 	size_t i;
 
 	/*
-	 * Initialize length_costs[] from c->p.n.costs.length.  Disable loop
-	 * unrolling on clang to avoid excessive code size.
+	 * Initialize length_costs[] from c->p.n.costs.length.  This runs only
+	 * once per block, so disable loop unrolling to avoid excessive code and
+	 * constant-pool size (e.g., clang otherwise fully unrolls the AVX2
+	 * version) while still allowing auto-vectorization.
 	 */
-#ifdef __clang__
-#  pragma clang loop unroll(disable)
-#endif
+	NO_UNROLL_LOOP
 	for (i = DEFLATE_MIN_MATCH_LEN; i <= DEFLATE_MAX_MATCH_LEN; i++)
 		length_costs[i] = (u32)((c->p.n.costs.length[i] <<
 					 PACKED_COST_SHIFT) | i);
@@ -253,10 +253,8 @@ FUNCNAME(struct libdeflate_compressor *c, const u32 block_length,
 			best_cost_to_end = REBASE_MARGIN;
 			base_cost += delta;
 			delta <<= PACKED_COST_SHIFT;
-			/* Disable unrolling on clang to avoid code bloat. */
-#ifdef __clang__
-#  pragma clang loop unroll(disable)
-#endif
+			/* Disable unrolling to avoid code bloat on this cold path. */
+			NO_UNROLL_LOOP
 			for (len = DEFLATE_MIN_MATCH_LEN;
 			     len <= DEFLATE_MAX_MATCH_LEN; len++)
 				length_costs[len] -= delta;
