@@ -494,19 +494,24 @@ ADD_SUFFIX(build_offset_decode_table)(struct libdeflate_decompressor *d,
 }
 
 /*
- * This is the "fastloop" for decoding literals and matches.  It does bounds
- * checks on in_next and out_next in the loop conditions so that additional
- * bounds checks aren't needed inside the loop body.
+ * Shared body of the fastloop for decoding literals and matches.  It does
+ * bounds checks on in_next and out_next in the loop conditions so that
+ * additional bounds checks aren't needed inside the loop body.
  *
- * It is a dedicated out-of-line function to improve code generation: fewer
- * variables are in scope, resulting in less spilling to the stack.
+ * Instantiated into two dedicated non-inline functions to keep register
+ * allocation clean and avoid checking 'offset <= out_next - ctx->out' once at
+ * least DEFLATE_MAX_MATCH_OFFSET (32768) bytes have already been decompressed:
+ *
+ * - decompress_fastloop_checked(): check_offset == true (first 32 KiB)
+ * - decompress_fastloop_unchecked(): check_offset == false (past 32 KiB)
  */
-static NOINLINE ATTRIBUTES enum fastloop_result
-ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
-				struct fastloop_ctx * restrict ctx,
-				const u8 * const in_fastloop_end,
-				u8 * const out_fastloop_end,
-				const u32 litlen_tablemask)
+static forceinline ATTRIBUTES enum fastloop_result
+ADD_SUFFIX(decompress_fastloop_body)(struct libdeflate_decompressor * restrict d,
+				     struct fastloop_ctx * restrict ctx,
+				     const u8 * const in_fastloop_end,
+				     u8 * const out_fastloop_end,
+				     const u32 litlen_tablemask,
+				     const bool check_offset)
 {
 	const u8 * restrict in_next = ctx->in_next;
 	u8 * restrict out_next = ctx->out_next;
@@ -722,8 +727,22 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 		offset += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
 			  ((entry >> 8) & 0x1F);
 
-		/* Validate the match offset; needed even in the fastloop. */
-		FASTLOOP_SAFETY_CHECK(offset <= out_next - ctx->out);
+		/*
+		 * Validate the match offset.  Because every entry in
+		 * offset_decode_results[] (including the unused symbols 30 and
+		 * 31) produces an offset in [1, DEFLATE_MAX_MATCH_OFFSET], this
+		 * check is guaranteed to pass once at least
+		 * DEFLATE_MAX_MATCH_OFFSET bytes have been written to 'out'.
+		 */
+		STATIC_ASSERT(24577 + BITMASK(DEFLATE_MAX_EXTRA_OFFSET_BITS) ==
+			      DEFLATE_MAX_MATCH_OFFSET);
+		if (check_offset) {
+			FASTLOOP_SAFETY_CHECK(offset <= out_next - ctx->out);
+		} else {
+			ASSERT(offset >= 1 &&
+			       offset <= DEFLATE_MAX_MATCH_OFFSET);
+			ASSERT(out_next - ctx->out >= DEFLATE_MAX_MATCH_OFFSET);
+		}
 		src = out_next - offset;
 		dst = out_next;
 		out_next += length;
@@ -867,6 +886,30 @@ block_done:
 	ctx->bitbuf = bitbuf;
 	ctx->bitsleft = bitsleft;
 	return FASTLOOP_BLOCK_DONE;
+}
+
+static NOINLINE ATTRIBUTES enum fastloop_result
+ADD_SUFFIX(decompress_fastloop_checked)(struct libdeflate_decompressor * restrict d,
+					struct fastloop_ctx * restrict ctx,
+					const u8 * const in_fastloop_end,
+					u8 * const out_fastloop_end,
+					const u32 litlen_tablemask)
+{
+	return ADD_SUFFIX(decompress_fastloop_body)(d, ctx, in_fastloop_end,
+						    out_fastloop_end,
+						    litlen_tablemask, true);
+}
+
+static NOINLINE ATTRIBUTES enum fastloop_result
+ADD_SUFFIX(decompress_fastloop_unchecked)(struct libdeflate_decompressor * restrict d,
+					  struct fastloop_ctx * restrict ctx,
+					  const u8 * const in_fastloop_end,
+					  u8 * const out_fastloop_end,
+					  const u32 litlen_tablemask)
+{
+	return ADD_SUFFIX(decompress_fastloop_body)(d, ctx, in_fastloop_end,
+						    out_fastloop_end,
+						    litlen_tablemask, false);
 }
 
 static ATTRIBUTES enum libdeflate_result
@@ -1178,10 +1221,27 @@ have_decode_tables:
 		};
 		enum fastloop_result res;
 
-		res = ADD_SUFFIX(decompress_fastloop)(d, &ctx, in_fastloop_end,
-						      out_fastloop_end,
-						      litlen_tablemask);
-		SAFETY_CHECK(res != FASTLOOP_BAD_DATA);
+		if (out_next - (const u8 *)out < DEFLATE_MAX_MATCH_OFFSET) {
+			u8 * const checked_end =
+				(out_fastloop_end - (u8 *)out >
+				 DEFLATE_MAX_MATCH_OFFSET) ?
+				(u8 *)out + DEFLATE_MAX_MATCH_OFFSET :
+				out_fastloop_end;
+
+			res = ADD_SUFFIX(decompress_fastloop_checked)(
+					d, &ctx, in_fastloop_end, checked_end,
+					litlen_tablemask);
+			SAFETY_CHECK(res != FASTLOOP_BAD_DATA);
+			if (res == FASTLOOP_BLOCK_DONE ||
+			    ctx.in_next >= in_fastloop_end ||
+			    ctx.out_next >= out_fastloop_end)
+				goto fastloop_done;
+		}
+		res = ADD_SUFFIX(decompress_fastloop_unchecked)(
+				d, &ctx, in_fastloop_end, out_fastloop_end,
+				litlen_tablemask);
+		ASSERT(res != FASTLOOP_BAD_DATA);
+fastloop_done:
 		in_next = ctx.in_next;
 		out_next = ctx.out_next;
 		bitbuf = ctx.bitbuf;

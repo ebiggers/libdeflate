@@ -725,9 +725,9 @@ typedef enum libdeflate_result (*decompress_func_t)
 
 struct fastloop_ctx {
 	/*
-	 * The 'out' pointer is an input only.  Put it at offset 0 because the
-	 * fastloop loads it on each match, as that was seen to reduce register
-	 * spilling elsewhere in some cases.
+	 * The 'out' pointer is an input only.  Put it at offset 0 because
+	 * decompress_fastloop_checked() loads it on each match, as that was
+	 * seen to reduce register spilling elsewhere in some cases.
 	 */
 	const u8 *out;
 	/* The following are both inputs and outputs to the fastloop. */
