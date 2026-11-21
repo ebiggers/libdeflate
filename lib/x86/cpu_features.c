@@ -145,6 +145,7 @@ void libdeflate_init_x86_cpu_features(void)
 	u32 a, b, c, d;
 	u64 xcr0 = 0;
 	u32 features = 0;
+	bool have_ssse3 = false;
 
 	/* EAX=0: Highest Function Parameter and Manufacturer ID */
 	cpuid(0, 0, &max_leaf, &manufacturer[0], &manufacturer[2],
@@ -169,18 +170,38 @@ void libdeflate_init_x86_cpu_features(void)
 	 */
 	if ((c & (1 << 1)) && (c & (1 << 19)))
 		features |= X86_CPU_FEATURE_PCLMULQDQ;
+	/* Check both SSE3 and SSSE3 bits, as target("ssse3") enables SSE3. */
+	if ((c & (1 << 0)) && (c & (1 << 9)))
+		have_ssse3 = true;
 	if (c & (1 << 27))
 		xcr0 = read_xcr(0);
 	if ((c & (1 << 28)) && ((xcr0 & 0x6) == 0x6))
 		features |= X86_CPU_FEATURE_AVX;
 
+	/* EAX=7, ECX=0: Extended Features */
 	if (max_leaf < 7)
 		goto out;
-
-	/* EAX=7, ECX=0: Extended Features */
 	cpuid(7, 0, &a, &b, &c, &d);
-	if (b & (1 << 8))
-		features |= X86_CPU_FEATURE_BMI2;
+
+	/*
+	 * X86_CPU_FEATURE_BMI2 indicates that BMI2, BMI, LZCNT, and SSSE3 are
+	 * available.  Although these are architecturally separate features,
+	 * real CPUs with BMI2 have the others too, and they're used together.
+	 */
+	if ((b & (1 << 3)) /* BMI */ && (b & (1 << 8)) /* BMI2 */ &&
+	    (features & X86_CPU_FEATURE_SSE2) && have_ssse3) {
+		/* EAX=0x80000000: Highest Extended Function Implemented */
+		u32 ext_max_leaf, ext_a, ext_b, ext_c, ext_d;
+
+		cpuid(0x80000000, 0, &ext_max_leaf, &ext_b, &ext_c, &ext_d);
+		if (ext_max_leaf >= 0x80000001) {
+			/* EAX=0x80000001: Extended Processor Info and Feature Bits */
+			cpuid(0x80000001, 0, &ext_a, &ext_b, &ext_c, &ext_d);
+			if (ext_c & (1 << 5)) /* LZCNT */
+				features |= X86_CPU_FEATURE_BMI2;
+		}
+	}
+
 	if ((xcr0 & 0x6) == 0x6) {
 		if (b & (1 << 5))
 			features |= X86_CPU_FEATURE_AVX2;

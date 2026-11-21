@@ -36,6 +36,7 @@
 #define X86_CPU_FEATURE_PCLMULQDQ	(1 << 1)
 #define X86_CPU_FEATURE_AVX		(1 << 2)
 #define X86_CPU_FEATURE_AVX2		(1 << 3)
+/* This flag indicates that BMI2, BMI, LZCNT, and SSSE3 are supported. */
 #define X86_CPU_FEATURE_BMI2		(1 << 4)
 /*
  * ZMM indicates whether 512-bit vectors (zmm registers) should be used.  On
@@ -79,6 +80,7 @@ static inline u32 get_x86_cpu_features(void)
 #    include <wmmintrin.h>
 #    include <avxintrin.h>
 #    include <avx2intrin.h>
+#    include <bmi2intrin.h>
 #    include <avx512fintrin.h>
 #    include <avx512bwintrin.h>
 #    include <avx512vlintrin.h>
@@ -131,7 +133,15 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_AVX2(features)		((features) & X86_CPU_FEATURE_AVX2)
 #endif
 
-#if defined(__BMI2__) || (defined(_MSC_VER) && defined(__AVX2__))
+/*
+ * All real CPUs with BMI2 also support BMI, LZCNT, and SSSE3, which can all be
+ * slightly helpful in the BMI2 optimized functions.  So those functions use
+ * those instructions too.  Reflecting this use case, HAVE_BMI2() and
+ * HAVE_BMI2_NATIVE are true only when all of these features are present.  (Of
+ * course, on real CPUs this is no different from simply checking for BMI2.)
+ */
+#if (defined(__BMI2__) && defined(__BMI__) && defined(__LZCNT__) &&  \
+     defined(__SSSE3__)) || (defined(_MSC_VER) && defined(__AVX2__))
 #  define HAVE_BMI2(features)		1
 #  define HAVE_BMI2_NATIVE		1
 #else

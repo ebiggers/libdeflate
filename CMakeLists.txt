@@ -214,6 +214,7 @@ if(LIBDEFLATE_COMPRESSION_SUPPORT)
 endif()
 if(LIBDEFLATE_DECOMPRESSION_SUPPORT)
     list(APPEND LIB_SOURCES
+         lib/arm/decompress_impl.h
          lib/decompress_template.h
          lib/deflate_decompress.c
          lib/x86/decompress_impl.h
