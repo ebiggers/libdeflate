@@ -488,10 +488,13 @@ static const u32 precode_decode_results[] = {
  *	  and end of block) in a single bit flag test.
  *
  *	- The low byte is the number of bits that need to be removed from the
- *	  bitstream; this makes this value easily accessible, and it enables the
- *	  micro-optimization of doing 'bitsleft -= entry' instead of
- *	  'bitsleft -= (u8)entry'.  It also includes the number of extra bits,
- *	  so they don't need to be removed separately.
+ *	  bitstream, including any extra bits so that they don't need to be
+ *	  removed separately.  Also, its value is always less than 32 (so bits
+ *	  7-5 are always 0).  This enables the micro-optimizations of doing
+ *	  'bitsleft -= entry' instead of 'bitsleft -= (u8)entry', and
+ *	  'bitbuf >>= entry & (BITBUF_NBITS - 1)' instead of
+ *	  'bitbuf >>= (u8)entry' (letting the mask fold into the shift
+ *	  instruction).
  *
  *	- The flags in bits 15-13 are arranged to be 0 when the
  *	  "remaining codeword length" in bits 11-8 is needed, making this value
