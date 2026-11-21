@@ -99,6 +99,7 @@ if(LIBDEFLATE_BUILD_TESTS)
     set(UNIT_TEST_PROGS
         test_checksums
         test_custom_malloc
+        test_fastloop
         test_incomplete_codes
         test_invalid_streams
         test_litrunlen_overflow
