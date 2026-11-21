@@ -54,20 +54,26 @@
 #endif
 
 /*
- * Fill all compound main-table entries of total codeword length 'total_cw_len'
- * in 'decode_table[0 .. (1 << total_cw_len) - 1]':
+ * Fill all compound main-table entries of total length 'total_cw_len' in
+ * 'decode_table[0 .. (1 << total_cw_len) - 1]':
  *
  *  1. 2-literal pairs (lit1, lit2) when total_cw_len >= 2 * min_lit_cw_len.
  *  2. Fused literal+length pairs (lit1, lensym) for lensym in
- *     [FIRST_SHORT_LENSYM, LAST_SHORT_LENSYM] (length_base <= 127,
- *     extra_bits <= 4) when total_cw_len >= min_lit_cw_len + min_lensym_cw_len.
+ *     [FIRST_SHORT_LENSYM, LAST_SHORT_LENSYM] when total_cw_len >=
+ *     min_lit_cw_len + min_lensym_eff_len.  These are always exact length
+ *     entries, so here "total length" includes the extra bits: one entry is
+ *     generated for each value of the extra bits, except for any values that
+ *     would make the match length exceed SHORT_LENSYM_MAX_MATCH_LEN.  (The
+ *     main table entries for those values just keep the single-literal entry
+ *     for lit1, which is still correct, just slower.)
  *
  * Because all symbols come from a prefix-free code, the compound entries never
  * collide with each other, with single-symbol entries, or with subtable
  * pointers.  A compound entry's index begins with the first symbol's codeword
  * 'c1', so it can't collide with any entry for a different codeword (which
  * cannot have 'c1' as a prefix).  Two compound entries with the same 'c1'
- * differ in their second codeword, which again is prefix-free.
+ * differ in their second codeword (plus extra bits), which again is
+ * prefix-free.
  *
  * Each compound entry is written once, when the table has 2^total_cw_len
  * entries.  Subsequent table doublings in build_decode_table() automatically
@@ -83,14 +89,13 @@ ADD_SUFFIX(fill_compound_litlen_entries)(u32 * restrict decode_table,
 					 unsigned total_cw_len)
 {
 	const unsigned min_lit_cw_len = cs->min_lit_cw_len;
-	const unsigned min_lensym_cw_len = cs->min_lensym_cw_len;
+	const unsigned min_lensym_eff_len = cs->min_lensym_eff_len;
 	unsigned len1;
 
 	STATIC_ASSERT(FIRST_SHORT_LENSYM == DEFLATE_FIRST_LEN_SYM);
 	STATIC_ASSERT(ARRAY_LEN(cs->lit_start) == SHORT_LIT_MAX_CW_LEN + 1);
 	STATIC_ASSERT(ARRAY_LEN(cs->lit_end) == SHORT_LIT_MAX_CW_LEN + 1);
-	STATIC_ASSERT(ARRAY_LEN(cs->lensym_start) == SHORT_LIT_MAX_CW_LEN + 1);
-	STATIC_ASSERT(ARRAY_LEN(cs->lensym_end) == SHORT_LIT_MAX_CW_LEN + 1);
+	STATIC_ASSERT(ARRAY_LEN(cs->lensym_head) == SHORT_LIT_MAX_CW_LEN + 1);
 	STATIC_ASSERT(HUFFDEC_LITERAL2_SHIFT == HUFFDEC_LITERAL1_SHIFT + 8);
 	STATIC_ASSERT(HUFFDEC_LIT_LENGTH == HUFFDEC_END_OF_BLOCK);
 	STATIC_ASSERT(((HUFFDEC_LIT_LENGTH >> 8) & 0x1F) == 0);
@@ -139,34 +144,82 @@ ADD_SUFFIX(fill_compound_litlen_entries)(u32 * restrict decode_table,
 		}
 	}
 
-	if (total_cw_len >= min_lit_cw_len + min_lensym_cw_len) {
+	if (total_cw_len >= min_lit_cw_len + min_lensym_eff_len) {
 		for (len1 = min_lit_cw_len;
-		     len1 <= total_cw_len - min_lensym_cw_len; len1++) {
-			unsigned len2 = total_cw_len - len1;
+		     len1 <= total_cw_len - min_lensym_eff_len; len1++) {
 			unsigned s1 = cs->lit_start[len1];
 			unsigned e1 = cs->lit_end[len1];
-			unsigned i2, e2 = cs->lensym_end[len2];
+			unsigned i2;
 
 			if (s1 >= e1)
 				continue;
-			for (i2 = cs->lensym_start[len2]; i2 < e2; i2++) {
-				u32 *dst = &decode_table[
-					(unsigned)cs->short_lensym_cw[i2] << len1];
-				u32 base = HUFFDEC_LIT_LENGTH |
-					   (cs->short_lensym_res[i2] +
-					    (total_cw_len << 8) + total_cw_len);
-				unsigned i1;
+			for (i2 = cs->lensym_head[total_cw_len - len1];
+			     i2 != 0xFF; i2 = cs->short_lensym_next[i2]) {
+				unsigned cw_len2 = cs->short_lensym_cw_len[i2];
+				unsigned length_base = cs->short_lensym_base[i2];
+				unsigned num_extra_vals =
+					MIN(1U << (total_cw_len - len1 - cw_len2),
+					    SHORT_LENSYM_MAX_MATCH_LEN + 1 -
+					    length_base);
+				unsigned extra;
 
-				for (i1 = s1; i1 < e1; i1++) {
-					u32 lit1 = short_lits[i1];
+				for (extra = 0; extra < num_extra_vals;
+				     extra++) {
+					u32 *dst = &decode_table[
+						((unsigned)cs->short_lensym_cw[i2] |
+						 (extra << cw_len2)) << len1];
+					u32 base = HUFFDEC_LIT_LENGTH |
+						   ((length_base + extra) << 16) |
+						   (total_cw_len << 8) |
+						   total_cw_len;
+					unsigned i1;
 
-					dst[lit1 & SHORT_LIT_CODEWORD_MASK] =
-						base |
-						((lit1 & ~SHORT_LIT_CODEWORD_MASK) <<
-						 (HUFFDEC_LITERAL2_SHIFT -
-						  HUFFDEC_LITERAL1_SHIFT));
+					for (i1 = s1; i1 < e1; i1++) {
+						u32 lit1 = short_lits[i1];
+
+						dst[lit1 & SHORT_LIT_CODEWORD_MASK] =
+							base |
+							((lit1 & ~SHORT_LIT_CODEWORD_MASK) <<
+							 (HUFFDEC_LITERAL2_SHIFT -
+							  HUFFDEC_LITERAL1_SHIFT));
+					}
 				}
 			}
+		}
+	}
+}
+
+/*
+ * Fill the exact length entries of length 'eff_len' in
+ * 'decode_table[0 .. (1 << eff_len) - 1]', for all length symbols that have
+ * 'codeword length + number of extra bits == eff_len' and at least 1 extra bit.
+ * For each such symbol, this overwrites the 2^num_extra_bits copies of the
+ * symbol's generic entry (made by the table doublings so far) with exact
+ * entries, one for each value of the extra bits.  As with compound entries,
+ * subsequent table doublings replicate these entries.  See
+ * 'struct litlen_exact_lensyms'.
+ */
+static NOINLINE ATTRIBUTES void
+ADD_SUFFIX(fill_exact_litlen_lengths)(u32 * restrict decode_table,
+				      const u32 * restrict decode_results,
+				      const struct litlen_exact_lensyms * restrict ex,
+				      unsigned eff_len)
+{
+	unsigned i;
+
+	ASSERT(ex->level_mask & (1U << eff_len));
+	for (i = ex->head[eff_len]; i != 0xFF; i = ex->next[i]) {
+		const unsigned cw = ex->cw[i];
+		const unsigned cw_len = ex->cw_len[i];
+		const u32 res = decode_results[ex->sym[i]];
+		const unsigned num_extra_vals = 1U << (eff_len - cw_len);
+		u32 entry = (res & 0xFFFF0000) | (eff_len << 8) | eff_len;
+		unsigned extra;
+
+		ASSERT((res & 0xFF) == eff_len - cw_len);
+		for (extra = 0; extra < num_extra_vals; extra++) {
+			decode_table[cw | (extra << cw_len)] = entry;
+			entry += 1U << 16;
 		}
 	}
 }
@@ -201,10 +254,14 @@ ADD_SUFFIX(fill_compound_litlen_entries)(u32 * restrict decode_table,
  *	The log base-2 of the number of main table entries to use.
  *	If @table_bits_ret != NULL, then @table_bits must be <= LITLEN_TABLEBITS
  *	(and == LITLEN_TABLEBITS if @allow_compound is true) and is treated
- *	as a maximum value that may be decreased (to min(LITLEN_SMALL_TABLEBITS,
- *	max_codeword_len) when no compound entries are generated, or to the
- *	maximum of max_codeword_len and the longest (lit, lit) or (lit, len)
- *	pair <= LITLEN_TABLEBITS when compound entries are generated).
+ *	as a maximum value that may be decreased.  If @allow_compound is false,
+ *	it's decreased to min(@table_bits, max_codeword_len).  Otherwise, if no
+ *	compound entries fit, it's set to min(LITLEN_SMALL_TABLEBITS,
+ *	max(max_codeword_len, longest length symbol codeword + extra bits that
+ *	fits)); and if compound entries fit, it's set to the maximum of
+ *	max_codeword_len, the longest length symbol codeword + extra bits <=
+ *	LITLEN_TABLEBITS, and the longest (lit, lit) or (lit, len + extra bits)
+ *	pair <= LITLEN_TABLEBITS.
  * @max_codeword_len
  *	The maximum allowed codeword length for this Huffman code.
  *	Must be <= DEFLATE_MAX_CODEWORD_LEN.
@@ -254,9 +311,12 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 	unsigned num_short_lensyms = 0;
 	unsigned min_compound_cw_len = LITLEN_TABLEBITS + 1;
 	unsigned max_short_lit_cw_len = 0;
-	unsigned max_short_lensym_cw_len = 0;
+	unsigned max_short_lensym_eff_len = 0;
+	struct litlen_exact_lensyms ex;
+	unsigned num_exact_lensyms = 0;
 
 	ASSERT(!allow_compound || table_bits_ret != NULL);
+	ex.level_mask = 0;
 
 	/*
 	 * Count how many codewords have each length, including 0.
@@ -445,55 +505,69 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 
 		if (allow_compound) {
 			/*
-			 * Determine whether any compound (2-literal or fused
-			 * literal+length) entries will fit in the main table,
-			 * and if so choose the final table_bits.
+			 * Choose the final table_bits, and determine whether
+			 * any compound (2-literal or fused literal+length)
+			 * entries will fit in the main table.
 			 *
-			 * First, find the codeword lengths that contain at
-			 * least one literal and at least one short length
-			 * symbol.  Since each symbol of a pair uses at least 1
-			 * bit, only lengths <= table_bits - 1 matter.  Within
-			 * each length, sorted_syms[] is sorted by symbol value,
-			 * so the length contains a literal iff its first symbol
-			 * is a literal, and it contains a short length symbol
-			 * iff the last symbol <= LAST_SHORT_LENSYM is one.
+			 * First, scan the codeword lengths <= table_bits to
+			 * find:
+			 *
+			 * - The codeword lengths < table_bits that contain at
+			 *   least one literal.  (Since each symbol of a pair
+			 *   uses at least 1 bit, only these matter.)
+			 * - The effective lengths (codeword length plus number
+			 *   of extra bits) < table_bits of the short length
+			 *   symbols, which can be the 2nd symbol of a pair.
+			 * - The effective lengths <= table_bits of all length
+			 *   symbols.  These are the lengths needed to give
+			 *   these symbols exact length entries.
+			 *
+			 * Within each codeword length, sorted_syms[] is sorted
+			 * by symbol value, so the length contains a literal iff
+			 * its first symbol is a literal, and its length symbols
+			 * (if any) are at the end.
 			 */
 			unsigned sym_idx = 0;
-			unsigned max_l = MIN(max_codeword_len, table_bits - 1);
+			unsigned max_l = MIN(max_codeword_len, table_bits);
 			u32 lit_cw_len_mask = 0;
-			u32 lensym_cw_len_mask = 0;
+			u32 lensym_eff_len_mask = 0;
+			u32 len_eff_len_mask = 0;
 			unsigned min_lit_cw_len = LITLEN_TABLEBITS + 1;
-			unsigned min_lensym_cw_len = LITLEN_TABLEBITS + 1;
-			unsigned min_second_cw_len;
+			unsigned min_lensym_eff_len = LITLEN_TABLEBITS + 1;
+			unsigned min_second_len;
 			unsigned l;
 
 			ASSERT(table_bits == LITLEN_TABLEBITS);
 			for (l = len; l <= max_l; l++) {
-				unsigned c = len_counts[l];
+				unsigned end = sym_idx + len_counts[l];
+				unsigned i;
 
-				if (c != 0) {
-					unsigned e = sym_idx + c;
+				if (sym_idx == end)
+					continue;
+				if (sorted_syms[sym_idx] < DEFLATE_NUM_LITERALS)
+					lit_cw_len_mask |= 1U << l;
+				for (i = end; i > sym_idx &&
+				     sorted_syms[i - 1] >= DEFLATE_FIRST_LEN_SYM;
+				     i--) {
+					unsigned s = sorted_syms[i - 1];
+					unsigned eff_len =
+						l + (decode_results[s] & 0xFF);
 
-					if (sorted_syms[sym_idx] <
-					    DEFLATE_NUM_LITERALS)
-						lit_cw_len_mask |= 1U << l;
-					while (e > sym_idx &&
-					       sorted_syms[e - 1] >
-					       LAST_SHORT_LENSYM)
-						e--;
-					if (e > sym_idx &&
-					    sorted_syms[e - 1] >=
-					    FIRST_SHORT_LENSYM)
-						lensym_cw_len_mask |= 1U << l;
-					sym_idx += c;
+					if (eff_len <= table_bits)
+						len_eff_len_mask |= 1U << eff_len;
+					if (s <= LAST_SHORT_LENSYM &&
+					    eff_len < table_bits)
+						lensym_eff_len_mask |=
+							1U << eff_len;
 				}
+				sym_idx = end;
 			}
+			lit_cw_len_mask &= (1U << table_bits) - 1;
 			if (lit_cw_len_mask != 0)
 				min_lit_cw_len = bsf32(lit_cw_len_mask);
-			if (lensym_cw_len_mask != 0)
-				min_lensym_cw_len = bsf32(lensym_cw_len_mask);
-			min_second_cw_len = MIN(min_lit_cw_len,
-						min_lensym_cw_len);
+			if (lensym_eff_len_mask != 0)
+				min_lensym_eff_len = bsf32(lensym_eff_len_mask);
+			min_second_len = MIN(min_lit_cw_len, min_lensym_eff_len);
 
 			/*
 			 * Compound entries are possible iff the shortest
@@ -501,37 +575,43 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 			 * fits in table_bits.  If so, and if no codeword is
 			 * long enough to need the full LITLEN_TABLEBITS, then
 			 * shrink table_bits as much as possible without losing
-			 * any compound entries, to reduce the table build time.
+			 * any compound entries or exact length entries, to
+			 * reduce the table build time.
 			 *
-			 * Also record the maximum codeword lengths of the
-			 * literals and short length symbols that can be part
-			 * of a compound entry, and prepare 'cs' and the
-			 * 'short_lits' scratch array.  Note that 'short_lits'
-			 * is located just past the largest possible main table,
-			 * in space that may later be used for subtables.  This
-			 * is safe only because all compound entries are
-			 * generated before the first subtable is written.
+			 * Also record the maximum lengths of the literals and
+			 * short length symbols that can be part of a compound
+			 * entry, and prepare 'cs' and the 'short_lits' scratch
+			 * array.  Note that 'short_lits' is located just past
+			 * the largest possible main table, in space that may
+			 * later be used for subtables.  This is safe only
+			 * because all compound entries are generated before
+			 * the first subtable is written.
 			 */
 			if (lit_cw_len_mask != 0 &&
-			    min_lit_cw_len + min_second_cw_len <= table_bits) {
+			    min_lit_cw_len + min_second_len <= table_bits) {
 				if (max_codeword_len < table_bits) {
 					/*
 					 * Use the smallest table_bits >=
 					 * max_codeword_len that still fits all
-					 * (lit, lit) and (lit, lensym) pairs
-					 * summing to <= LITLEN_TABLEBITS.
+					 * exact length entries and all (lit,
+					 * lit) and (lit, lensym) pairs whose
+					 * lengths are <= LITLEN_TABLEBITS.
 					 */
 					u32 second_mask = lit_cw_len_mask |
-							  lensym_cw_len_mask;
+							  lensym_eff_len_mask;
 					unsigned min_table_bits =
 						max_codeword_len;
 					u32 m = lit_cw_len_mask;
 
+					if (len_eff_len_mask != 0)
+						min_table_bits =
+							MAX(min_table_bits,
+							    bsr32(len_eff_len_mask));
 					do {
 						unsigned l1 = bsf32(m);
 						u32 partner_mask;
 
-						if (l1 + min_second_cw_len >
+						if (l1 + min_second_len >
 						    table_bits)
 							break;
 						partner_mask =
@@ -546,49 +626,68 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 					table_bits = min_table_bits;
 				}
 				min_compound_cw_len =
-					min_lit_cw_len + min_second_cw_len;
+					min_lit_cw_len + min_second_len;
 				max_short_lit_cw_len =
-					table_bits - min_second_cw_len;
-				if (lensym_cw_len_mask != 0 &&
-				    min_lit_cw_len + min_lensym_cw_len <=
+					table_bits - min_second_len;
+				if (lensym_eff_len_mask != 0 &&
+				    min_lit_cw_len + min_lensym_eff_len <=
 				    table_bits)
-					max_short_lensym_cw_len =
+					max_short_lensym_eff_len =
 						table_bits - min_lit_cw_len;
-				ASSERT(max_short_lensym_cw_len <=
+				ASSERT(max_short_lensym_eff_len <=
 				       max_short_lit_cw_len);
 				ASSERT(max_short_lit_cw_len <=
-				       SHORT_LIT_MAX_CW_LEN);
-				ASSERT(max_short_lensym_cw_len <=
 				       SHORT_LIT_MAX_CW_LEN);
 				short_lits =
 					&decode_table[1U << LITLEN_TABLEBITS];
 				cs.min_lit_cw_len = min_lit_cw_len;
-				cs.min_lensym_cw_len = min_lensym_cw_len;
+				cs.min_lensym_eff_len = min_lensym_eff_len;
 				memset(cs.lit_start, 0, sizeof(cs.lit_start));
 				memset(cs.lit_end, 0, sizeof(cs.lit_end));
-				memset(cs.lensym_start, 0,
-				       sizeof(cs.lensym_start));
-				memset(cs.lensym_end, 0, sizeof(cs.lensym_end));
+				memset(cs.lensym_head, 0xFF,
+				       sizeof(cs.lensym_head));
 			} else {
 				/*
 				 * No compound entries fit; keep the main table
 				 * capped at LITLEN_SMALL_TABLEBITS to save
-				 * build time and L1d cache footprint.
+				 * build time and L1d cache footprint.  But do
+				 * grow it beyond max_codeword_len, up to that
+				 * cap, if that allows more length symbols to
+				 * get exact length entries.
 				 */
+				u32 m = len_eff_len_mask &
+					((2U << LITLEN_SMALL_TABLEBITS) - 1);
+
 				table_bits = MIN(LITLEN_SMALL_TABLEBITS,
-						 max_codeword_len);
+						 MAX(max_codeword_len,
+						     m ? bsr32(m) : 0));
 			}
 		} else {
 			table_bits = MIN(table_bits, max_codeword_len);
 		}
 		*table_bits_ret = table_bits;
 	}
+
+	/*
+	 * Fill any compound entries and exact length entries whose total length
+	 * is 'l', where the table currently has 2^l entries.  This must be done
+	 * for each 'l <= table_bits' after the codewords of length 'l' (if any)
+	 * have been processed and before the next table doubling.
+	 */
+#define FILL_LITLEN_LEVEL(l)						\
+	do {								\
+		if ((l) >= min_compound_cw_len)				\
+			ADD_SUFFIX(fill_compound_litlen_entries)(	\
+				decode_table, short_lits, &cs, (l));	\
+		if (ex.level_mask & (1U << (l)))			\
+			ADD_SUFFIX(fill_exact_litlen_lengths)(		\
+				decode_table, decode_results, &ex, (l));\
+	} while (0)
+
 	cur_table_end = 1U << len;
 	while (len <= table_bits) {
 		if (len <= max_short_lit_cw_len)
 			cs.lit_start[len] = num_short_lits;
-		if (len <= max_short_lensym_cw_len)
-			cs.lensym_start[len] = num_short_lensyms;
 
 		/* Process all 'count' codewords with length 'len' bits. */
 		do {
@@ -598,51 +697,77 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 			/* Fill the first entry for the current codeword. */
 			sym = *sorted_syms++;
 			entry = make_decode_table_entry(decode_results, sym, len);
-			decode_table[codeword] = entry;
-			if (len <= max_short_lit_cw_len) {
-				if (sym < DEFLATE_NUM_LITERALS) {
+			if (table_bits_ret != NULL &&
+			    sym >= DEFLATE_FIRST_LEN_SYM) {
+				/*
+				 * A length symbol.  If the codeword and the
+				 * extra bits both fit in the main table, then
+				 * give it exact length entries.  If there are
+				 * no extra bits, then the entry just needs
+				 * HUFFDEC_EXCEPTIONAL cleared.  Otherwise, the
+				 * exact entries have to be filled in later,
+				 * when the table is large enough.
+				 */
+				unsigned eff_len =
+					len + (decode_results[sym] & 0xFF);
+
+				if (eff_len == len) {
+					entry &= ~HUFFDEC_EXCEPTIONAL;
+				} else if (eff_len <= table_bits) {
+					unsigned i = num_exact_lensyms++;
+
+					ASSERT(i < MAX_NUM_EXTRA_BITS_LENSYMS);
+					ex.next[i] = (ex.level_mask &
+						      (1U << eff_len)) ?
+						     ex.head[eff_len] : 0xFF;
+					ex.head[eff_len] = i;
+					ex.level_mask |= 1U << eff_len;
+					ex.cw[i] = codeword;
+					ex.cw_len[i] = len;
+					ex.sym[i] = sym;
+				}
+				/*
+				 * Also remember it if it can be the 2nd symbol
+				 * of a fused (literal, length) entry.
+				 */
+				if (sym <= LAST_SHORT_LENSYM &&
+				    eff_len <= max_short_lensym_eff_len) {
+					unsigned i = num_short_lensyms++;
+
 					ASSERT(codeword <= SHORT_LIT_CODEWORD_MASK);
-					ASSERT(num_short_lits < DEFLATE_NUM_LITERALS);
-					short_lits[num_short_lits++] =
-						MAKE_SHORT_LIT(sym, codeword);
-				} else if (len <= max_short_lensym_cw_len &&
-					   sym >= FIRST_SHORT_LENSYM &&
-					   sym <= LAST_SHORT_LENSYM) {
-					ASSERT(codeword <= SHORT_LIT_CODEWORD_MASK);
-					ASSERT(num_short_lensyms <
-					       MAX_NUM_SHORT_LENSYMS);
+					ASSERT(i < MAX_NUM_SHORT_LENSYMS);
 					ASSERT((decode_results[sym] >> 16) <=
 					       SHORT_LENSYM_BASE_MASK);
-					ASSERT((decode_results[sym] & 0xFFFF) <= 4);
-					cs.short_lensym_res[num_short_lensyms] =
-						decode_results[sym];
-					cs.short_lensym_cw[num_short_lensyms] =
-						(u16)codeword;
-					num_short_lensyms++;
+					ASSERT((decode_results[sym] & 0xFF) <= 4);
+					cs.short_lensym_next[i] =
+						cs.lensym_head[eff_len];
+					cs.lensym_head[eff_len] = i;
+					cs.short_lensym_cw[i] = codeword;
+					cs.short_lensym_cw_len[i] = len;
+					cs.short_lensym_base[i] =
+						decode_results[sym] >> 16;
 				}
+			} else if (len <= max_short_lit_cw_len &&
+				   sym < DEFLATE_NUM_LITERALS) {
+				ASSERT(codeword <= SHORT_LIT_CODEWORD_MASK);
+				ASSERT(num_short_lits < DEFLATE_NUM_LITERALS);
+				short_lits[num_short_lits++] =
+					MAKE_SHORT_LIT(sym, codeword);
 			}
+			decode_table[codeword] = entry;
 
 			if (codeword == cur_table_end - 1) {
 				/* Last codeword (all 1's) */
 				if (len <= max_short_lit_cw_len)
 					cs.lit_end[len] = num_short_lits;
-				if (len <= max_short_lensym_cw_len)
-					cs.lensym_end[len] = num_short_lensyms;
-				if (len >= min_compound_cw_len)
-					ADD_SUFFIX(fill_compound_litlen_entries)(
-							decode_table,
-							short_lits, &cs, len);
+				FILL_LITLEN_LEVEL(len);
 				for (; len < table_bits; len++) {
 					memcpy(&decode_table[cur_table_end],
 					       decode_table,
 					       cur_table_end *
 						sizeof(decode_table[0]));
 					cur_table_end <<= 1;
-					if (len + 1 >= min_compound_cw_len)
-						ADD_SUFFIX(fill_compound_litlen_entries)(
-							decode_table,
-							short_lits, &cs,
-							len + 1);
+					FILL_LITLEN_LEVEL(len + 1);
 				}
 				return true;
 			}
@@ -668,12 +793,7 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 
 		if (len <= max_short_lit_cw_len)
 			cs.lit_end[len] = num_short_lits;
-		if (len <= max_short_lensym_cw_len)
-			cs.lensym_end[len] = num_short_lensyms;
-		if (len >= min_compound_cw_len)
-			ADD_SUFFIX(fill_compound_litlen_entries)(decode_table,
-								 short_lits,
-								 &cs, len);
+		FILL_LITLEN_LEVEL(len);
 
 		/* Advance to the next codeword length. */
 		for (;;) {
@@ -686,12 +806,11 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 			count = len_counts[len];
 			if (count != 0)
 				break;
-			if (len <= table_bits && len >= min_compound_cw_len)
-				ADD_SUFFIX(fill_compound_litlen_entries)(
-						decode_table, short_lits, &cs,
-						len);
+			if (len <= table_bits)
+				FILL_LITLEN_LEVEL(len);
 		}
 	}
+#undef FILL_LITLEN_LEVEL
 
 	/* Process codewords with len > table_bits.  These require subtables. */
 	cur_table_end = 1U << table_bits;
@@ -967,89 +1086,110 @@ ADD_SUFFIX(decompress_fastloop_body)(struct libdeflate_decompressor * restrict d
 		}
 
 		/*
-		 * It's not a literal entry, so it can be a length entry, a
-		 * subtable pointer entry, or an end-of-block entry.  Detect the
-		 * two unlikely cases by testing the HUFFDEC_EXCEPTIONAL flag.
+		 * It's not a literal entry, so it can be an exact length entry,
+		 * a length entry that needs extra bits, a subtable pointer
+		 * entry, or an end-of-block entry.  Detect the three unlikely
+		 * cases by testing the HUFFDEC_EXCEPTIONAL flag.
 		 */
 		if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
-			/* Subtable pointer or end-of-block entry */
-
-			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
-				goto block_done;
-
 			/*
-			 * A subtable is required.  Load and consume the
-			 * subtable entry.  The subtable entry can be of any
-			 * type: literal, length, or end-of-block.
+			 * Subtable pointer, end-of-block, or length that needs
+			 * extra bits
 			 */
-			entry = d->u.litlen_decode_table[(entry >> 16) +
-				EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x1F)];
-			saved_bitbuf = bitbuf;
-			bitbuf >>= entry & (BITBUF_NBITS - 1);
-			bitsleft -= entry;
-
-			/*
-			 * 32-bit platforms that use the byte-at-a-time refill
-			 * method have to do a refill here for there to always
-			 * be enough bits to decode a literal that requires a
-			 * subtable, then preload the next litlen decode table
-			 * entry; or to decode a match length that requires a
-			 * subtable, then preload the offset decode table entry.
-			 */
-			if (!CAN_CONSUME_AND_THEN_PRELOAD(DEFLATE_MAX_LITLEN_CODEWORD_LEN,
-							  LITLEN_TABLEBITS) ||
-			    !CAN_CONSUME_AND_THEN_PRELOAD(LENGTH_MAXBITS,
-							  OFFSET_TABLEBITS))
-				REFILL_BITS_IN_FASTLOOP();
-			if (entry & HUFFDEC_LITERAL) {
+			if (entry & HUFFDEC_SUBTABLE_POINTER) {
 				/*
-				 * Decode a literal that required a subtable.
-				 * Subtables never contain 2-literal entries,
-				 * so this is always exactly 1 literal.
+				 * A subtable is required.  Load and consume the
+				 * subtable entry.  The subtable entry can be a
+				 * literal, end-of-block, or a length that needs
+				 * extra bits (subtables never contain exact
+				 * length entries).
 				 */
-				u32 lit = entry >> HUFFDEC_LITERAL1_SHIFT;
+				entry = d->u.litlen_decode_table[(entry >> 16) +
+					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x1F)];
+				saved_bitbuf = bitbuf;
+				bitbuf >>= entry & (BITBUF_NBITS - 1);
+				bitsleft -= entry;
 
-				entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
-				REFILL_BITS_IN_FASTLOOP();
-				*out_next++ = lit;
-				continue;
-			}
-			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
+				/*
+				 * 32-bit platforms that use the byte-at-a-time
+				 * refill method have to do a refill here for
+				 * there to always be enough bits to decode a
+				 * literal that requires a subtable, then
+				 * preload the next litlen decode table entry;
+				 * or to decode a match length that requires a
+				 * subtable, then preload the offset decode
+				 * table entry.
+				 */
+				if (!CAN_CONSUME_AND_THEN_PRELOAD(DEFLATE_MAX_LITLEN_CODEWORD_LEN,
+								  LITLEN_TABLEBITS) ||
+				    !CAN_CONSUME_AND_THEN_PRELOAD(LENGTH_MAXBITS,
+								  OFFSET_TABLEBITS))
+					REFILL_BITS_IN_FASTLOOP();
+				if (entry & HUFFDEC_LITERAL) {
+					/*
+					 * Decode a literal that required a
+					 * subtable.  Subtables never contain
+					 * 2-literal entries, so this is always
+					 * exactly 1 literal.
+					 */
+					u32 lit = entry >> HUFFDEC_LITERAL1_SHIFT;
+
+					entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
+					REFILL_BITS_IN_FASTLOOP();
+					*out_next++ = lit;
+					continue;
+				}
+				if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
+					goto block_done;
+				/* Else, it's a length that required a subtable. */
+			} else if (unlikely(entry & HUFFDEC_END_OF_BLOCK)) {
 				goto block_done;
-			/* Else, it's a length that required a subtable. */
-			ASSERT(!(entry & HUFFDEC_LIT_LENGTH));
-		}
-
-		/*
-		 * Decode the match length (and, if HUFFDEC_LIT_LENGTH is set,
-		 * emit the fused preceding literal byte branchlessly).
-		 *
-		 * When HUFFDEC_LIT_LENGTH is clear (plain length entry), this
-		 * writes a harmless byte to *out_next without advancing
-		 * out_next; match copying immediately overwrites it.  The
-		 * bitwise mask expression avoids letting the compiler emit a
-		 * branch on the unpredictable HUFFDEC_LIT_LENGTH bit.
-		 *
-		 * The length base can't simply always be masked with
-		 * SHORT_LENSYM_BASE_MASK, since in plain length entries it can
-		 * be as large as 258 and use bits 24-23, which in fused
-		 * entries hold the low bits of the literal instead.
-		 *
-		 * 'out_next' MUST be updated before checking the match offset,
-		 * since offset == 1 references the just-written literal byte.
-		 */
-		{
+			}
+			/*
+			 * Decode a match length that needs extra bits.  This
+			 * is never a fused (literal, length) entry.
+			 */
+			ASSERT((entry & (HUFFDEC_EXCEPTIONAL |
+					 HUFFDEC_SUBTABLE_POINTER |
+					 HUFFDEC_END_OF_BLOCK)) ==
+			       HUFFDEC_EXCEPTIONAL);
+			STATIC_ASSERT(LENGTH_MAXBITS < 32);
+			length = (entry >> 16) +
+				 (EXTRACT_VARBITS8(saved_bitbuf, entry) >>
+				  ((entry >> 8) & 0x1F));
+		} else {
+			/*
+			 * Decode an exact match length (and, if
+			 * HUFFDEC_LIT_LENGTH is set, emit the fused preceding
+			 * literal byte branchlessly).  The extra bits, if any,
+			 * were already built into the entry, so the length can
+			 * be taken directly from it.
+			 *
+			 * When HUFFDEC_LIT_LENGTH is clear (plain length
+			 * entry), this writes a harmless byte to *out_next
+			 * without advancing out_next; match copying immediately
+			 * overwrites it.  The bitwise mask expression avoids
+			 * letting the compiler emit a branch on the
+			 * unpredictable HUFFDEC_LIT_LENGTH bit.
+			 *
+			 * The length can't simply always be masked with
+			 * SHORT_LENSYM_BASE_MASK, since in plain length entries
+			 * it can be as large as 258 and use bits 24-23, which
+			 * in fused entries hold the low bits of the literal
+			 * instead.
+			 *
+			 * 'out_next' MUST be updated before checking the match
+			 * offset, since offset == 1 references the just-written
+			 * literal byte.
+			 */
 			u32 has_lit = (entry >> HUFFDEC_LIT_LENGTH_SHIFT) & 1;
 
+			STATIC_ASSERT(LITLEN_TABLEBITS <= LENGTH_MAXFASTBITS);
 			*out_next = (u8)(entry >> HUFFDEC_LITERAL2_SHIFT);
 			out_next += has_lit;
 			length = (entry >> 16) &
 				 ((has_lit - 1U) | SHORT_LENSYM_BASE_MASK);
 		}
-		STATIC_ASSERT(LENGTH_MAXBITS < 32);
-		STATIC_ASSERT(LITLEN_TABLEBITS + 4 <= LENGTH_MAXFASTBITS);
-		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
-			  ((entry >> 8) & 0x1F);
 
 		/*
 		 * Decode the match offset.  There are enough "preloadable" bits
@@ -1587,12 +1727,14 @@ next_block:
 	 * Only generate compound (2-literal and literal+length) entries when
 	 * both input and output have enough remaining space for the fastloop to
 	 * run and amortize the extra table-building work.  (Note: static
-	 * Huffman codes have min_lit_cw_len == 8 and min_lensym_cw_len == 7, so
-	 * 8 + 7 == 15 > LITLEN_TABLEBITS; they never contain compound entries
-	 * regardless.  Hence the static litlen table, including its
-	 * table_bits of 9, is the same regardless of 'allow_compound', which is
-	 * what allows it to be reused across blocks and calls via
-	 * d->static_codes_loaded.)
+	 * Huffman codes have min_lit_cw_len == 8 and min_lensym_eff_len == 7,
+	 * so 8 + 7 == 15 > LITLEN_TABLEBITS; they never contain compound
+	 * entries regardless.  The static litlen table does still depend on
+	 * 'allow_compound', since when it's true table_bits may be increased
+	 * from 9 to LITLEN_SMALL_TABLEBITS to give more length symbols exact
+	 * length entries.  Either version of the table is valid, so it can be
+	 * reused across blocks and calls via d->static_codes_loaded together
+	 * with d->litlen_tablebits.)
 	 */
 	STATIC_ASSERT(COMPOUND_LITLEN_MIN_OUT_BYTES >
 		      FASTLOOP_MAX_BYTES_WRITTEN);
@@ -1680,16 +1822,21 @@ fastloop_done:
 			continue;
 		}
 		/*
-		 * Only EOB still has HUFFDEC_EXCEPTIONAL set here (subtable
-		 * pointers and literals have already been handled).  Do not
-		 * test HUFFDEC_END_OF_BLOCK alone, as it shares bit 13 with
-		 * HUFFDEC_LIT_LENGTH.
+		 * Subtable pointers and literals have already been handled, so
+		 * if HUFFDEC_EXCEPTIONAL is set, then the entry is either
+		 * end-of-block or a length that needs extra bits.  Otherwise
+		 * it's an exact length, possibly fused with a literal.  (Note
+		 * that HUFFDEC_END_OF_BLOCK and HUFFDEC_LIT_LENGTH share bit
+		 * 13, so neither can be tested alone.)
 		 */
-		if (unlikely(entry & HUFFDEC_EXCEPTIONAL)) {
-			ASSERT(entry & HUFFDEC_END_OF_BLOCK);
-			goto block_done;
-		}
-		if (entry & HUFFDEC_LIT_LENGTH) {
+		if (entry & HUFFDEC_EXCEPTIONAL) {
+			if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
+				goto block_done;
+			STATIC_ASSERT(LENGTH_MAXBITS < 32);
+			length = (entry >> 16) +
+				 (EXTRACT_VARBITS8(saved_bitbuf, entry) >>
+				  ((entry >> 8) & 0x1F));
+		} else if (entry & HUFFDEC_LIT_LENGTH) {
 			if (unlikely(out_next == out_end))
 				return LIBDEFLATE_INSUFFICIENT_SPACE;
 			*out_next++ = entry >> HUFFDEC_LITERAL2_SHIFT;
@@ -1697,9 +1844,6 @@ fastloop_done:
 		} else {
 			length = entry >> 16;
 		}
-		STATIC_ASSERT(LENGTH_MAXBITS < 32);
-		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
-			  ((entry >> 8) & 0x1F);
 		if (unlikely(length > out_end - out_next))
 			return LIBDEFLATE_INSUFFICIENT_SPACE;
 
