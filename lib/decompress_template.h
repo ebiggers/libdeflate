@@ -28,7 +28,9 @@
 /*
  * This is the actual DEFLATE decompression routine, lifted out of
  * deflate_decompress.c so that it can be compiled multiple times with different
- * target instruction sets.
+ * target instruction sets.  The decode table building functions are included
+ * here too, since they also benefit slightly from some of these instructions
+ * (e.g. shlx, shrx, and lzcnt on x86).
  */
 
 #ifndef ATTRIBUTES
@@ -60,11 +62,19 @@
  *     [FIRST_SHORT_LENSYM, LAST_SHORT_LENSYM] (length_base <= 127,
  *     extra_bits <= 4) when total_cw_len >= min_lit_cw_len + min_lensym_cw_len.
  *
- * Because all symbols come from a canonical prefix-free Huffman code, the two
- * sets of compound entries are disjoint and never collide with single-symbol
- * entries or subtable pointers.  Subsequent table doublings in
- * build_decode_table() automatically replicate each entry across the rest of
- * the main table.
+ * Because all symbols come from a prefix-free code, the compound entries never
+ * collide with each other, with single-symbol entries, or with subtable
+ * pointers.  A compound entry's index begins with the first symbol's codeword
+ * 'c1', so it can't collide with any entry for a different codeword (which
+ * cannot have 'c1' as a prefix).  Two compound entries with the same 'c1'
+ * differ in their second codeword, which again is prefix-free.
+ *
+ * Each compound entry is written once, when the table has 2^total_cw_len
+ * entries.  Subsequent table doublings in build_decode_table() automatically
+ * replicate each entry across the rest of the main table.
+ *
+ * This is noinline since it's called from several places in
+ * build_decode_table() but isn't needed at all for most calls.
  */
 static NOINLINE ATTRIBUTES void
 ADD_SUFFIX(fill_compound_litlen_entries)(u32 * restrict decode_table,
@@ -434,6 +444,20 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 		ASSERT(table_bits <= LITLEN_TABLEBITS);
 
 		if (allow_compound) {
+			/*
+			 * Determine whether any compound (2-literal or fused
+			 * literal+length) entries will fit in the main table,
+			 * and if so choose the final table_bits.
+			 *
+			 * First, find the codeword lengths that contain at
+			 * least one literal and at least one short length
+			 * symbol.  Since each symbol of a pair uses at least 1
+			 * bit, only lengths <= table_bits - 1 matter.  Within
+			 * each length, sorted_syms[] is sorted by symbol value,
+			 * so the length contains a literal iff its first symbol
+			 * is a literal, and it contains a short length symbol
+			 * iff the last symbol <= LAST_SHORT_LENSYM is one.
+			 */
 			unsigned sym_idx = 0;
 			unsigned max_l = MIN(max_codeword_len, table_bits - 1);
 			u32 lit_cw_len_mask = 0;
@@ -471,6 +495,23 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 			min_second_cw_len = MIN(min_lit_cw_len,
 						min_lensym_cw_len);
 
+			/*
+			 * Compound entries are possible iff the shortest
+			 * literal plus the shortest possible second symbol
+			 * fits in table_bits.  If so, and if no codeword is
+			 * long enough to need the full LITLEN_TABLEBITS, then
+			 * shrink table_bits as much as possible without losing
+			 * any compound entries, to reduce the table build time.
+			 *
+			 * Also record the maximum codeword lengths of the
+			 * literals and short length symbols that can be part
+			 * of a compound entry, and prepare 'cs' and the
+			 * 'short_lits' scratch array.  Note that 'short_lits'
+			 * is located just past the largest possible main table,
+			 * in space that may later be used for subtables.  This
+			 * is safe only because all compound entries are
+			 * generated before the first subtable is written.
+			 */
 			if (lit_cw_len_mask != 0 &&
 			    min_lit_cw_len + min_second_cw_len <= table_bits) {
 				if (max_codeword_len < table_bits) {
@@ -753,6 +794,11 @@ ADD_SUFFIX(build_litlen_decode_table)(struct libdeflate_decompressor *d,
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
 	STATIC_ASSERT(LITLEN_TABLEBITS == 12 && LITLEN_ENOUGH == 4382);
 	STATIC_ASSERT(LITLEN_SMALL_TABLEBITS == 11 && 2342 <= LITLEN_ENOUGH);
+	/*
+	 * build_decode_table() uses the space past the 2^LITLEN_TABLEBITS main
+	 * table entries as scratch space for up to DEFLATE_NUM_LITERALS
+	 * 'short_lits' entries when generating compound entries.
+	 */
 	STATIC_ASSERT(LITLEN_ENOUGH - (1U << LITLEN_TABLEBITS) >=
 		      DEFLATE_NUM_LITERALS);
 
@@ -816,6 +862,15 @@ ADD_SUFFIX(build_offset_decode_table)(struct libdeflate_decompressor *d,
  *
  * - decompress_fastloop_checked(): check_offset == true (first 32 KiB)
  * - decompress_fastloop_unchecked(): check_offset == false (past 32 KiB)
+ *
+ * The caller passes decompress_fastloop_checked() an 'out_fastloop_end' that
+ * is capped at 'out + DEFLATE_MAX_MATCH_OFFSET', so that it returns as soon as
+ * possible after the offset check becomes unnecessary.  The caller then
+ * continues with decompress_fastloop_unchecked().
+ *
+ * Both 'in_fastloop_end' and 'out_fastloop_end' are checked only at the end of
+ * each iteration, so the caller must ensure 'in_next < in_fastloop_end' and
+ * 'out_next < out_fastloop_end' before calling.
  */
 static forceinline ATTRIBUTES enum fastloop_result
 ADD_SUFFIX(decompress_fastloop_body)(struct libdeflate_decompressor * restrict d,
@@ -947,7 +1002,11 @@ ADD_SUFFIX(decompress_fastloop_body)(struct libdeflate_decompressor * restrict d
 							  OFFSET_TABLEBITS))
 				REFILL_BITS_IN_FASTLOOP();
 			if (entry & HUFFDEC_LITERAL) {
-				/* Decode a literal that required a subtable. */
+				/*
+				 * Decode a literal that required a subtable.
+				 * Subtables never contain 2-literal entries,
+				 * so this is always exactly 1 literal.
+				 */
 				u32 lit = entry >> HUFFDEC_LITERAL1_SHIFT;
 
 				entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
@@ -970,6 +1029,11 @@ ADD_SUFFIX(decompress_fastloop_body)(struct libdeflate_decompressor * restrict d
 		 * out_next; match copying immediately overwrites it.  The
 		 * bitwise mask expression avoids letting the compiler emit a
 		 * branch on the unpredictable HUFFDEC_LIT_LENGTH bit.
+		 *
+		 * The length base can't simply always be masked with
+		 * SHORT_LENSYM_BASE_MASK, since in plain length entries it can
+		 * be as large as 258 and use bits 24-23, which in fused
+		 * entries hold the low bits of the literal instead.
 		 *
 		 * 'out_next' MUST be updated before checking the match offset,
 		 * since offset == 1 references the just-written literal byte.
@@ -1525,7 +1589,9 @@ next_block:
 	 * run and amortize the extra table-building work.  (Note: static
 	 * Huffman codes have min_lit_cw_len == 8 and min_lensym_cw_len == 7, so
 	 * 8 + 7 == 15 > LITLEN_TABLEBITS; they never contain compound entries
-	 * regardless and can always be reused across calls via
+	 * regardless.  Hence the static litlen table, including its
+	 * table_bits of 9, is the same regardless of 'allow_compound', which is
+	 * what allows it to be reused across blocks and calls via
 	 * d->static_codes_loaded.)
 	 */
 	STATIC_ASSERT(COMPOUND_LITLEN_MIN_OUT_BYTES >

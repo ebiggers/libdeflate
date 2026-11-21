@@ -48,6 +48,12 @@ copy_match_neon(u8 *dst, const u8 *src, u32 offset, const u8 *out_next)
 	/* Overrun up to 47 bytes is allowed; see FASTLOOP_MAX_MATCH_OVERRUN. */
 	STATIC_ASSERT(FASTLOOP_MAX_MATCH_OVERRUN >= 47);
 
+	/*
+	 * offset >= 16: copy 16 bytes at a time.  Since the source and
+	 * destination of each 16-byte copy don't overlap, this works even when
+	 * the match overlaps itself (offset < length).  Unconditionally copying
+	 * 48 bytes covers most matches without a loop.
+	 */
 	if (likely(offset >= 16)) {
 		vst1q_u8(dst + 0, vld1q_u8(src + 0));
 		vst1q_u8(dst + 16, vld1q_u8(src + 16));

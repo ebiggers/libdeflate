@@ -33,7 +33,9 @@
  *
  * - Word accesses rather than byte accesses when reading input
  * - Word accesses rather than byte accesses when copying matches
- * - Faster Huffman decoding combined with various DEFLATE-specific tricks
+ * - Faster Huffman decoding combined with various DEFLATE-specific tricks,
+ *   including decoding 2 litlen symbols (2 literals, or a literal followed by
+ *   a match length) with a single table lookup when they fit in the table
  * - Larger bitbuffer variable that doesn't need to be refilled as often
  * - Other optimizations to remove unnecessary branches
  * - Only full-buffer decompression is supported, so the code doesn't need to
@@ -308,6 +310,13 @@ do {									\
 } while (0)
 
 /*
+ * FASTLOOP_MAX_MATCH_OVERRUN is the maximum number of bytes past the end of a
+ * match that match copying in the fastloop may write to.  The generic copy
+ * copies 5 words before checking the length, then 5 words per loop iteration,
+ * so it overruns by at most '5 * WORDBYTES - 1' bytes.  COPY_MATCH
+ * implementations (copy_match_ssse3() and copy_match_neon()) copy 3 16-byte
+ * vectors before checking the length, so they overrun by at most '3 * 16 - 1'.
+ *
  * FASTLOOP_MAX_BYTES_WRITTEN is the worst-case maximum number of output bytes
  * that are written to during each iteration of the fastloop.  The worst case is
  * 4 literals (consisting of 2 fast literal lookups with 2 literals each), then
@@ -315,6 +324,13 @@ do {									\
  * emits at most 1 + SHORT_LENSYM_MAX_MATCH_LEN == 131 <= DEFLATE_MAX_MATCH_LEN),
  * then up to FASTLOOP_MAX_MATCH_OVERRUN bytes of intentional overrun during
  * match copying.
+ *
+ * This also covers the smaller "overruns" that happen before the match copy:
+ * WRITE_FASTLOOP_LITERALS() always stores 2 bytes even for a single literal,
+ * and decoding a length entry stores a dummy byte at 'out_next' when there is
+ * no fused literal.  These bytes are always followed by more output (another
+ * literal or the match itself) or by the match copy's own overrun.  An
+ * iteration that decodes only literals writes at most 3 * 2 == 6 bytes.
  */
 #define FASTLOOP_MAX_MATCH_OVERRUN	MAX(5 * WORDBYTES - 1, 3 * 16 - 1)
 #define FASTLOOP_MAX_BYTES_WRITTEN	\
@@ -343,6 +359,11 @@ do {									\
  * table to grow from LITLEN_SMALL_TABLEBITS (11) up to LITLEN_TABLEBITS (12).
  * For smaller blocks/buffers, the extra table-building work outweighs the
  * fastloop speedup.
+ *
+ * This is purely a performance heuristic.  Correctness doesn't depend on it,
+ * since the generic (non-fast) loop supports compound entries too.  Note that
+ * it's based on the remaining output buffer space rather than the size of the
+ * block, since the latter isn't known in advance.
  */
 #define COMPOUND_LITLEN_MIN_OUT_BYTES	8192
 
@@ -490,8 +511,11 @@ static const u32 precode_decode_results[] = {
  *
  * When HUFFDEC_LITERAL and HUFFDEC_EXCEPTIONAL are both clear (i.e. a length
  * entry), this same bit serves as HUFFDEC_LIT_LENGTH, indicating a fused
- * (literal, length) entry.  Because (HUFFDEC_LIT_LENGTH >> 8) == 0x20, shifting
- * by ((entry >> 8) & 0x1F) ignores this bit automatically with no extra mask.
+ * (literal, length) entry.  Because (HUFFDEC_LIT_LENGTH >> 8) == 0x20, this bit
+ * lies just outside the 5-bit field extracted by '(entry >> 8) & 0x1F' (bits
+ * 12-8), so it doesn't disturb the codeword length stored there.  Since this
+ * bit is overloaded, HUFFDEC_END_OF_BLOCK may be tested only after
+ * HUFFDEC_EXCEPTIONAL has been found to be set.
  */
 #define HUFFDEC_END_OF_BLOCK		0x00002000
 #define HUFFDEC_LIT_LENGTH_SHIFT	13
@@ -521,7 +545,27 @@ static const u32 precode_decode_results[] = {
 #define SHORT_LENSYM_BASE_MASK		0x7FU
 #define SHORT_LENSYM_MAX_MATCH_LEN	(115 + ((1U << 4) - 1))
 
-/* Temporary short-symbol tables used inside build_decode_table() */
+/*
+ * Temporary state used by build_decode_table() when generating compound
+ * (2-literal and fused literal+length) litlen decode table entries:
+ *
+ * - lit_start[len] and lit_end[len] delimit the range of short_lits[] (see
+ *   below) that holds the literals whose codewords have length 'len'.
+ *
+ * - lensym_start[len] and lensym_end[len] likewise delimit the range of
+ *   short_lensym_res[] and short_lensym_cw[] that holds the "short" length
+ *   symbols (FIRST_SHORT_LENSYM..LAST_SHORT_LENSYM) whose codewords have
+ *   length 'len'.  short_lensym_res[] holds their litlen_decode_results[]
+ *   values, and short_lensym_cw[] holds their (bit-reversed) codewords.
+ *
+ * - min_lit_cw_len and min_lensym_cw_len are the shortest codeword lengths of
+ *   any literal and any short length symbol, respectively, or
+ *   LITLEN_TABLEBITS + 1 if there is no such symbol of length < table_bits.
+ *
+ * Ranges for codeword lengths that have no such symbols are empty (start ==
+ * end == 0).  Since each symbol in a pair needs at least 1 bit, only codeword
+ * lengths up to SHORT_LIT_MAX_CW_LEN == LITLEN_TABLEBITS - 1 are needed.
+ */
 struct litlen_compound_syms {
 	u16 lit_start[LITLEN_TABLEBITS];
 	u16 lit_end[LITLEN_TABLEBITS];

@@ -49,6 +49,12 @@ copy_match_ssse3(u8 *dst, const u8 *src, u32 offset, const u8 *out_next)
 	/* Overrun up to 47 bytes is allowed; see FASTLOOP_MAX_MATCH_OVERRUN. */
 	STATIC_ASSERT(FASTLOOP_MAX_MATCH_OVERRUN >= 47);
 
+	/*
+	 * offset >= 16: copy 16 bytes at a time.  Since the source and
+	 * destination of each 16-byte copy don't overlap, this works even when
+	 * the match overlaps itself (offset < length).  Unconditionally copying
+	 * 48 bytes covers most matches without a loop.
+	 */
 	if (likely(offset >= 16)) {
 		_mm_storeu_si128((__m128i *)(dst + 0),
 				 _mm_loadu_si128((const __m128i *)(src + 0)));
