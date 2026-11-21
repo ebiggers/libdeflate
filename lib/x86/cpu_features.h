@@ -80,6 +80,7 @@ static inline u32 get_x86_cpu_features(void)
 #    include <wmmintrin.h>
 #    include <avxintrin.h>
 #    include <avx2intrin.h>
+#    include <bmi2intrin.h>
 #    include <avx512fintrin.h>
 #    include <avx512bwintrin.h>
 #    include <avx512vlintrin.h>
