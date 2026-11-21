@@ -171,47 +171,66 @@ typedef machine_word_t bitbuf_t;
  * This is much faster than reading a byte at a time, at least if the CPU is
  * little endian and supports fast unaligned memory accesses.
  *
- * The simplest way of branchlessly updating 'bitsleft' would be:
+ * To avoid (u8) casts elsewhere, 'bitsleft' is allowed to contain garbage in
+ * bits 8 and higher.  So that has to be taken into account here.
  *
- *	bitsleft += (MAX_BITSLEFT - bitsleft) & ~7;
+ * Given that, the simplest way of branchlessly updating 'bitsleft' would be:
  *
- * To make it faster, we define MAX_BITSLEFT to be 'WORDBITS - 1' rather than
- * WORDBITS, so that in binary it looks like 111111 or 11111.  Then, we update
- * 'bitsleft' by just setting the bits above the low 3 bits:
+ *	bitsleft += (MAX_BITSLEFT - (u8)bitsleft) & ~7;
+ *
+ * To make it faster, we define MAX_BITSLEFT to be 'BITBUF_NBITS - 1' rather
+ * than BITBUF_NBITS, so that in binary it looks like 111111 or 11111.  Then,
+ * we update 'bitsleft' by just setting the bits above the low 3 bits:
  *
  *	bitsleft |= MAX_BITSLEFT & ~7;
  *
- * That compiles down to a single instruction like 'or $0x38, %rbp'.  Using
- * 'MAX_BITSLEFT == WORDBITS - 1' also has the advantage that refills can be
- * done when 'bitsleft == MAX_BITSLEFT' without invoking undefined behavior.
+ * That compiles down to a single instruction like 'orl $0x38, %edi'.  Using
+ * 'MAX_BITSLEFT == BITBUF_NBITS - 1' also has the advantage that refills can be
+ * done when '(u8)bitsleft == MAX_BITSLEFT' without invoking undefined behavior.
  *
- * The simplest way of branchlessly updating 'in_next' would be:
+ * 'in_next' can then be branchlessly updated using any of the following
+ * methods (note that (u8)bitsleft <= MAX_BITSLEFT and MAX_BITSLEFT == 2^k - 1):
  *
- *	in_next += (MAX_BITSLEFT - bitsleft) >> 3;
+ * (1)	in_next += (MAX_BITSLEFT - (u8)bitsleft) >> 3;
  *
- * With 'MAX_BITSLEFT == WORDBITS - 1' we could use an XOR instead, though this
- * isn't really better:
+ *	The compiler only knows (u8)bitsleft is in 0..255, not <= MAX_BITSLEFT,
+ *	so it cannot easily turn the subtraction into an XOR/NOT and must
+ *	instead emit a constant load and subtraction (e.g., 'mov $63; sub; shr'
+ *	or 'sub; add').
  *
- *	in_next += (MAX_BITSLEFT ^ bitsleft) >> 3;
+ * (2)	in_next += ((u8)bitsleft ^ MAX_BITSLEFT) >> 3;
  *
- * An alternative which can be marginally better is the following:
+ *	On x86_64 with clang, this produces the best code ('movzbl + shrl $3 +
+ *	xorl $7 + addq', where 'movzbl' can often be shared with '(u8)bitsleft'
+ *	for the bitbuf shift, and only a single 'addq' updates 'in_next').  On
+ *	arm64, both gcc and clang compile it to 3 instructions ('ubfx + eor +
+ *	add' or 'lsr + eor + add') with no constant register.  On x86_64 with
+ *	gcc, it emits an 8-bit partial-register shift ('shrb $3; xorl $7;
+ *	movzbl'), which is slightly worse than (3) for gcc, but we prioritize
+ *	x86_64 clang here.  So we use this method.
  *
- *	in_next += sizeof(bitbuf_t) - 1;
+ * (3)	in_next += (~bitsleft >> 3) & (MAX_BITSLEFT >> 3);
+ *
+ *	This avoids partial-register accesses on x86_64 gcc ('notl + shrl $3 +
+ *	andl $7 + addq') and compiles to 'mvn + ubfx #3, #3 + add' on arm64,
+ *	but on x86_64 clang it needs an extra instruction ('andl $7') compared
+ *	to (2).
+ *
+ * (4)	in_next += sizeof(bitbuf_t) - 1;
  *	in_next -= (bitsleft >> 3) & 0x7;
  *
- * It seems this would increase the number of CPU instructions from 3 (sub, shr,
- * add) to 4 (add, shr, and, sub).  However, if the CPU has a bitfield
- * extraction instruction (e.g. arm's ubfx), it stays at 3, and is potentially
- * more efficient because the length of the longest dependency chain decreases
- * from 3 to 2.  This alternative also has the advantage that it ignores the
- * high bits in 'bitsleft', so it is compatible with the micro-optimization we
- * use where we let the high bits of 'bitsleft' contain garbage.
+ *	In theory, this ignores the upper garbage bits of 'bitsleft' and could
+ *	be combined with 'ubfx' on arm64 to shorten the dependency chain from
+ *	'bitsleft' to 'in_next'.  In practice, however, compilers either update
+ *	'in_next' twice in series ('sub + add $7/#7' with clang on both x86_64
+ *	and arm64) or materialize '7' in a separate register ('mov x14, 7' on
+ *	arm64 gcc, 'movl $7' on x86_64 gcc).
  */
 #define REFILL_BITS_BRANCHLESS()					\
 do {									\
+	ASSERT((u8)bitsleft <= MAX_BITSLEFT);				\
 	bitbuf |= get_unaligned_leword(in_next) << (u8)bitsleft;	\
-	in_next += sizeof(bitbuf_t) - 1;				\
-	in_next -= (bitsleft >> 3) & 0x7;				\
+	in_next += ((u8)bitsleft ^ MAX_BITSLEFT) >> 3;			\
 	bitsleft |= MAX_BITSLEFT & ~7;					\
 } while (0)
 
