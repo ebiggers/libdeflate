@@ -255,13 +255,26 @@ do {									\
  * infinite zeroes, it will eventually either completely fill the output buffer
  * or return an error.  However, we do it to be slightly more friendly to the
  * not-recommended use case of decompressing with an unknown output size.)
+ *
+ * When UNALIGNED_ACCESS_IS_FAST, the byte-at-a-time loop is just a cold fallback
+ * that is used near the end of the input.  In that case, disable unrolling of it
+ * to avoid code bloat across the multiple expansions of REFILL_BITS().
+ * Otherwise, the loop is the primary refill method, so leave the unrolling
+ * decision to the compiler.  (In that case gcc can also restructure the loop
+ * such that the hint would trigger an "ignoring loop annotation" warning.)
  */
+#if UNALIGNED_ACCESS_IS_FAST
+#  define REFILL_BITS_LOOP_HINT	NO_UNROLL_LOOP
+#else
+#  define REFILL_BITS_LOOP_HINT
+#endif
 #define REFILL_BITS()							\
 do {									\
 	if (UNALIGNED_ACCESS_IS_FAST &&					\
 	    likely(in_end - in_next >= sizeof(bitbuf_t))) {		\
 		REFILL_BITS_BRANCHLESS();				\
 	} else {							\
+		REFILL_BITS_LOOP_HINT					\
 		while ((u8)bitsleft < CONSUMABLE_NBITS) {		\
 			if (likely(in_next != in_end)) {		\
 				bitbuf |= (bitbuf_t)*in_next++ <<	\
