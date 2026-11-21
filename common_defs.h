@@ -199,6 +199,15 @@ typedef size_t machine_word_t;
 #  define forceinline		inline
 #endif
 
+/* NOINLINE - prevent a function from being inlined, if possible */
+#if defined(__GNUC__) || __has_attribute(noinline)
+#  define NOINLINE		__attribute__((noinline))
+#elif defined(_MSC_VER)
+#  define NOINLINE		__declspec(noinline)
+#else
+#  define NOINLINE
+#endif
+
 /* NO_UNROLL_LOOP - hint that a loop should not be unrolled */
 #ifdef __clang__
 #  define NO_UNROLL_LOOP	_Pragma("clang loop unroll(disable)")
