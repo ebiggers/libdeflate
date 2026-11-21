@@ -425,6 +425,7 @@ ADD_SUFFIX(build_precode_decode_table)(struct libdeflate_decompressor *d)
 
 	STATIC_ASSERT(ARRAY_LEN(precode_decode_results) ==
 		      DEFLATE_NUM_PRECODE_SYMS);
+	STATIC_ASSERT(DEFLATE_MAX_PRE_CODEWORD_LEN < BITBUF_NBITS);
 
 	return ADD_SUFFIX(build_decode_table)(d->u.l.precode_decode_table,
 					      d->u.precode_lens,
@@ -447,6 +448,7 @@ ADD_SUFFIX(build_litlen_decode_table)(struct libdeflate_decompressor *d,
 
 	STATIC_ASSERT(ARRAY_LEN(litlen_decode_results) ==
 		      DEFLATE_NUM_LITLEN_SYMS);
+	STATIC_ASSERT(LENGTH_MAXBITS < BITBUF_NBITS);
 
 	return ADD_SUFFIX(build_decode_table)(d->u.litlen_decode_table,
 					      d->u.l.lens,
@@ -469,6 +471,7 @@ ADD_SUFFIX(build_offset_decode_table)(struct libdeflate_decompressor *d,
 
 	STATIC_ASSERT(ARRAY_LEN(offset_decode_results) ==
 		      DEFLATE_NUM_OFFSET_SYMS);
+	STATIC_ASSERT(OFFSET_MAXBITS < BITBUF_NBITS);
 
 	return ADD_SUFFIX(build_decode_table)(d->offset_decode_table,
 					      d->u.l.lens + num_litlen_syms,
@@ -515,7 +518,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 		 * bits need to be extracted from it.
 		 */
 		saved_bitbuf = bitbuf;
-		bitbuf >>= (u8)entry;
+		bitbuf >>= entry & (BITBUF_NBITS - 1);
 		bitsleft -= entry; /* optimization: subtract full entry */
 
 		/*
@@ -549,7 +552,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 				lit = entry >> 16;
 				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 				saved_bitbuf = bitbuf;
-				bitbuf >>= (u8)entry;
+				bitbuf >>= entry & (BITBUF_NBITS - 1);
 				bitsleft -= entry;
 				*out_next++ = lit;
 				if (entry & HUFFDEC_LITERAL) {
@@ -557,7 +560,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 					lit = entry >> 16;
 					entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 					saved_bitbuf = bitbuf;
-					bitbuf >>= (u8)entry;
+					bitbuf >>= entry & (BITBUF_NBITS - 1);
 					bitsleft -= entry;
 					*out_next++ = lit;
 					if (entry & HUFFDEC_LITERAL) {
@@ -612,7 +615,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 			entry = d->u.litlen_decode_table[(entry >> 16) +
 				EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
 			saved_bitbuf = bitbuf;
-			bitbuf >>= (u8)entry;
+			bitbuf >>= entry & (BITBUF_NBITS - 1);
 			bitsleft -= entry;
 
 			/*
@@ -700,7 +703,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 			}
 		}
 		saved_bitbuf = bitbuf;
-		bitbuf >>= (u8)entry;
+		bitbuf >>= entry & (BITBUF_NBITS - 1);
 		bitsleft -= entry; /* optimization: subtract full entry */
 		offset = entry >> 16;
 		offset += EXTRACT_VARBITS8(saved_bitbuf, entry) >> (u8)(entry >> 8);
@@ -969,7 +972,7 @@ next_block:
 			/* Decode the next precode symbol. */
 			entry = d->u.l.precode_decode_table[
 				bitbuf & BITMASK(DEFLATE_MAX_PRE_CODEWORD_LEN)];
-			bitbuf >>= (u8)entry;
+			bitbuf >>= entry & (BITBUF_NBITS - 1);
 			bitsleft -= entry; /* optimization: subtract full entry */
 			presym = entry >> 16;
 
@@ -1175,13 +1178,13 @@ have_decode_tables:
 		REFILL_BITS();
 		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
 		saved_bitbuf = bitbuf;
-		bitbuf >>= (u8)entry;
+		bitbuf >>= entry & (BITBUF_NBITS - 1);
 		bitsleft -= entry;
 		if (unlikely(entry & HUFFDEC_SUBTABLE_POINTER)) {
 			entry = d->u.litlen_decode_table[(entry >> 16) +
 					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
 			saved_bitbuf = bitbuf;
-			bitbuf >>= (u8)entry;
+			bitbuf >>= entry & (BITBUF_NBITS - 1);
 			bitsleft -= entry;
 		}
 		length = entry >> 16;
@@ -1210,7 +1213,7 @@ have_decode_tables:
 		}
 		offset = entry >> 16;
 		offset += EXTRACT_VARBITS8(bitbuf, entry) >> (u8)(entry >> 8);
-		bitbuf >>= (u8)entry;
+		bitbuf >>= entry & (BITBUF_NBITS - 1);
 		bitsleft -= entry;
 
 		SAFETY_CHECK(offset <= out_next - (const u8 *)out);
