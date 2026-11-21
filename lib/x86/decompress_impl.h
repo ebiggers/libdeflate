@@ -12,7 +12,7 @@
  * target attribute, and we mostly (but not always) rely on the compiler
  * generating the instructions automatically rather than using intrinsics.
  *
- * With MSVC, there is no target function attribute, so we use _bzhi_*() and
+ * With MSVC, there is no target function attribute, so we use _bzhi_u32() and
  * SSE2/SSSE3 intrinsics explicitly.  However, MSVC from VS2017 (toolset v141)
  * apparently miscompiles the _bzhi_*() intrinsics.  It seems to be fixed in
  * VS2022.  Hence, use MSVC_PREREQ(1930).
@@ -26,20 +26,22 @@
     * BITMASK(count)' to bzhi.  gcc doesn't generate bzhi reliably without it,
     * and MSVC doesn't generate bzhi at all without it.  clang generates bzhi
     * regardless, but using the intrinsic avoids relying on it to fold away
-    * '(u8)' on the count.
+    * '(u8)' on the count and lets us use _bzhi_u32 cleanly (see below).
     *
-    * EXTRACT_VARBITS() is equivalent to 'word & BITMASK(count)';
-    * EXTRACT_VARBITS8() is equivalent to 'word & BITMASK((u8)count)'.
-    * Nevertheless, their implementation using the bzhi intrinsic is identical,
-    * as the bzhi instruction truncates the count to 8 bits implicitly.
+    * For count < 32, EXTRACT_VARBITS() is equivalent to
+    * 'word & BITMASK(count)'.  For (u8)count < 32, EXTRACT_VARBITS8() is
+    * equivalent to 'word & BITMASK((u8)count)'.  Nevertheless, their
+    * implementation using the bzhi intrinsic is identical, as the bzhi
+    * instruction truncates the count to 8 bits implicitly.
+    *
+    * Since '(u8)count < 32', either _bzhi_u32 or _bzhi_u64 works.  Prefer
+    * _bzhi_u32 because it returns u32 rather than u64, which lets both gcc and
+    * clang use 32-bit arithmetic (e.g., 32-bit shrx and add instead of 64-bit
+    * shrx and lea chains for table indexing), avoids shift-count masking on
+    * clang, and works uniformly on both 32-bit and 64-bit x86.
     */
-#  ifdef ARCH_X86_64
-#    define EXTRACT_VARBITS(word, count)  _bzhi_u64((word), (count))
-#    define EXTRACT_VARBITS8(word, count) _bzhi_u64((word), (count))
-#  else
-#    define EXTRACT_VARBITS(word, count)  _bzhi_u32((word), (count))
-#    define EXTRACT_VARBITS8(word, count) _bzhi_u32((word), (count))
-#  endif
+#  define EXTRACT_VARBITS(word, count)  _bzhi_u32((u32)(word), (count))
+#  define EXTRACT_VARBITS8(word, count) _bzhi_u32((u32)(word), (count))
 
 static forceinline ATTRIBUTES void
 copy_match_ssse3(u8 *dst, const u8 *src, u32 offset, const u8 *out_next)

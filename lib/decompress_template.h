@@ -34,11 +34,21 @@
 #ifndef ATTRIBUTES
 #  define ATTRIBUTES
 #endif
+/*
+ * EXTRACT_VARBITS(word, count) extracts the low 'count' bits of 'word' as a
+ * u32, where 0 <= count < 32.
+ *
+ * EXTRACT_VARBITS8(word, count) extracts the low '(u8)count' bits of 'word' as
+ * a u32, where (u8)count < 32 (i.e. bits 7-5 of 'count' must be 0, while bits
+ * 8+ are ignored).  Note: the x86 BMI2 override uses bzhi, which reads bits 7-0
+ * of 'count', whereas the generic fallback masks 'count' by 0x1F so the shift
+ * count is provably in 0..31 without an explicit mask instruction.
+ */
 #ifndef EXTRACT_VARBITS
-#  define EXTRACT_VARBITS(word, count)	((word) & BITMASK(count))
+#  define EXTRACT_VARBITS(word, count)	((u32)(word) & (((u32)1 << (count)) - 1))
 #endif
 #ifndef EXTRACT_VARBITS8
-#  define EXTRACT_VARBITS8(word, count)	((word) & BITMASK((u8)(count)))
+#  define EXTRACT_VARBITS8(word, count)	((u32)(word) & (((u32)1 << ((count) & 0x1F)) - 1))
 #endif
 
 /*
@@ -496,7 +506,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 				struct fastloop_ctx * restrict ctx,
 				const u8 * const in_fastloop_end,
 				u8 * const out_fastloop_end,
-				const bitbuf_t litlen_tablemask)
+				const u32 litlen_tablemask)
 {
 	const u8 * restrict in_next = ctx->in_next;
 	u8 * restrict out_next = ctx->out_next;
@@ -506,7 +516,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 	u32 entry;
 
 	REFILL_BITS_IN_FASTLOOP();
-	entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+	entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
 	do {
 		u32 length, offset, lit;
 		const u8 *src;
@@ -550,7 +560,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 							 LITLEN_TABLEBITS)) {
 				/* 1st extra fast literal */
 				lit = entry >> 16;
-				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+				entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
 				saved_bitbuf = bitbuf;
 				bitbuf >>= entry & (BITBUF_NBITS - 1);
 				bitsleft -= entry;
@@ -558,7 +568,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 				if (entry & HUFFDEC_LITERAL) {
 					/* 2nd extra fast literal */
 					lit = entry >> 16;
-					entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+					entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
 					saved_bitbuf = bitbuf;
 					bitbuf >>= entry & (BITBUF_NBITS - 1);
 					bitsleft -= entry;
@@ -571,7 +581,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 						 * count as one of the extras.
 						 */
 						lit = entry >> 16;
-						entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+						entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
 						REFILL_BITS_IN_FASTLOOP();
 						*out_next++ = lit;
 						continue;
@@ -589,7 +599,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 				STATIC_ASSERT(CAN_CONSUME_AND_THEN_PRELOAD(
 						LITLEN_TABLEBITS, LITLEN_TABLEBITS));
 				lit = entry >> 16;
-				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+				entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
 				REFILL_BITS_IN_FASTLOOP();
 				*out_next++ = lit;
 				continue;
@@ -613,7 +623,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 			 * type: literal, length, or end-of-block.
 			 */
 			entry = d->u.litlen_decode_table[(entry >> 16) +
-				EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+				EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x1F)];
 			saved_bitbuf = bitbuf;
 			bitbuf >>= entry & (BITBUF_NBITS - 1);
 			bitsleft -= entry;
@@ -634,7 +644,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 			if (entry & HUFFDEC_LITERAL) {
 				/* Decode a literal that required a subtable. */
 				lit = entry >> 16;
-				entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+				entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
 				REFILL_BITS_IN_FASTLOOP();
 				*out_next++ = lit;
 				continue;
@@ -655,7 +665,9 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 		 * buffer has enough space remaining to copy a max-length match.
 		 */
 		length = entry >> 16;
-		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >> (u8)(entry >> 8);
+		STATIC_ASSERT(LENGTH_MAXBITS < 32);
+		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
+			  ((entry >> 8) & 0x1F);
 
 		/*
 		 * Decode the match offset.  There are enough "preloadable" bits
@@ -680,7 +692,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 				bitbuf >>= OFFSET_TABLEBITS;
 				bitsleft -= OFFSET_TABLEBITS;
 				entry = d->offset_decode_table[(entry >> 16) +
-					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x1F)];
 			} else if (unlikely((u8)bitsleft < OFFSET_MAXFASTBITS +
 					    LITLEN_TABLEBITS - PRELOAD_SLACK))
 				REFILL_BITS_IN_FASTLOOP();
@@ -692,7 +704,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 				bitbuf >>= OFFSET_TABLEBITS;
 				bitsleft -= OFFSET_TABLEBITS;
 				entry = d->offset_decode_table[(entry >> 16) +
-					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x1F)];
 				REFILL_BITS_IN_FASTLOOP();
 				/* No further refill needed before extra bits */
 				STATIC_ASSERT(CAN_CONSUME(
@@ -706,7 +718,9 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 		bitbuf >>= entry & (BITBUF_NBITS - 1);
 		bitsleft -= entry; /* optimization: subtract full entry */
 		offset = entry >> 16;
-		offset += EXTRACT_VARBITS8(saved_bitbuf, entry) >> (u8)(entry >> 8);
+		STATIC_ASSERT(OFFSET_MAXBITS < 32);
+		offset += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
+			  ((entry >> 8) & 0x1F);
 
 		/* Validate the match offset; needed even in the fastloop. */
 		FASTLOOP_SAFETY_CHECK(offset <= out_next - ctx->out);
@@ -730,7 +744,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 			LITLEN_TABLEBITS) &&
 		    unlikely((u8)bitsleft < LITLEN_TABLEBITS - PRELOAD_SLACK))
 			REFILL_BITS_IN_FASTLOOP();
-		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+		entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
 		REFILL_BITS_IN_FASTLOOP();
 
 #ifdef COPY_MATCH
@@ -881,7 +895,7 @@ ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 	unsigned block_type;
 	unsigned num_litlen_syms;
 	unsigned num_offset_syms;
-	bitbuf_t litlen_tablemask;
+	u32 litlen_tablemask;
 	u32 entry;
 
 next_block:
@@ -1152,7 +1166,7 @@ next_block:
 	SAFETY_CHECK(ADD_SUFFIX(build_litlen_decode_table)(d, num_litlen_syms,
 							   num_offset_syms));
 have_decode_tables:
-	litlen_tablemask = BITMASK(d->litlen_tablebits);
+	litlen_tablemask = ((u32)1 << d->litlen_tablebits) - 1;
 
 	if (in_next < in_fastloop_end && out_next < out_fastloop_end) {
 		struct fastloop_ctx ctx = {
@@ -1189,13 +1203,13 @@ have_decode_tables:
 		u8 *dst;
 
 		REFILL_BITS();
-		entry = d->u.litlen_decode_table[bitbuf & litlen_tablemask];
+		entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
 		saved_bitbuf = bitbuf;
 		bitbuf >>= entry & (BITBUF_NBITS - 1);
 		bitsleft -= entry;
 		if (unlikely(entry & HUFFDEC_SUBTABLE_POINTER)) {
 			entry = d->u.litlen_decode_table[(entry >> 16) +
-					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x1F)];
 			saved_bitbuf = bitbuf;
 			bitbuf >>= entry & (BITBUF_NBITS - 1);
 			bitsleft -= entry;
@@ -1209,7 +1223,9 @@ have_decode_tables:
 		}
 		if (unlikely(entry & HUFFDEC_END_OF_BLOCK))
 			goto block_done;
-		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >> (u8)(entry >> 8);
+		STATIC_ASSERT(LENGTH_MAXBITS < 32);
+		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
+			  ((entry >> 8) & 0x1F);
 		if (unlikely(length > out_end - out_next))
 			return LIBDEFLATE_INSUFFICIENT_SPACE;
 
@@ -1220,12 +1236,14 @@ have_decode_tables:
 			bitbuf >>= OFFSET_TABLEBITS;
 			bitsleft -= OFFSET_TABLEBITS;
 			entry = d->offset_decode_table[(entry >> 16) +
-					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x3F)];
+					EXTRACT_VARBITS(bitbuf, (entry >> 8) & 0x1F)];
 			if (!CAN_CONSUME(OFFSET_MAXBITS))
 				REFILL_BITS();
 		}
 		offset = entry >> 16;
-		offset += EXTRACT_VARBITS8(bitbuf, entry) >> (u8)(entry >> 8);
+		STATIC_ASSERT(OFFSET_MAXBITS < 32);
+		offset += EXTRACT_VARBITS8(bitbuf, entry) >>
+			  ((entry >> 8) & 0x1F);
 		bitbuf >>= entry & (BITBUF_NBITS - 1);
 		bitsleft -= entry;
 
