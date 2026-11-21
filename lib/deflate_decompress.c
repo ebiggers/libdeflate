@@ -1123,12 +1123,6 @@ typedef enum libdeflate_result (*decompress_func_t)
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
-#define FUNCNAME deflate_decompress_default
-#undef ATTRIBUTES
-#undef EXTRACT_VARBITS
-#undef EXTRACT_VARBITS8
-#include "decompress_template.h"
-
 /* Include architecture-specific implementation(s) if available. */
 #undef DEFAULT_IMPL
 #undef arch_select_decompress_func
@@ -1137,6 +1131,11 @@ typedef enum libdeflate_result (*decompress_func_t)
 #endif
 
 #ifndef DEFAULT_IMPL
+#  define FUNCNAME deflate_decompress_default
+#  undef ATTRIBUTES
+#  undef EXTRACT_VARBITS
+#  undef EXTRACT_VARBITS8
+#  include "decompress_template.h"
 #  define DEFAULT_IMPL deflate_decompress_default
 #endif
 
