@@ -444,15 +444,15 @@ do {									\
  *	(2) the maximum number of main table bits (*_TABLEBITS)
  *	(3) the maximum allowed codeword length (DEFLATE_MAX_*_CODEWORD_LEN)
  *
- * The ENOUGH values were computed using the utility program 'enough' from zlib.
+ * The ENOUGH values were computed using scripts/enough.py.
  */
 #define PRECODE_TABLEBITS	7
-#define PRECODE_ENOUGH		128	/* enough 19 7 7	*/
-#define LITLEN_SMALL_TABLEBITS	11	/* enough 288 11 15 = 2342 */
+#define PRECODE_ENOUGH		128	/* enough.py 19 7 7	*/
+#define LITLEN_SMALL_TABLEBITS	11	/* enough.py 288 11 15 = 2342 <= LITLEN_ENOUGH */
 #define LITLEN_TABLEBITS	12
-#define LITLEN_ENOUGH		4382	/* enough 288 12 15	*/
+#define LITLEN_ENOUGH		4382	/* enough.py 288 12 15	*/
 #define OFFSET_TABLEBITS	8
-#define OFFSET_ENOUGH		402	/* enough 32 8 15	*/
+#define OFFSET_ENOUGH		402	/* enough.py 32 8 15	*/
 
 /*
  * make_decode_table_entry() creates a decode table entry for the given symbol
