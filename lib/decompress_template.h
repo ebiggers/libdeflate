@@ -811,18 +811,23 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 				dst += WORDBYTES;
 			}
 		} else if (UNALIGNED_ACCESS_IS_FAST) {
-			store_word_unaligned(load_word_unaligned(src), dst);
-			src += offset;
+			/*
+			 * 2 <= offset < WORDBYTES: load one word 'v' whose
+			 * first 'offset' bytes hold the repeating pattern, then
+			 * store 'v' at stride 'offset'.  (Each store overwrites
+			 * the previous store's trailing bytes.)  Reusing 'v'
+			 * avoids per-step reloads and store-to-load forwarding.
+			 */
+			machine_word_t v = load_word_unaligned(src);
+
+			store_word_unaligned(v, dst);
 			dst += offset;
-			store_word_unaligned(load_word_unaligned(src), dst);
-			src += offset;
+			store_word_unaligned(v, dst);
 			dst += offset;
 			do {
-				store_word_unaligned(load_word_unaligned(src), dst);
-				src += offset;
+				store_word_unaligned(v, dst);
 				dst += offset;
-				store_word_unaligned(load_word_unaligned(src), dst);
-				src += offset;
+				store_word_unaligned(v, dst);
 				dst += offset;
 			} while (dst < out_next);
 		} else {
