@@ -49,16 +49,19 @@
 /*
  * If the expression passed to SAFETY_CHECK() evaluates to false, then the
  * decompression routine immediately returns LIBDEFLATE_BAD_DATA, indicating the
- * compressed data is invalid.
+ * compressed data is invalid.  FASTLOOP_SAFETY_CHECK() does the same in the
+ * fastloop function(s), returning FASTLOOP_BAD_DATA.
  *
  * Theoretically, these checks could be disabled for specialized applications
  * where all input to the decompressor will be trusted.
  */
 #if 0
 #  pragma message("UNSAFE DECOMPRESSION IS ENABLED. THIS MUST ONLY BE USED IF THE DECOMPRESSOR INPUT WILL ALWAYS BE TRUSTED!")
-#  define SAFETY_CHECK(expr)	(void)(expr)
+#  define SAFETY_CHECK(expr)		(void)(expr)
+#  define FASTLOOP_SAFETY_CHECK(expr)	(void)(expr)
 #else
-#  define SAFETY_CHECK(expr)	if (unlikely(!(expr))) return LIBDEFLATE_BAD_DATA
+#  define SAFETY_CHECK(expr)		if (unlikely(!(expr))) return LIBDEFLATE_BAD_DATA
+#  define FASTLOOP_SAFETY_CHECK(expr)	if (unlikely(!(expr))) return FASTLOOP_BAD_DATA
 #endif
 
 /*****************************************************************************
@@ -686,6 +689,26 @@ typedef enum libdeflate_result (*decompress_func_t)
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
 	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
+
+struct fastloop_ctx {
+	/*
+	 * The 'out' pointer is an input only.  Put it at offset 0 because the
+	 * fastloop loads it on each match, as that was seen to reduce register
+	 * spilling elsewhere in some cases.
+	 */
+	const u8 *out;
+	/* The following are both inputs and outputs to the fastloop. */
+	const u8 *in_next;
+	u8 *out_next;
+	bitbuf_t bitbuf;
+	u32 bitsleft;
+};
+
+enum fastloop_result {
+	FASTLOOP_BLOCK_NOT_DONE,
+	FASTLOOP_BLOCK_DONE,
+	FASTLOOP_BAD_DATA,
+};
 
 /* Include architecture-specific implementation(s) if available. */
 #undef DEFAULT_IMPL
