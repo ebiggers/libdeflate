@@ -23,21 +23,23 @@
 #  define SUFFIX			_bmi2
 #  define ATTRIBUTES			_target_attribute("bmi2,bmi,lzcnt,ssse3")
    /*
-    * Even with __attribute__((target("bmi2"))), gcc doesn't reliably use the
-    * bzhi instruction for 'word & BITMASK(count)'.  So use the bzhi intrinsic
-    * explicitly.  EXTRACT_VARBITS() is equivalent to 'word & BITMASK(count)';
+    * Use the bzhi intrinsic rather than rely on the compiler to lower 'word &
+    * BITMASK(count)' to bzhi.  gcc doesn't generate bzhi reliably without it,
+    * and MSVC doesn't generate bzhi at all without it.  clang generates bzhi
+    * regardless, but using the intrinsic avoids relying on it to fold away
+    * '(u8)' on the count.
+    *
+    * EXTRACT_VARBITS() is equivalent to 'word & BITMASK(count)';
     * EXTRACT_VARBITS8() is equivalent to 'word & BITMASK((u8)count)'.
     * Nevertheless, their implementation using the bzhi intrinsic is identical,
     * as the bzhi instruction truncates the count to 8 bits implicitly.
     */
-#  ifndef __clang__
-#    ifdef ARCH_X86_64
-#      define EXTRACT_VARBITS(word, count)  _bzhi_u64((word), (count))
-#      define EXTRACT_VARBITS8(word, count) _bzhi_u64((word), (count))
-#    else
-#      define EXTRACT_VARBITS(word, count)  _bzhi_u32((word), (count))
-#      define EXTRACT_VARBITS8(word, count) _bzhi_u32((word), (count))
-#    endif
+#  ifdef ARCH_X86_64
+#    define EXTRACT_VARBITS(word, count)  _bzhi_u64((word), (count))
+#    define EXTRACT_VARBITS8(word, count) _bzhi_u64((word), (count))
+#  else
+#    define EXTRACT_VARBITS(word, count)  _bzhi_u32((word), (count))
+#    define EXTRACT_VARBITS8(word, count) _bzhi_u32((word), (count))
 #  endif
 #  include "../decompress_template.h"
 #endif
