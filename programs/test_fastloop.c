@@ -1580,11 +1580,17 @@ test_precode_rle_overrun(struct libdeflate_decompressor *d,
 }
 
 /*
- * Test adaptive 12-bit litlen tables (LITLEN_TABLEBITS == 12):
+ * Test adaptive 12-bit and 11-bit litlen tables and worst-case ENOUGH sizes:
  *  1. 6+6 == 12 double-literal boundary (table_bits expands 6 -> 12).
  *  2. Empty codeword length level at len == 12 with subtables at len 13..15.
  *  3. Worst-case enough(288, 12, 15) == 4382 tree, using the very last
  *     entry of d->u.litlen_decode_table[] (LITLEN_ENOUGH == 4382).
+ *  4. Empty codeword length level at len == 13 (> table_bits == 12) with
+ *     subtables at len 14..15.
+ *  5. Below COMPOUND_LITLEN_MIN_OUT_BYTES (< 8192 bytes) with worst-case
+ *     enough(288, 11, 15) == 2342 litlen tree and worst-case
+ *     enough(32, 8, 15) == 402 offset tree, exercising allow_compound == false
+ *     with 11-bit subtables as well as OFFSET_ENOUGH == 402.
  */
 static void
 test_12bit_and_enough_tables(struct libdeflate_decompressor *d,
@@ -1756,6 +1762,138 @@ test_12bit_and_enough_tables(struct libdeflate_decompressor *d,
 					 expected_out, out_pos);
 	}
 
+	/*
+	 * 4. Empty level at len == 13 (strictly above table_bits == 12),
+	 *    after a non-empty level at len == 12:
+	 *    len 1..11: 1 symbol each (leaving 2^-11 = 16 * 2^-15),
+	 *    len 12: 1 symbol (8 * 2^-15),
+	 *    len 13: 0 symbols,
+	 *    len 14: 2 symbols (4 * 2^-15),
+	 *    len 15: 4 symbols (4 * 2^-15).
+	 */
+	{
+		static const u8 used_lits[] = {
+			'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+			200, 201, 202, 203, 204, 255,
+		};
+		struct output_bitstream os = {
+			.next = in_buf,
+			.end = in_buf + GUARDED_BUF_SIZE,
+		};
+		size_t out_pos = 0;
+
+		memset(litlen_lens, 0, sizeof(litlen_lens));
+		memset(offset_lens, 0, sizeof(offset_lens));
+		for (i = 0; i < 11; i++)
+			litlen_lens['A' + i] = (u8)(i + 1);
+		litlen_lens[200] = 12;
+		litlen_lens[201] = 14;
+		litlen_lens[202] = 14;
+		litlen_lens[203] = 15;
+		litlen_lens[204] = 15;
+		litlen_lens[255] = 15;
+		litlen_lens[EOB_SYM] = 15;
+		offset_lens[0] = 1;
+		offset_lens[1] = 1;
+		compute_canonical_codewords(litlen_lens, NUM_LITLEN_SYMS,
+					    litlen_cws);
+
+		put_dynamic_block_header(&os, true, litlen_lens, offset_lens);
+		for (i = 0; i < 8400; i++) {
+			u8 lit = used_lits[(i * 11 + (i / 3)) %
+					   ARRAY_LEN(used_lits)];
+
+			emit_literal(&os, litlen_lens, litlen_cws, lit,
+				     expected_out, &out_pos);
+		}
+		emit_eob(&os, litlen_lens, litlen_cws);
+		ASSERT(flush_bits(&os));
+		verify_stream(d, gb, in_buf, (size_t)(os.next - in_buf),
+			      expected_out, out_pos);
+	}
+
+	/*
+	 * 5. Worst-case enough(288, 11, 15) == 2342 (2048 main + 294 subtable)
+	 *    litlen tree paired with worst-case enough(32, 8, 15) == 402
+	 *    (256 main + 146 subtable) offset tree, with output size <
+	 *    COMPOUND_LITLEN_MIN_OUT_BYTES (8192) so the exact-size runs
+	 *    exercise allow_compound == false with 11-bit subtables while the
+	 *    slack runs exercise allow_compound == true.
+	 */
+	{
+		struct output_bitstream os = {
+			.next = in_buf,
+			.end = in_buf + GUARDED_BUF_SIZE,
+		};
+		size_t out_pos = 0;
+
+		/*
+		 * Litlen: [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 3, 221, 57, 2].
+		 * Place EOB (256) and length 258 (285) at len 15 so symbol 285
+		 * occupies the very last subtable slot (index 2341).
+		 */
+		for (i = 0; i < 5; i++)
+			litlen_lens[i] = (u8)(i + 1);
+		for (; i < 8; i++)
+			litlen_lens[i] = 12;
+		for (; i < 229; i++)
+			litlen_lens[i] = 13;
+		for (; i < 288; i++)
+			litlen_lens[i] = 14;
+		litlen_lens[EOB_SYM] = 15;
+		litlen_lens[285] = 15;
+
+		/*
+		 * Offset: [1, 1, 1, 1, 1, 1, 0, 0, 3, 1, 17, 1, 1, 1, 2].
+		 * Place offset symbols 2 (offset 3) and 3 (offset 4) at len 15
+		 * so symbol 3 occupies offset_decode_table[401].
+		 */
+		offset_lens[0] = 13;
+		offset_lens[1] = 14;
+		offset_lens[2] = 15;
+		offset_lens[3] = 15;
+		for (i = 4; i < 10; i++)
+			offset_lens[i] = (u8)(i - 3);
+		for (; i < 13; i++)
+			offset_lens[i] = 9;
+		offset_lens[13] = 10;
+		for (i = 14; i < 31; i++)
+			offset_lens[i] = 11;
+		offset_lens[31] = 12;
+
+		compute_canonical_codewords(litlen_lens, 288, litlen_cws);
+		compute_canonical_codewords(offset_lens, 32, offset_cws);
+
+		put_dynamic_block_header_n(&os, true, litlen_lens, 288,
+					   offset_lens, 32);
+		for (i = 0; i < 256; i++) {
+			emit_literal(&os, litlen_lens, litlen_cws, (u8)i,
+				     expected_out, &out_pos);
+		}
+		for (i = 0; i < 4; i++) {
+			emit_match(&os, litlen_lens, litlen_cws,
+				   offset_lens, offset_cws,
+				   258, (u32)(i + 1), expected_out, &out_pos);
+		}
+		for (i = 0; i < 2000; i++) {
+			u8 lit = (i % 9 == 0) ? (u8)(5 + (i % 251)) :
+						(u8)(i % 5);
+
+			emit_literal(&os, litlen_lens, litlen_cws, lit,
+				     expected_out, &out_pos);
+		}
+		emit_match(&os, litlen_lens, litlen_cws,
+			   offset_lens, offset_cws,
+			   258, 4, expected_out, &out_pos);
+		ASSERT(out_pos < 8192);
+		emit_eob(&os, litlen_lens, litlen_cws);
+		ASSERT(flush_bits(&os));
+
+		verify_stream_libdeflate(d, gb, in_buf,
+					 (size_t)(os.next - in_buf),
+					 expected_out, out_pos);
+	}
+
 	free(in_buf);
 	free(expected_out);
 }
@@ -1774,6 +1912,8 @@ test_12bit_and_enough_tables(struct libdeflate_decompressor *d,
  *     2 double-literal lookups + fused (lit, sym 280 len 130).
  *  5. Fused (lit, len) entry after 14 uncompressed seed bytes with offset == 15
  *     (leaving src[15] uninitialized when COPY_MATCH loads 16 bytes from src).
+ *  6. Double-literal compound tree where fusable short length symbols exist at
+ *     len <= 11, yet no fused (lit, len) pair fits in LITLEN_TABLEBITS.
  */
 static void
 test_litlen_fusion(struct libdeflate_decompressor *d,
@@ -2187,6 +2327,84 @@ test_litlen_fusion(struct libdeflate_decompressor *d,
 		ASSERT(flush_bits(&os));
 		verify_stream(d, gb, in_buf, (size_t)(os.next - in_buf),
 			      expected_out, out_pos);
+	}
+
+	/*
+	 * 4. Double-literal compound tree where fusable short length symbols
+	 *    exist at len <= 11 (lensym_cw_len_mask != 0), yet no fused
+	 *    (lit, len) pair fits in LITLEN_TABLEBITS (12):
+	 *    15 literals 'A'..'O' at len 4 (15/16 = 480/512),
+	 *    285 at len 6 (8/512), 281..284 at len 7 (16/512),
+	 *    EOB + 257..262 at len 9 (7/512 = 28/2048),
+	 *    263 at len 10 (1/1024), 264 at len 11 (1/2048),
+	 *    and 265..266 at len 12 (2/4096).
+	 *    Here min_lit_cw_len == 4 and min_lensym_cw_len == 9, so 2*4 == 8
+	 *    <= 12 while 4 + 9 == 13 > 12 (tested both with max_codeword_len
+	 *    == 12 and with max_codeword_len == 9 where table_bits shrinks to
+	 *    9).
+	 */
+	{
+		int mode;
+
+		for (mode = 0; mode < 2; mode++) {
+			struct output_bitstream os = {
+				.next = in_buf,
+				.end = in_buf + GUARDED_BUF_SIZE,
+			};
+			size_t out_pos = 0;
+
+			memset(litlen_lens, 0, sizeof(litlen_lens));
+			memset(offset_lens, 0, sizeof(offset_lens));
+			for (i = 0; i < 15; i++)
+				litlen_lens['A' + i] = 4;
+			litlen_lens[285] = 6;
+			for (i = 281; i <= 284; i++)
+				litlen_lens[i] = 7;
+			litlen_lens[EOB_SYM] = 9;
+			for (i = 257; i <= 262; i++)
+				litlen_lens[i] = 9;
+			if (mode == 0) {
+				litlen_lens[263] = 9;
+			} else {
+				litlen_lens[263] = 10;
+				litlen_lens[264] = 11;
+				litlen_lens[265] = 12;
+				litlen_lens[266] = 12;
+			}
+			offset_lens[0] = 1;
+			offset_lens[1] = 1;
+			compute_canonical_codewords(litlen_lens,
+						    NUM_LITLEN_SYMS,
+						    litlen_cws);
+			compute_canonical_codewords(offset_lens,
+						    NUM_OFFSET_SYMS,
+						    offset_cws);
+
+			put_dynamic_block_header(&os, true, litlen_lens,
+						 offset_lens);
+			for (i = 0; i < 1200; i++) {
+				u8 lit1 = (u8)('A' + (i % 15));
+				u8 lit2 = (u8)('A' + ((i * 7 + 3) % 15));
+				u32 mlen = (u32)(3 + (i % (mode ? 10 : 7)));
+
+				emit_literal(&os, litlen_lens, litlen_cws,
+					     lit1, expected_out, &out_pos);
+				if (i & 1) {
+					emit_literal(&os, litlen_lens,
+						     litlen_cws, lit2,
+						     expected_out, &out_pos);
+				}
+				emit_match(&os, litlen_lens, litlen_cws,
+					   offset_lens, offset_cws,
+					   mlen, (i & 1) ? 2 : 1,
+					   expected_out, &out_pos);
+			}
+			emit_eob(&os, litlen_lens, litlen_cws);
+			ASSERT(flush_bits(&os));
+			verify_stream(d, gb, in_buf,
+				      (size_t)(os.next - in_buf),
+				      expected_out, out_pos);
+		}
 	}
 
 	free(in_buf);
