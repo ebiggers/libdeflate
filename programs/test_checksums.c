@@ -93,7 +93,8 @@ test_checksums(const void *buffer, size_t size, const char *name,
 	if (v1 != v2) {
 		fprintf(stderr, "%s checksum mismatch\n", name);
 		fprintf(stderr, "initial_value=0x%08"PRIx32", buffer=%p, "
-			"size=%zu, buffer=", initial_value, buffer, size);
+			"size=%"PRIu64", buffer=", initial_value, buffer,
+			(u64)size);
 		for (size_t i = 0; i < MIN(size, 256); i++)
 			fprintf(stderr, "%02x", ((const u8 *)buffer)[i]);
 		if (size > 256)
