@@ -993,10 +993,14 @@ next_block:
 			 * space to allow for the worst-case overrun (138 zeroes
 			 * when only 1 length was remaining).
 			 *
-			 * In the case of the small repeat counts (presyms 16
-			 * and 17), it is fastest to always write the maximum
-			 * number of entries.  That gets rid of branches that
-			 * would otherwise be required.
+			 * It's best to always write the maximum number of
+			 * entries, regardless of the actual repeat count.  With
+			 * a constant size, the compiler emits inline
+			 * branchless stores (such as SIMD stores or 'rep stos'
+			 * for presym 18) instead of size-checking branches, a
+			 * variable-length loop, or a call to an external
+			 * memset() function that clobbers caller-saved
+			 * registers and causes extra spills in the loop.
 			 *
 			 * It is not just because of the numerical order that
 			 * our checks go in the order 'presym < 16', 'presym ==
@@ -1043,8 +1047,8 @@ next_block:
 				rep_count = 11 + (bitbuf & BITMASK(7));
 				bitbuf >>= 7;
 				bitsleft -= 7;
-				memset(&d->u.l.lens[i], 0,
-				       rep_count * sizeof(d->u.l.lens[i]));
+				STATIC_ASSERT(sizeof(d->u.l.lens[0]) == 1);
+				memset(&d->u.l.lens[i], 0, 138);
 				i += rep_count;
 			}
 		} while (i < num_litlen_syms + num_offset_syms);
