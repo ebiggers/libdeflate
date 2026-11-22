@@ -1052,7 +1052,7 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 				 size_t *actual_in_nbytes_ret,
 				 size_t *actual_out_nbytes_ret)
 {
-	u8 dummy[1];
+	static u8 dummy;
 
 	/*
 	 * Buffers larger than PTRDIFF_MAX cannot be accepted, since pointer
@@ -1068,7 +1068,7 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 	if (unlikely(in_nbytes == 0 || in_nbytes > PTRDIFF_MAX))
 		return LIBDEFLATE_BAD_DATA;
 	if (unlikely(out_nbytes_avail == 0))
-		out = dummy;
+		out = &dummy;
 	else if (unlikely(out_nbytes_avail > PTRDIFF_MAX))
 		return LIBDEFLATE_BAD_DATA;
 
