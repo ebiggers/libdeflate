@@ -976,6 +976,13 @@ ADD_SUFFIX(decompress_fastloop_body)(struct libdeflate_decompressor * restrict d
 	u32 bitsleft = ctx->bitsleft;
 	u32 entry;
 
+	/*
+	 * Refill the bitbuffer and preload the first litlen decode table entry.
+	 * Each iteration preloads the first litlen entry for the *next*
+	 * iteration before refilling or copying a match, hiding the L1 table
+	 * load latency behind match copying, bitbuffer refill, and loop-bound
+	 * checks.
+	 */
 	REFILL_BITS_IN_FASTLOOP();
 	entry = d->u.litlen_decode_table[(u32)bitbuf & litlen_tablemask];
 	do {
@@ -1462,11 +1469,14 @@ next_block:
 		d->static_codes_loaded = false;
 
 		/*
-		 * Read the precode codeword lengths.
+		 * Read the precode codeword lengths (up to 19 * 3 == 57 bits).
 		 *
-		 * A 64-bit bitbuffer is just one bit too small to hold the
-		 * maximum number of precode lens, so to minimize branches we
-		 * merge one len with the previous fields.
+		 * On 64-bit platforms with branchless refill, CONSUMABLE_NBITS
+		 * is 56, which is just 1 bit short of all 19 3-bit lengths.
+		 * Reading the 1st length together with the 17-bit block header
+		 * (20 <= 56 bits) leaves at most 18 lengths (54 <= 56 bits),
+		 * which can then all be read after a single refill without
+		 * per-iteration refill checks.
 		 */
 		STATIC_ASSERT(DEFLATE_MAX_PRE_CODEWORD_LEN == (1 << 3) - 1);
 		if (CAN_CONSUME(3 * (DEFLATE_NUM_PRECODE_SYMS - 1))) {
