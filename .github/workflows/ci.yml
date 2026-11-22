@@ -117,16 +117,13 @@ jobs:
     - uses: actions/checkout@v6
     - uses: microsoft/setup-msbuild@v3
     - run: vcpkg install zlib:${{matrix.vcpkg}}
-    - run: >
-        echo C:\vcpkg\installed\${{matrix.vcpkg}}\bin
-        | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
     - run: >
         cmake -B build -G "${{matrix.gen}}" -T ${{matrix.toolset}}
         -A ${{matrix.vs}} -DLIBDEFLATE_BUILD_TESTS=1
         -DCMAKE_C_FLAGS="/W4 /WX /DLIBDEFLATE_ENABLE_ASSERTIONS"
-        -DZLIB_LIBRARY=C:\vcpkg\installed\${{matrix.vcpkg}}\lib\z.lib
-        -DZLIB_INCLUDE_DIR=C:\vcpkg\installed\${{matrix.vcpkg}}\include
+        -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+        -DVCPKG_TARGET_TRIPLET=${{matrix.vcpkg}}
         -DCMAKE_INSTALL_PREFIX=build\install
     - run: cmake --build build --verbose --config Debug
     - run: cmake --install build --verbose --config Debug
