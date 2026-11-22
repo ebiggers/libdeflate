@@ -736,21 +736,26 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 		REFILL_BITS_IN_FASTLOOP();
 
 		/*
-		 * Copy the match.  On most CPUs the fastest method is a
-		 * word-at-a-time copy, unconditionally copying about 5 words
-		 * since this is enough for most matches without being too much.
+		 * Copy the match using SIMD instructions if available,
+		 * otherwise using word loads/stores if
+		 * UNALIGNED_ACCESS_IS_FAST, otherwise using byte loads/stores.
 		 *
-		 * The normal word-at-a-time copy works for offset >= WORDBYTES,
-		 * which is most cases.  The case of offset == 1 is also common
-		 * and is worth optimizing for, since it is just RLE encoding of
-		 * the previous byte, which is the result of compressing long
-		 * runs of the same byte.
+		 * Typically most matches are short, but the lengths can still
+		 * vary quite a bit.  That makes branches on the length fairly
+		 * unpredictable and costly.  So in general, it's worth
+		 * unconditionally writing about 20-48 bytes to cover the vast
+		 * majority of matches, then write 16-40 additional bytes per
+		 * loop iteration (depending on the platform).
 		 *
-		 * Writing past the match 'length' is allowed here, since it's
-		 * been ensured there is enough output space left for a slight
-		 * overrun.  FASTLOOP_MAX_BYTES_WRITTEN needs to be updated if
-		 * the maximum possible overrun here is changed.
+		 * To support this, it's guaranteed that there are at least
+		 * FASTLOOP_MAX_MATCH_OVERRUN bytes available to be freely
+		 * written to after &dst[length].  The conditions for entering
+		 * and exiting the fastloop ensure that this always holds.
 		 */
+#ifdef COPY_MATCH
+		COPY_MATCH(dst, src, offset, out_next);
+#else
+		STATIC_ASSERT(FASTLOOP_MAX_MATCH_OVERRUN >= 5 * WORDBYTES - 1);
 		if (UNALIGNED_ACCESS_IS_FAST && offset >= WORDBYTES) {
 			store_word_unaligned(load_word_unaligned(src), dst);
 			src += WORDBYTES;
@@ -786,9 +791,15 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 			}
 		} else if (UNALIGNED_ACCESS_IS_FAST && offset == 1) {
 			machine_word_t v;
-
 			/*
-			 * This part tends to get auto-vectorized, so keep it
+			 * offset == 1 is run-length encoding, which is common
+			 * and is worth handling specially rather than relying
+			 * on the 'dst += offset' approach for it.
+			 *
+			 * Efficiently broadcast the single byte across a word
+			 * by using a multiplication.
+			 *
+			 * This code tends to get auto-vectorized, so keep it
 			 * copying a multiple of 16 bytes at a time.
 			 */
 			v = (machine_word_t)0x0101010101010101 * src[0];
@@ -837,6 +848,7 @@ ADD_SUFFIX(decompress_fastloop)(struct libdeflate_decompressor * restrict d,
 				*dst++ = *src++;
 			} while (dst < out_next);
 		}
+#endif /* !COPY_MATCH */
 	} while (in_next < in_fastloop_end && out_next < out_fastloop_end);
 
 	ctx->in_next = in_next;
@@ -1278,3 +1290,4 @@ block_done:
 #undef ATTRIBUTES
 #undef EXTRACT_VARBITS
 #undef EXTRACT_VARBITS8
+#undef COPY_MATCH

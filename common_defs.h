@@ -185,6 +185,14 @@ typedef size_t machine_word_t;
 #  define __has_builtin(builtin)	0
 #endif
 
+/*
+ * __has_feature(feature) - check whether the compiler supports the given
+ * feature (e.g. memory_sanitizer).
+ */
+#ifndef __has_feature
+#  define __has_feature(feature)	0
+#endif
+
 /* inline - suggest that a function be inlined */
 #ifdef _MSC_VER
 #  define inline		__inline
@@ -215,6 +223,17 @@ typedef size_t machine_word_t;
 #  define NO_UNROLL_LOOP	_Pragma("GCC unroll 0")
 #else
 #  define NO_UNROLL_LOOP
+#endif
+
+/* NO_VECTORIZE_LOOP - hint that a loop should not be vectorized or unrolled */
+#ifdef __clang__
+#  define NO_VECTORIZE_LOOP	_Pragma("clang loop vectorize(disable) interleave(disable) unroll(disable)")
+#elif GCC_PREREQ(14, 1)
+#  define NO_VECTORIZE_LOOP	_Pragma("GCC novector") _Pragma("GCC unroll 0")
+#elif GCC_PREREQ(8, 1)
+#  define NO_VECTORIZE_LOOP	_Pragma("GCC unroll 0")
+#else
+#  define NO_VECTORIZE_LOOP
 #endif
 
 /* MAYBE_UNUSED - mark a function or variable as maybe unused */

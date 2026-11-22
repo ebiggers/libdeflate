@@ -40,7 +40,7 @@
  *   support stopping and resuming decompression.
  * - On x86, a version of the decompression routine is compiled with BMI2,
  *   BMI, LZCNT, and SSSE3 enabled and is used automatically at runtime when
- *   supported.
+ *   supported.  On arm64, a version with NEON match copying is used.
  */
 
 #include "lib_common.h"
@@ -308,13 +308,25 @@ do {									\
 } while (0)
 
 /*
- * This is the worst-case maximum number of output bytes that are written to
- * during each iteration of the fastloop.  The worst case is 2 literals, then a
- * match of length DEFLATE_MAX_MATCH_LEN.  Additionally, some slack space must
- * be included for the intentional overrun in the match copy implementation.
+ * FASTLOOP_MAX_MATCH_OVERRUN is the maximum number of bytes past the end of a
+ * match that match copying in the fastloop may write to.  The generic copy
+ * implementation copies 5 words before checking the length, then 5 words per
+ * loop iteration, so it overruns by at most '5 * WORDBYTES - 1' bytes.  The
+ * architecture optimized implementations copy at most 48 bytes initially, then
+ * at most 32 bytes per iteration, so they overrun by up to MAX(48 -
+ * DEFLATE_MIN_MATCH_LEN, 32 - 1) = 45 bytes.  Conservatively use 47 here, which
+ * would still be enough even if a change to copy 48 bytes per iteration occurs.
+ */
+#define FASTLOOP_MAX_MATCH_OVERRUN	MAX(5 * WORDBYTES - 1, 47)
+
+/*
+ * FASTLOOP_MAX_BYTES_WRITTEN is the worst-case maximum number of output bytes
+ * that are written to during each iteration of the fastloop.  The worst case is
+ * 2 literals, then a match of length DEFLATE_MAX_MATCH_LEN, then up to
+ * FASTLOOP_MAX_MATCH_OVERRUN bytes of intentional overrun during match copying.
  */
 #define FASTLOOP_MAX_BYTES_WRITTEN	\
-	(2 + DEFLATE_MAX_MATCH_LEN + (5 * WORDBYTES) - 1)
+	(2 + DEFLATE_MAX_MATCH_LEN + FASTLOOP_MAX_MATCH_OVERRUN)
 
 /*
  * This is the worst-case maximum number of input bytes that are read during
@@ -750,6 +762,8 @@ enum fastloop_result {
 #undef arch_select_decompress_func
 #if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 #  include "x86/decompress_impl.h"
+#elif defined(ARCH_ARM64)
+#  include "arm/decompress_impl.h"
 #endif
 
 #ifndef DEFAULT_IMPL
@@ -757,6 +771,7 @@ enum fastloop_result {
 #  undef ATTRIBUTES
 #  undef EXTRACT_VARBITS
 #  undef EXTRACT_VARBITS8
+#  undef COPY_MATCH
 #  include "decompress_template.h"
 #  define DEFAULT_IMPL deflate_decompress_default
 #endif
