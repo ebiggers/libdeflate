@@ -324,7 +324,7 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 	const u8 *in_base;
 	mf_pos_t cutoff;
 
-	if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
+	if (unlikely(cur_pos == MATCHFINDER_WINDOW_SIZE)) {
 		hc_matchfinder_slide_window(mf, multi_hop);
 		*in_base_p += MATCHFINDER_WINDOW_SIZE;
 		cur_pos = 0;
@@ -544,7 +544,7 @@ hc_matchfinder_skip_bytes(struct hc_matchfinder * const mf,
 	hash3 = next_hashes[0];
 	hash4 = next_hashes[1];
 	do {
-		if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
+		if (unlikely(cur_pos == MATCHFINDER_WINDOW_SIZE)) {
 			hc_matchfinder_slide_window(mf, multi_hop);
 			*in_base_p += MATCHFINDER_WINDOW_SIZE;
 			cur_pos = 0;

@@ -2473,7 +2473,7 @@ choose_min_match_len(u32 num_used_literals, u32 max_search_depth)
 	return min_len;
 }
 
-static u32
+static NOINLINE u32
 calculate_min_match_len(const u8 *data, size_t data_len, u32 max_search_depth)
 {
 	u8 used[256] = { 0 };
@@ -2503,7 +2503,7 @@ calculate_min_match_len(const u8 *data, size_t data_len, u32 max_search_depth)
  * Recalculate the minimum match length for a block, now that we know the
  * distribution of literals that are actually being used (freqs->litlen).
  */
-static u32
+static NOINLINE u32
 recalculate_min_match_len(const struct deflate_freqs *freqs,
 			  u32 max_search_depth)
 {
@@ -2802,7 +2802,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			 * Recalculate the minimum match length if it hasn't
 			 * been done recently.
 			 */
-			if (in_next >= next_recalc_min_len) {
+			if (unlikely(in_next >= next_recalc_min_len)) {
 				min_len = recalculate_min_match_len(
 						&c->freqs,
 						c->max_search_depth);

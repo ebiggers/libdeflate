@@ -52,7 +52,7 @@ matchfinder_init_avx2(mf_pos_t *data, size_t size)
 }
 #define matchfinder_init matchfinder_init_avx2
 
-static forceinline void
+static NOINLINE void
 matchfinder_rebase_avx2(mf_pos_t *data, size_t size)
 {
 	__m256i *p = (__m256i *)data;
@@ -96,7 +96,7 @@ matchfinder_init_sse2(mf_pos_t *data, size_t size)
 }
 #define matchfinder_init matchfinder_init_sse2
 
-static forceinline void
+static NOINLINE void
 matchfinder_rebase_sse2(mf_pos_t *data, size_t size)
 {
 	__m128i *p = (__m128i *)data;
