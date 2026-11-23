@@ -733,7 +733,7 @@ do {									\
  *	  allows 'bitbuf >>= entry & (BITBUF_NBITS - 1)' instead of
  *	  'bitbuf >>= (u8)entry' on both 32-bit and 64-bit platforms (letting
  *	  the mask fold into the shift instruction) and allows
- *	  EXTRACT_VARBITS8(word, entry) to use 'entry' without masking to u8.
+ *	  EXTRACT_EXTRA_BITS(word, entry) to use 'entry' without masking to u8.
  *
  *	- Bit 12 is 0 when either the "remaining codeword length" or "number of
  *	  subtable bits" in bits 11-8 is needed (i.e. on length and subtable
@@ -965,7 +965,7 @@ enum fastloop_result {
 #  define SUFFIX _default
 #  undef ATTRIBUTES
 #  undef EXTRACT_VARBITS
-#  undef EXTRACT_VARBITS8
+#  undef EXTRACT_EXTRA_BITS
 #  undef COPY_MATCH
 #  include "decompress_template.h"
 #  define DEFAULT_IMPL deflate_decompress_default

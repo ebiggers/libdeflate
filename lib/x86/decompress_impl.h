@@ -56,19 +56,28 @@
     * '(u8)' on the count and lets us use _bzhi_u32 cleanly (see below).
     *
     * For count < 32, EXTRACT_VARBITS() is equivalent to
-    * 'word & BITMASK(count)'.  For (u8)count < 32, EXTRACT_VARBITS8() is
-    * equivalent to 'word & BITMASK((u8)count)'.  Nevertheless, their
-    * implementation using the bzhi intrinsic is identical, as the bzhi
-    * instruction truncates the count to 8 bits implicitly.
+    * 'word & BITMASK(count)'.  Since 'count < 32', either _bzhi_u32 or
+    * _bzhi_u64 works.  Prefer _bzhi_u32 because it returns u32 rather than
+    * u64, which lets both gcc and clang use 32-bit arithmetic (e.g., 32-bit
+    * shrx and add instead of 64-bit shrx and lea chains for table indexing),
+    * avoids shift-count masking on clang, and works uniformly on both 32-bit
+    * and 64-bit x86.
     *
-    * Since '(u8)count < 32', either _bzhi_u32 or _bzhi_u64 works.  Prefer
-    * _bzhi_u32 because it returns u32 rather than u64, which lets both gcc and
-    * clang use 32-bit arithmetic (e.g., 32-bit shrx and add instead of 64-bit
-    * shrx and lea chains for table indexing), avoids shift-count masking on
-    * clang, and works uniformly on both 32-bit and 64-bit x86.
+    * EXTRACT_EXTRA_BITS(word, entry) extracts the extra bits for a length or
+    * offset decode table entry (starting at bit '(entry >> 8) & 0xF' with
+    * length '((u8)entry) - start') using the BMI1 bextr instruction.
     */
 #  define EXTRACT_VARBITS(word, count)  _bzhi_u32((u32)(word), (count))
-#  define EXTRACT_VARBITS8(word, count) _bzhi_u32((u32)(word), (count))
+
+static forceinline ATTRIBUTES u32
+extract_extra_bits_bmi(bitbuf_t word, u32 entry)
+{
+	u32 start = (entry >> 8) & 0xF;
+	u32 control = ((entry - start) << 8) | start;
+
+	return _bextr2_u32((u32)word, control);
+}
+#  define EXTRACT_EXTRA_BITS(word, entry) extract_extra_bits_bmi((word), (entry))
 
 /*
  * SSSE3 implementation of match copying.

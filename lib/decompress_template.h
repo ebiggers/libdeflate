@@ -40,17 +40,17 @@
  * EXTRACT_VARBITS(word, count) extracts the low 'count' bits of 'word' as a
  * u32, where 0 <= count < 32.
  *
- * EXTRACT_VARBITS8(word, count) extracts the low '(u8)count' bits of 'word' as
- * a u32, where (u8)count < 32 (i.e. bits 7-5 of 'count' must be 0, while bits
- * 8+ are ignored).  Note: the x86 BMI2 override uses bzhi, which reads bits 7-0
- * of 'count', whereas the generic fallback masks 'count' by 0x1F so the shift
- * count is provably in 0..31 without an explicit mask instruction.
+ * EXTRACT_EXTRA_BITS(word, entry) extracts the extra bits for a length or
+ * offset decode table entry from 'word' as a u32, i.e. bits
+ * '[start, total)' where 'start = (entry >> 8) & 0xF' (with bit 12 known to be
+ * 0) and 'total = (u8)entry < 32'.
  */
 #ifndef EXTRACT_VARBITS
 #  define EXTRACT_VARBITS(word, count)	((u32)(word) & (((u32)1 << (count)) - 1))
 #endif
-#ifndef EXTRACT_VARBITS8
-#  define EXTRACT_VARBITS8(word, count)	((u32)(word) & (((u32)1 << ((count) & 0x1F)) - 1))
+#ifndef EXTRACT_EXTRA_BITS
+#  define EXTRACT_EXTRA_BITS(word, entry) \
+	(((u32)(word) & (((u32)1 << ((entry) & 0x1F)) - 1)) >> (((entry) >> 8) & 0x1F))
 #endif
 
 /*
@@ -1152,8 +1152,7 @@ ADD_SUFFIX(decompress_fastloop_body)(struct libdeflate_decompressor * restrict d
 		}
 		STATIC_ASSERT(LENGTH_MAXBITS < 32);
 		STATIC_ASSERT(LITLEN_TABLEBITS + 4 <= LENGTH_MAXFASTBITS);
-		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
-			  ((entry >> 8) & 0x1F);
+		length += EXTRACT_EXTRA_BITS(saved_bitbuf, entry);
 
 		/*
 		 * Decode the match offset.  There are enough "preloadable" bits
@@ -1209,8 +1208,7 @@ ADD_SUFFIX(decompress_fastloop_body)(struct libdeflate_decompressor * restrict d
 		bits_consumed += entry; /* optimization: add full entry */
 		offset = entry >> 16;
 		STATIC_ASSERT(OFFSET_MAXBITS < 32);
-		offset += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
-			  ((entry >> 8) & 0x1F);
+		offset += EXTRACT_EXTRA_BITS(saved_bitbuf, entry);
 
 		/*
 		 * Validate the match offset.  Because every entry in
@@ -1825,8 +1823,7 @@ fastloop_done:
 			length = entry >> 16;
 		}
 		STATIC_ASSERT(LENGTH_MAXBITS < 32);
-		length += EXTRACT_VARBITS8(saved_bitbuf, entry) >>
-			  ((entry >> 8) & 0x1F);
+		length += EXTRACT_EXTRA_BITS(saved_bitbuf, entry);
 		if (unlikely(length > out_end - out_next))
 			return LIBDEFLATE_INSUFFICIENT_SPACE;
 
@@ -1843,8 +1840,7 @@ fastloop_done:
 		}
 		offset = entry >> 16;
 		STATIC_ASSERT(OFFSET_MAXBITS < 32);
-		offset += EXTRACT_VARBITS8(bitbuf, entry) >>
-			  ((entry >> 8) & 0x1F);
+		offset += EXTRACT_EXTRA_BITS(bitbuf, entry);
 		bitbuf >>= entry & (BITBUF_NBITS - 1);
 		bits_consumed += entry;
 
@@ -1901,5 +1897,5 @@ block_done:
 #undef SUFFIX
 #undef ATTRIBUTES
 #undef EXTRACT_VARBITS
-#undef EXTRACT_VARBITS8
+#undef EXTRACT_EXTRA_BITS
 #undef COPY_MATCH
