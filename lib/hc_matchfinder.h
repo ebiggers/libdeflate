@@ -122,14 +122,11 @@
 	  (1UL << HC_MATCHFINDER_HASH4_ORDER)) * sizeof(mf_pos_t))
 
 /*
- * Type of a multi-hop link in 'next_tab'.  This is 'machine_word_t', annotated
- * with 'may_alias' because matchfinder_rebase() accesses it as 'mf_pos_t'.
+ * Type of a multi-hop link in 'next_tab'.  Note: matchfinder_rebase() accesses
+ * 'next_tab' using a may_alias type so that hc_link_t itself does not need
+ * may_alias (which would inhibit TBAA for other fields of deflate_compressor).
  */
-#if defined(__GNUC__) || __has_attribute(may_alias)
-typedef machine_word_t __attribute__((may_alias)) hc_link_t;
-#else
 typedef machine_word_t hc_link_t;
-#endif
 
 /* The number of hops in a multi-hop link; see 'next_tab'.  */
 #define HC_MATCHFINDER_HOPS_PER_WORD	\

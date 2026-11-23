@@ -136,7 +136,13 @@ matchfinder_init(mf_pos_t *data, size_t size)
 static forceinline void
 matchfinder_rebase(mf_pos_t *data, size_t size)
 {
-	size_t num_entries = size / sizeof(*data);
+#if defined(__GNUC__) || __has_attribute(may_alias)
+	typedef mf_pos_t __attribute__((may_alias)) mf_pos_alias_t;
+#else
+	typedef mf_pos_t mf_pos_alias_t;
+#endif
+	mf_pos_alias_t *p = data;
+	size_t num_entries = size / sizeof(*p);
 	size_t i;
 
 	if (MATCHFINDER_WINDOW_SIZE == 32768) {
@@ -146,13 +152,13 @@ matchfinder_rebase(mf_pos_t *data, size_t size)
 		 * is equivalent to subtracting 32768 with signed saturation.
 		 */
 		for (i = 0; i < num_entries; i++)
-			data[i] = 0x8000 | (data[i] & ~(data[i] >> 15));
+			p[i] = 0x8000 | (p[i] & ~(p[i] >> 15));
 	} else {
 		for (i = 0; i < num_entries; i++) {
-			if (data[i] >= 0)
-				data[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
+			if (p[i] >= 0)
+				p[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
 			else
-				data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
+				p[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
 		}
 	}
 }

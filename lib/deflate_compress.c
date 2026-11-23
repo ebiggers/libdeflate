@@ -2772,6 +2772,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 	const u8 *in_cur_base = in_next;
 	u32 max_len = DEFLATE_MAX_MATCH_LEN;
 	u32 nice_len = MIN(c->nice_match_length, max_len);
+	const u32 max_search_depth = c->max_search_depth;
 	u32 next_hashes[2] = {0, 0};
 
 	hc_matchfinder_init(&c->p.g.hc_mf, LAZY_MULTI_HOP);
@@ -2791,7 +2792,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 		deflate_begin_sequences(c, seq);
 		min_len = calculate_min_match_len(in_next,
 						  in_max_block_end - in_next,
-						  c->max_search_depth);
+						  max_search_depth);
 		do {
 			u32 cur_len;
 			u32 cur_offset;
@@ -2804,8 +2805,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			 */
 			if (unlikely(in_next >= next_recalc_min_len)) {
 				min_len = recalculate_min_match_len(
-						&c->freqs,
-						c->max_search_depth);
+						&c->freqs, max_search_depth);
 				next_recalc_min_len +=
 					MIN(in_end - next_recalc_min_len,
 					    in_next - in_block_begin);
@@ -2821,7 +2821,7 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 						min_len - 1,
 						max_len,
 						nice_len,
-						c->max_search_depth,
+						max_search_depth,
 						next_hashes,
 						&cur_offset,
 						LAZY_MULTI_HOP);
@@ -2879,7 +2879,7 @@ have_cur_match:
 						cur_len - 1,
 						max_len,
 						nice_len,
-						c->max_search_depth >> 1,
+						max_search_depth >> 1,
 						next_hashes,
 						&next_offset,
 						LAZY_MULTI_HOP);
@@ -2910,7 +2910,7 @@ have_cur_match:
 						cur_len - 1,
 						max_len,
 						nice_len,
-						c->max_search_depth >> 2,
+						max_search_depth >> 2,
 						next_hashes,
 						&next_offset,
 						LAZY_MULTI_HOP);
