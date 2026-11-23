@@ -185,7 +185,7 @@ static forceinline u32
 lz_extend(const u8 * const strptr, const u8 * const matchptr,
 	  const u32 start_len, const u32 max_len)
 {
-	u32 len = start_len;
+	size_t len = start_len;
 	machine_word_t v_word;
 
 	if (UNALIGNED_ACCESS_IS_FAST) {
@@ -206,12 +206,22 @@ lz_extend(const u8 * const strptr, const u8 * const matchptr,
 		#undef COMPARE_WORD_STEP
 		}
 
+		NO_UNROLL_LOOP
 		while (len + WORDBYTES <= max_len) {
 			v_word = load_word_unaligned(&matchptr[len]) ^
 				 load_word_unaligned(&strptr[len]);
 			if (v_word != 0)
 				goto word_differs;
 			len += WORDBYTES;
+		}
+
+		if (likely(max_len >= WORDBYTES)) {
+			len = max_len - WORDBYTES;
+			v_word = load_word_unaligned(&matchptr[len]) ^
+				 load_word_unaligned(&strptr[len]);
+			if (v_word != 0)
+				goto word_differs;
+			return max_len;
 		}
 	}
 
