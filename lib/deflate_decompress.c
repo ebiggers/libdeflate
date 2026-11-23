@@ -80,25 +80,26 @@
  *	- bitbuf: a word-sized variable containing bits that have been read from
  *		  the input buffer or from the implicit appended zero bytes
  *
- *	- bitsleft: the number of bits in 'bitbuf' available to be consumed.
- *		    After REFILL_BITS_BRANCHLESS(), 'bitbuf' can actually
- *		    contain more bits than this.  However, only the bits counted
- *		    by 'bitsleft' can actually be consumed; the rest can only be
- *		    used for preloading.
+ *	- bits_consumed: 'MAX_BITS_CONSUMED - bitsleft', where 'bitsleft' is
+ *			 the number of bits in 'bitbuf' available to be
+ *			 consumed.  Thus 'bits_consumed' ranges from 0 (when
+ *			 'bitbuf' is full) to MAX_BITS_CONSUMED (when 'bitbuf'
+ *			 is empty).  After REFILL_BITS_BRANCHLESS(), 'bitbuf'
+ *			 can actually contain more bits than
+ *			 'MAX_BITS_CONSUMED - bits_consumed'.  However, only
+ *			 the bits accounted for by 'bits_consumed' can actually
+ *			 be consumed; the rest can only be used for preloading.
  *
- *		    As a micro-optimization, we allow bits 8 and higher of
- *		    'bitsleft' to contain garbage.  When consuming the bits
- *		    associated with a decode table entry, this allows us to do
- *		    'bitsleft -= entry' instead of 'bitsleft -= (u8)entry'.
- *		    On some CPUs, this helps reduce instruction dependencies.
- *		    This does have the disadvantage that 'bitsleft' sometimes
- *		    needs to be cast to 'u8', such as when it's used as a shift
- *		    amount in REFILL_BITS_BRANCHLESS().  But that one happens
- *		    for free since most CPUs ignore high bits in shift amounts.
+ *			 As a micro-optimization, we allow bits 8 and higher of
+ *			 'bits_consumed' to contain garbage.  When consuming
+ *			 the bits associated with a decode table entry, this
+ *			 allows us to do 'bits_consumed += entry' instead of
+ *			 'bits_consumed += (u8)entry'.  On some CPUs, this
+ *			 helps reduce instruction dependencies.
  *
  *	- overread_count: the total number of implicit appended zero bytes that
  *			  have been loaded into the bitbuffer, including any
- *			  counted by 'bitsleft' and any already consumed
+ *			  unconsumed bits and any already consumed
  */
 
 /*
@@ -115,28 +116,30 @@ typedef machine_word_t bitbuf_t;
 #define BITMASK(n)	(((bitbuf_t)1 << (n)) - 1)
 
 /*
- * MAX_BITSLEFT is the maximum number of consumable bits, i.e. the maximum value
- * of '(u8)bitsleft'.  This is the size of the bitbuffer variable, minus 1 if
- * the branchless refill method is being used (see REFILL_BITS_BRANCHLESS()).
+ * MAX_BITS_CONSUMED is the maximum value of '(u8)bits_consumed', which is also
+ * the maximum number of consumable bits in 'bitbuf'.  This is the size of the
+ * bitbuffer variable, minus 1 if the branchless refill method is being used
+ * (see REFILL_BITS_BRANCHLESS()).
  */
-#define MAX_BITSLEFT	\
+#define MAX_BITS_CONSUMED	\
 	(UNALIGNED_ACCESS_IS_FAST ? BITBUF_NBITS - 1 : BITBUF_NBITS)
 
 /*
  * CONSUMABLE_NBITS is the minimum number of bits that are guaranteed to be
- * consumable (counted in 'bitsleft') immediately after refilling the bitbuffer.
- * Since only whole bytes can be added to 'bitsleft', the worst case is
- * 'MAX_BITSLEFT - 7': the smallest amount where another byte doesn't fit.
+ * consumable immediately after refilling the bitbuffer.  Since only whole
+ * bytes can be refilled, the worst case is 'MAX_BITS_CONSUMED - 7'
+ * (i.e. '(u8)bits_consumed == 7'): the smallest amount where another byte
+ * doesn't fit.
  */
-#define CONSUMABLE_NBITS	(MAX_BITSLEFT - 7)
+#define CONSUMABLE_NBITS	(MAX_BITS_CONSUMED - 7)
 
 /*
  * FASTLOOP_PRELOADABLE_NBITS is the minimum number of bits that are guaranteed
  * to be preloadable immediately after REFILL_BITS_IN_FASTLOOP().  (It is *not*
  * guaranteed after REFILL_BITS(), since REFILL_BITS() falls back to a
  * byte-at-a-time refill method near the end of input.)  This may exceed the
- * number of consumable bits (counted by 'bitsleft').  Any bits not counted in
- * 'bitsleft' can only be used for precomputation and cannot be consumed.
+ * number of consumable bits.  Any extra bits can only be used for
+ * precomputation and cannot be consumed.
  */
 #define FASTLOOP_PRELOADABLE_NBITS	\
 	(UNALIGNED_ACCESS_IS_FAST ? BITBUF_NBITS : CONSUMABLE_NBITS)
@@ -147,7 +150,7 @@ typedef machine_word_t bitbuf_t;
  * subsequent consumptions.  This is 1 bit if the branchless refill method is
  * being used, and 0 bits otherwise.
  */
-#define PRELOAD_SLACK	MAX(0, FASTLOOP_PRELOADABLE_NBITS - MAX_BITSLEFT)
+#define PRELOAD_SLACK	MAX(0, FASTLOOP_PRELOADABLE_NBITS - MAX_BITS_CONSUMED)
 
 /*
  * CAN_CONSUME(n) is true if it's guaranteed that if the bitbuffer has just been
@@ -169,71 +172,29 @@ typedef machine_word_t bitbuf_t;
 /*
  * REFILL_BITS_BRANCHLESS() branchlessly refills the bitbuffer variable by
  * reading the next word from the input buffer and updating 'in_next' and
- * 'bitsleft' based on how many bits were refilled -- counting whole bytes only.
- * This is much faster than reading a byte at a time, at least if the CPU is
- * little endian and supports fast unaligned memory accesses.
+ * 'bits_consumed' based on how many bits were refilled -- counting whole bytes
+ * only.  This is much faster than reading a byte at a time, at least if the
+ * CPU is little endian and supports fast unaligned memory accesses.
  *
- * To avoid (u8) casts elsewhere, 'bitsleft' is allowed to contain garbage in
- * bits 8 and higher.  So that has to be taken into account here.
+ * Since MAX_BITS_CONSUMED == BITBUF_NBITS - 1 (63 on 64-bit, 31 on 32-bit) and
+ * '(u8)bits_consumed <= MAX_BITS_CONSUMED':
  *
- * Given that, the simplest way of branchlessly updating 'bitsleft' would be:
- *
- *	bitsleft += (MAX_BITSLEFT - (u8)bitsleft) & ~7;
- *
- * To make it faster, we define MAX_BITSLEFT to be 'BITBUF_NBITS - 1' rather
- * than BITBUF_NBITS, so that in binary it looks like 111111 or 11111.  Then,
- * we update 'bitsleft' by just setting the bits above the low 3 bits:
- *
- *	bitsleft |= MAX_BITSLEFT & ~7;
- *
- * That compiles down to a single instruction like 'orl $0x38, %edi'.  Using
- * 'MAX_BITSLEFT == BITBUF_NBITS - 1' also has the advantage that refills can be
- * done when '(u8)bitsleft == MAX_BITSLEFT' without invoking undefined behavior.
- *
- * 'in_next' can then be branchlessly updated using any of the following
- * methods (note that (u8)bitsleft <= MAX_BITSLEFT and MAX_BITSLEFT == 2^k - 1):
- *
- * (1)	in_next += (MAX_BITSLEFT - (u8)bitsleft) >> 3;
- *
- *	The compiler only knows (u8)bitsleft is in 0..255, not <= MAX_BITSLEFT,
- *	so it cannot easily turn the subtraction into an XOR/NOT and must
- *	instead emit a constant load and subtraction (e.g., 'mov $63; sub; shr'
- *	or 'sub; add').
- *
- * (2)	in_next += ((u8)bitsleft ^ MAX_BITSLEFT) >> 3;
- *
- *	On x86_64 with clang, this produces the best code ('movzbl + shrl $3 +
- *	xorl $7 + addq', where 'movzbl' can often be shared with '(u8)bitsleft'
- *	for the bitbuf shift, and only a single 'addq' updates 'in_next').  On
- *	arm64, both gcc and clang compile it to 3 instructions ('ubfx + eor +
- *	add' or 'lsr + eor + add') with no constant register.  On x86_64 with
- *	gcc, it emits an 8-bit partial-register shift ('shrb $3; xorl $7;
- *	movzbl'), which is slightly worse than (3) for gcc, but we prioritize
- *	x86_64 clang here.  So we use this method.
- *
- * (3)	in_next += (~bitsleft >> 3) & (MAX_BITSLEFT >> 3);
- *
- *	This avoids partial-register accesses on x86_64 gcc ('notl + shrl $3 +
- *	andl $7 + addq') and compiles to 'mvn + ubfx #3, #3 + add' on arm64,
- *	but on x86_64 clang it needs an extra instruction ('andl $7') compared
- *	to (2).
- *
- * (4)	in_next += sizeof(bitbuf_t) - 1;
- *	in_next -= (bitsleft >> 3) & 0x7;
- *
- *	In theory, this ignores the upper garbage bits of 'bitsleft' and could
- *	be combined with 'ubfx' on arm64 to shorten the dependency chain from
- *	'bitsleft' to 'in_next'.  In practice, however, compilers either update
- *	'in_next' twice in series ('sub + add $7/#7' with clang on both x86_64
- *	and arm64) or materialize '7' in a separate register ('mov x14, 7' on
- *	arm64 gcc, 'movl $7' on x86_64 gcc).
+ *	- The number of bits already in 'bitbuf' is
+ *	  'MAX_BITS_CONSUMED - (u8)bits_consumed == ~bits_consumed & (BITBUF_NBITS - 1)'.
+ *	  The mask folds into the shift instruction on most CPUs, and refills
+ *	  can be done when '(u8)bits_consumed == 0' without undefined behavior.
+ *	- The number of whole bytes to refill is '(u8)bits_consumed >> 3'.
+ *	- After refilling those whole bytes, 'bits_consumed' is updated by
+ *	  keeping only its low 3 bits ('bits_consumed &= 7'), which also clears
+ *	  any garbage in bits 8 and higher.
  */
 #define REFILL_BITS_BRANCHLESS()					\
 do {									\
-	ASSERT((u8)bitsleft <= MAX_BITSLEFT);				\
-	bitbuf |= get_unaligned_leword(in_next) << (u8)bitsleft;	\
-	in_next += ((u8)bitsleft ^ MAX_BITSLEFT) >> 3;			\
-	bitsleft |= MAX_BITSLEFT & ~7;					\
+	ASSERT((u8)bits_consumed <= MAX_BITS_CONSUMED);			\
+	bitbuf |= get_unaligned_leword(in_next) <<			\
+		  (~bits_consumed & (BITBUF_NBITS - 1));		\
+	in_next += (u8)bits_consumed >> 3;				\
+	bits_consumed &= 7;						\
 } while (0)
 
 /*
@@ -277,16 +238,17 @@ do {									\
 		REFILL_BITS_BRANCHLESS();				\
 	} else {							\
 		REFILL_BITS_LOOP_HINT					\
-		while ((u8)bitsleft < CONSUMABLE_NBITS) {		\
+		while ((u8)bits_consumed >= 8) {			\
 			if (likely(in_next != in_end)) {		\
 				bitbuf |= (bitbuf_t)*in_next++ <<	\
-					  (u8)bitsleft;			\
+					  (MAX_BITS_CONSUMED -		\
+					   (u8)bits_consumed);		\
 			} else {					\
 				overread_count++;			\
 				SAFETY_CHECK(overread_count <=		\
 					     sizeof(bitbuf_t));		\
 			}						\
-			bitsleft += 8;					\
+			bits_consumed -= 8;				\
 		}							\
 	}								\
 } while (0)
@@ -302,9 +264,11 @@ do {									\
 	if (UNALIGNED_ACCESS_IS_FAST) {					\
 		REFILL_BITS_BRANCHLESS();				\
 	} else {							\
-		while ((u8)bitsleft < CONSUMABLE_NBITS) {		\
-			bitbuf |= (bitbuf_t)*in_next++ << (u8)bitsleft;	\
-			bitsleft += 8;					\
+		while ((u8)bits_consumed >= 8) {			\
+			bitbuf |= (bitbuf_t)*in_next++ <<		\
+				  (MAX_BITS_CONSUMED -			\
+				   (u8)bits_consumed);			\
+			bits_consumed -= 8;				\
 		}							\
 	}								\
 } while (0)
@@ -347,21 +311,22 @@ do {									\
  *
  * On the first iteration, REFILL_BITS_IN_FASTLOOP() runs once before the loop
  * and up to twice more during the iteration on 64-bit platforms (or up to 5
- * times on 32-bit platforms); on later iterations, 'bitsleft' already starts
- * at >= CONSUMABLE_NBITS from the previous iteration's final refill.  In
- * either case, 'bitsleft' starts >= 0 and ends <= MAX_BITSLEFT, and at most
+ * times on 32-bit platforms); on later iterations, 'bits_consumed' already
+ * starts at <= 7 from the previous iteration's final refill.  In either case,
+ * 'bits_consumed' starts <= MAX_BITS_CONSUMED and ends >= 0, and at most
  * '(2 * LITLEN_TABLEBITS) + LENGTH_MAXBITS + OFFSET_MAXBITS' bits can be
  * consumed in between (2 extra fast literal lookups on 64-bit, then a match;
  * 32-bit skips the extra lookups so this bound is slightly conservative
- * there).  Thus, across all refills in the iteration, at most 'MAX_BITSLEFT +
- * consumed_max' bits can be added to 'bitsleft', advancing 'in_next' by at
- * most 'DIV_ROUND_UP(MAX_BITSLEFT + consumed_max, 8)' bytes.  Finally, adding
- * sizeof(bitbuf_t) accounts for the last REFILL_BITS_BRANCHLESS() reading a
- * word at 'in_next' (which may advance 'in_next' by 0 bytes).
+ * there).  Thus, across all refills in the iteration, at most
+ * 'MAX_BITS_CONSUMED + consumed_max' bits can be refilled, advancing 'in_next'
+ * by at most 'DIV_ROUND_UP(MAX_BITS_CONSUMED + consumed_max, 8)' bytes.
+ * Finally, adding sizeof(bitbuf_t) accounts for the last
+ * REFILL_BITS_BRANCHLESS() reading a word at 'in_next' (which may advance
+ * 'in_next' by 0 bytes).
  */
-#define FASTLOOP_MAX_BYTES_READ					\
-	(DIV_ROUND_UP(MAX_BITSLEFT + (2 * LITLEN_TABLEBITS) +	\
-		      LENGTH_MAXBITS + OFFSET_MAXBITS, 8) +	\
+#define FASTLOOP_MAX_BYTES_READ						\
+	(DIV_ROUND_UP(MAX_BITS_CONSUMED + (2 * LITLEN_TABLEBITS) +	\
+		      LENGTH_MAXBITS + OFFSET_MAXBITS, 8) +		\
 	 sizeof(bitbuf_t))
 
 /*
@@ -762,8 +727,8 @@ do {									\
  *
  *	- The low byte is the number of bits that need to be removed from the
  *	  bitstream, including any extra bits so that they don't need to be
- *	  removed separately.  Ignoring bits 8+ of 'bitsleft' allows
- *	  'bitsleft -= entry' instead of 'bitsleft -= (u8)entry'.  Furthermore,
+ *	  removed separately.  Ignoring bits 8+ of 'bits_consumed' allows
+ *	  'bits_consumed += entry' instead of 'bits_consumed += (u8)entry'.  Furthermore,
  *	  the low byte is always less than 32 (so bits 7-5 are always 0), which
  *	  allows 'bitbuf >>= entry & (BITBUF_NBITS - 1)' instead of
  *	  'bitbuf >>= (u8)entry' on both 32-bit and 64-bit platforms (letting
@@ -978,7 +943,7 @@ struct fastloop_ctx {
 	const u8 *in_next;
 	u8 *out_next;
 	bitbuf_t bitbuf;
-	u32 bitsleft;
+	u32 bits_consumed;
 };
 
 enum fastloop_result {
