@@ -2785,11 +2785,12 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 				in_next, in_end, SOFT_MAX_BLOCK_LENGTH);
 		const u8 *next_recalc_min_len =
 			in_next + MIN(in_end - in_next, 10000);
+		const u8 *lit_start = in_next;
 		struct deflate_sequence *seq = c->p.g.sequences;
 		u32 min_len;
 
 		init_block_split_stats(&c->split_stats);
-		deflate_begin_sequences(c, seq);
+		deflate_reset_symbol_frequencies(c);
 		min_len = calculate_min_match_len(in_next,
 						  in_max_block_end - in_next,
 						  max_search_depth);
@@ -2829,8 +2830,10 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
 			     cur_offset > 8192)) {
 				/* No match found.  Choose a literal. */
-				deflate_choose_literal(c, *in_next++, true,
-						       seq);
+				u8 lit = *in_next++;
+
+				c->freqs.litlen[lit]++;
+				observe_literal(&c->split_stats, lit);
 				continue;
 			}
 			in_next++;
@@ -2841,6 +2844,7 @@ have_cur_match:
 			 * If it's very long, choose it immediately.
 			 */
 			if (cur_len >= nice_len) {
+				seq->litrunlen_and_length = (in_next - 1) - lit_start;
 				deflate_choose_match(c, cur_len, cur_offset,
 						     true, &seq);
 				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
@@ -2851,6 +2855,7 @@ have_cur_match:
 							  next_hashes,
 							  LAZY_MULTI_HOP);
 				in_next += cur_len - 1;
+				lit_start = in_next;
 				continue;
 			}
 
@@ -2892,8 +2897,10 @@ have_cur_match:
 				 * Output a literal.  Then the next match
 				 * becomes the current match.
 				 */
-				deflate_choose_literal(c, *(in_next - 2), true,
-						       seq);
+				u8 lit = *(in_next - 2);
+
+				c->freqs.litlen[lit]++;
+				observe_literal(&c->split_stats, lit);
 				cur_len = next_len;
 				cur_offset = next_offset;
 				goto have_cur_match;
@@ -2922,10 +2929,13 @@ have_cur_match:
 					 * There's a much better match two
 					 * positions ahead, so use two literals.
 					 */
-					deflate_choose_literal(
-						c, *(in_next - 3), true, seq);
-					deflate_choose_literal(
-						c, *(in_next - 2), true, seq);
+					u8 lit1 = *(in_next - 3);
+					u8 lit2 = *(in_next - 2);
+
+					c->freqs.litlen[lit1]++;
+					observe_literal(&c->split_stats, lit1);
+					c->freqs.litlen[lit2]++;
+					observe_literal(&c->split_stats, lit2);
 					cur_len = next_len;
 					cur_offset = next_offset;
 					goto have_cur_match;
@@ -2934,6 +2944,7 @@ have_cur_match:
 				 * No better match at either of the next 2
 				 * positions.  Output the current match.
 				 */
+				seq->litrunlen_and_length = (in_next - 3) - lit_start;
 				deflate_choose_match(c, cur_len, cur_offset,
 						     true, &seq);
 				if (cur_len > 3) {
@@ -2951,6 +2962,7 @@ have_cur_match:
 				 * No better match at the next position.  Output
 				 * the current match.
 				 */
+				seq->litrunlen_and_length = (in_next - 2) - lit_start;
 				deflate_choose_match(c, cur_len, cur_offset,
 						     true, &seq);
 				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
@@ -2962,12 +2974,14 @@ have_cur_match:
 							  LAZY_MULTI_HOP);
 				in_next += cur_len - 2;
 			}
+			lit_start = in_next;
 			/* Check if it's time to output another block. */
 		} while (in_next < in_max_block_end &&
 			 seq < &c->p.g.sequences[SEQ_STORE_LENGTH] &&
 			 !should_end_block(&c->split_stats,
 					   in_block_begin, in_next, in_end));
 
+		seq->litrunlen_and_length = in_next - lit_start;
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
 				     c->p.g.sequences, in_next == in_end);
