@@ -2894,8 +2894,8 @@ have_cur_match:
 					LAZY_MULTI_HOP);
 		if (next_len >= cur_len &&
 		    4 * (int)(next_len - cur_len) +
-		    ((int)bsr32(cur_offset) -
-		     (int)bsr32(next_offset)) > 2) {
+		    ((int)clz32(next_offset) -
+		     (int)clz32(cur_offset)) > 2) {
 			/*
 			 * Found a better match at the next position.
 			 * Output a literal.  Then the next match
@@ -2928,8 +2928,8 @@ have_cur_match:
 					LAZY_MULTI_HOP);
 			if (next_len >= cur_len &&
 			    4 * (int)(next_len - cur_len) +
-			    ((int)bsr32(cur_offset) -
-			     (int)bsr32(next_offset)) > 6) {
+			    ((int)clz32(next_offset) -
+			     (int)clz32(cur_offset)) > 6) {
 				/*
 				 * There's a much better match two
 				 * positions ahead, so use two literals.
@@ -3127,6 +3127,28 @@ deflate_compress_lazy2(struct libdeflate_compressor * restrict c,
 {
 	deflate_compress_lazy_generic(c, in, in_nbytes, os, true);
 }
+
+#if (defined(ARCH_X86_32) || defined(ARCH_X86_64)) && \
+	(defined(__GNUC__) || defined(__clang__)) && !HAVE_BMI2_NATIVE
+static _target_attribute("bmi2,bmi,lzcnt,ssse3") void
+deflate_compress_lazy_bmi2(struct libdeflate_compressor * restrict c,
+			   const u8 *in, size_t in_nbytes,
+			   struct deflate_output_bitstream *os)
+{
+	deflate_compress_lazy_generic(c, in, in_nbytes, os, false);
+}
+
+static _target_attribute("bmi2,bmi,lzcnt,ssse3") void
+deflate_compress_lazy2_bmi2(struct libdeflate_compressor * restrict c,
+			    const u8 *in, size_t in_nbytes,
+			    struct deflate_output_bitstream *os)
+{
+	deflate_compress_lazy_generic(c, in, in_nbytes, os, true);
+}
+#define HAVE_LAZY_BMI2_DISPATCH 1
+#else
+#define HAVE_LAZY_BMI2_DISPATCH 0
+#endif
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 
@@ -4337,21 +4359,37 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		break;
 	case 5:
 		c->impl = deflate_compress_lazy;
+#if HAVE_LAZY_BMI2_DISPATCH
+		if (HAVE_BMI2(get_x86_cpu_features()))
+			c->impl = deflate_compress_lazy_bmi2;
+#endif
 		c->max_search_depth = 16;
 		c->nice_match_length = 30;
 		break;
 	case 6:
 		c->impl = deflate_compress_lazy;
+#if HAVE_LAZY_BMI2_DISPATCH
+		if (HAVE_BMI2(get_x86_cpu_features()))
+			c->impl = deflate_compress_lazy_bmi2;
+#endif
 		c->max_search_depth = 35;
 		c->nice_match_length = 65;
 		break;
 	case 7:
 		c->impl = deflate_compress_lazy;
+#if HAVE_LAZY_BMI2_DISPATCH
+		if (HAVE_BMI2(get_x86_cpu_features()))
+			c->impl = deflate_compress_lazy_bmi2;
+#endif
 		c->max_search_depth = 100;
 		c->nice_match_length = 130;
 		break;
 	case 8:
 		c->impl = deflate_compress_lazy2;
+#if HAVE_LAZY_BMI2_DISPATCH
+		if (HAVE_BMI2(get_x86_cpu_features()))
+			c->impl = deflate_compress_lazy2_bmi2;
+#endif
 		c->max_search_depth = 300;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		break;
@@ -4360,6 +4398,10 @@ libdeflate_alloc_compressor_ex(int compression_level,
 	default:
 #endif
 		c->impl = deflate_compress_lazy2;
+#if HAVE_LAZY_BMI2_DISPATCH
+		if (HAVE_BMI2(get_x86_cpu_features()))
+			c->impl = deflate_compress_lazy2_bmi2;
+#endif
 		c->max_search_depth = 600;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		break;

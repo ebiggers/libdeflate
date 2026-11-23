@@ -665,6 +665,16 @@ bsr32(u32 v)
 }
 
 static forceinline unsigned
+clz32(u32 v)
+{
+#if defined(__GNUC__) || __has_builtin(__builtin_clz)
+	return __builtin_clz(v);
+#else
+	return 31 - bsr32(v);
+#endif
+}
+
+static forceinline unsigned
 bsr64(u64 v)
 {
 #if defined(__GNUC__) || __has_builtin(__builtin_clzll)
