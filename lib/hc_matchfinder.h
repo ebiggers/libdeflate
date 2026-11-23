@@ -582,7 +582,7 @@ hc_matchfinder_skip_bytes(struct hc_matchfinder * const mf,
 	u32 next_hashseq;
 	u32 remaining = count;
 
-	if (unlikely(count + 5 > in_end - in_next))
+	if (in_end != NULL && unlikely(count + 5 > in_end - in_next))
 		return;
 
 	cur_pos = in_next - *in_base_p;

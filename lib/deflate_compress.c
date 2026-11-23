@@ -2762,16 +2762,291 @@ deflate_compress_greedy(struct libdeflate_compressor * restrict c,
 	} while (in_next != in_end && !os->overflow);
 }
 
+static forceinline const u8 *
+deflate_compress_lazy_block(struct libdeflate_compressor * restrict c,
+			    const u8 *in_next, const u8 *in_end,
+			    const u8 *in_loop_end, const u8 *in_fast_end,
+			    const u8 *in_block_begin,
+			    const u8 **in_cur_base_p,
+			    const u8 **next_recalc_min_len_p,
+			    const u8 **lit_start_p,
+			    struct deflate_sequence **seq_p,
+			    u32 *min_len_p, u32 nice_len,
+			    u32 next_hashes[2],
+			    u32 *cur_len_p, u32 *cur_offset_p,
+			    bool *have_cur_match_p,
+			    const bool lazy2, const bool near_end)
+{
+	const u32 max_search_depth = c->max_search_depth;
+	const u8 *in_cur_base = *in_cur_base_p;
+	const u8 *next_recalc_min_len = *next_recalc_min_len_p;
+	const u8 *lit_start = *lit_start_p;
+	struct deflate_sequence *seq = *seq_p;
+	u32 min_len = *min_len_p;
+	u32 cur_len = *cur_len_p;
+	u32 cur_offset = *cur_offset_p;
+	u32 max_len = DEFLATE_MAX_MATCH_LEN;
+
+	if (near_end && *have_cur_match_p)
+		goto have_cur_match;
+
+	while (in_next < in_loop_end &&
+	       seq < &c->p.g.sequences[SEQ_STORE_LENGTH] &&
+	       !should_end_block(&c->split_stats,
+				 in_block_begin, in_next, in_end)) {
+		u32 next_len;
+		u32 next_offset;
+
+		/*
+		 * Recalculate the minimum match length if it hasn't
+		 * been done recently.
+		 */
+		if (unlikely(in_next >= next_recalc_min_len)) {
+			min_len = recalculate_min_match_len(
+					&c->freqs, max_search_depth);
+			next_recalc_min_len +=
+				MIN(in_end - next_recalc_min_len,
+				    in_next - in_block_begin);
+		}
+
+		/* Find the longest match at the current position. */
+		if (near_end)
+			adjust_max_and_nice_len(&max_len, &nice_len,
+						in_end - in_next);
+		cur_len = hc_matchfinder_longest_match(
+					&c->p.g.hc_mf,
+					&in_cur_base,
+					in_next,
+					min_len - 1,
+					near_end ? max_len : DEFLATE_MAX_MATCH_LEN,
+					nice_len,
+					max_search_depth,
+					next_hashes,
+					&cur_offset,
+					LAZY_MULTI_HOP);
+		if (cur_len < min_len ||
+		    (cur_len == DEFLATE_MIN_MATCH_LEN &&
+		     cur_offset > 8192)) {
+			/* No match found.  Choose a literal. */
+			u8 lit = *in_next++;
+
+			c->freqs.litlen[lit]++;
+			observe_literal(&c->split_stats, lit);
+			continue;
+		}
+		in_next++;
+
+have_cur_match:
+		/*
+		 * We have a match at the current position.
+		 * If it's very long, choose it immediately.
+		 */
+		if (cur_len >= nice_len) {
+			seq->litrunlen_and_length = (in_next - 1) - lit_start;
+			deflate_choose_match(c, cur_len, cur_offset,
+					     true, &seq);
+			hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
+						  &in_cur_base,
+						  in_next,
+						  near_end ? in_end : NULL,
+						  cur_len - 1,
+						  next_hashes,
+						  LAZY_MULTI_HOP);
+			in_next += cur_len - 1;
+			lit_start = in_next;
+			continue;
+		}
+
+		if (!near_end && unlikely(in_next >= in_fast_end)) {
+			*have_cur_match_p = true;
+			break;
+		}
+
+		/*
+		 * Try to find a better match at the next position.
+		 *
+		 * Note: since we already have a match at the *current*
+		 * position, we use only half the 'max_search_depth'
+		 * when checking the *next* position.  This is a useful
+		 * trade-off because it's more worthwhile to use a
+		 * greater search depth on the initial match.
+		 *
+		 * Note: it's possible to structure the code such that
+		 * there's only one call to longest_match(), which
+		 * handles both the "find the initial match" and "try to
+		 * find a better match" cases.  However, it is faster to
+		 * have two call sites, with longest_match() inlined at
+		 * each.
+		 */
+		if (near_end)
+			adjust_max_and_nice_len(&max_len, &nice_len,
+						in_end - in_next);
+		next_len = hc_matchfinder_longest_match(
+					&c->p.g.hc_mf,
+					&in_cur_base,
+					in_next++,
+					cur_len - 1,
+					near_end ? max_len : DEFLATE_MAX_MATCH_LEN,
+					nice_len,
+					max_search_depth >> 1,
+					next_hashes,
+					&next_offset,
+					LAZY_MULTI_HOP);
+		if (next_len >= cur_len &&
+		    4 * (int)(next_len - cur_len) +
+		    ((int)bsr32(cur_offset) -
+		     (int)bsr32(next_offset)) > 2) {
+			/*
+			 * Found a better match at the next position.
+			 * Output a literal.  Then the next match
+			 * becomes the current match.
+			 */
+			u8 lit = *(in_next - 2);
+
+			c->freqs.litlen[lit]++;
+			observe_literal(&c->split_stats, lit);
+			cur_len = next_len;
+			cur_offset = next_offset;
+			goto have_cur_match;
+		}
+
+		if (lazy2) {
+			/* In lazy2 mode, look ahead another position */
+			if (near_end)
+				adjust_max_and_nice_len(&max_len, &nice_len,
+							in_end - in_next);
+			next_len = hc_matchfinder_longest_match(
+					&c->p.g.hc_mf,
+					&in_cur_base,
+					in_next++,
+					cur_len - 1,
+					near_end ? max_len : DEFLATE_MAX_MATCH_LEN,
+					nice_len,
+					max_search_depth >> 2,
+					next_hashes,
+					&next_offset,
+					LAZY_MULTI_HOP);
+			if (next_len >= cur_len &&
+			    4 * (int)(next_len - cur_len) +
+			    ((int)bsr32(cur_offset) -
+			     (int)bsr32(next_offset)) > 6) {
+				/*
+				 * There's a much better match two
+				 * positions ahead, so use two literals.
+				 */
+				u8 lit1 = *(in_next - 3);
+				u8 lit2 = *(in_next - 2);
+
+				c->freqs.litlen[lit1]++;
+				observe_literal(&c->split_stats, lit1);
+				c->freqs.litlen[lit2]++;
+				observe_literal(&c->split_stats, lit2);
+				cur_len = next_len;
+				cur_offset = next_offset;
+				goto have_cur_match;
+			}
+			/*
+			 * No better match at either of the next 2
+			 * positions.  Output the current match.
+			 */
+			seq->litrunlen_and_length = (in_next - 3) - lit_start;
+			deflate_choose_match(c, cur_len, cur_offset,
+					     true, &seq);
+			if (cur_len > 3) {
+				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
+							  &in_cur_base,
+							  in_next,
+							  near_end ? in_end : NULL,
+							  cur_len - 3,
+							  next_hashes,
+							  LAZY_MULTI_HOP);
+				in_next += cur_len - 3;
+			}
+		} else { /* !lazy2 */
+			/*
+			 * No better match at the next position.  Output
+			 * the current match.
+			 */
+			seq->litrunlen_and_length = (in_next - 2) - lit_start;
+			deflate_choose_match(c, cur_len, cur_offset,
+					     true, &seq);
+			hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
+						  &in_cur_base,
+						  in_next,
+						  near_end ? in_end : NULL,
+						  cur_len - 2,
+						  next_hashes,
+						  LAZY_MULTI_HOP);
+			in_next += cur_len - 2;
+		}
+		lit_start = in_next;
+	}
+
+	*in_cur_base_p = in_cur_base;
+	*next_recalc_min_len_p = next_recalc_min_len;
+	*lit_start_p = lit_start;
+	*seq_p = seq;
+	*min_len_p = min_len;
+	*cur_len_p = cur_len;
+	*cur_offset_p = cur_offset;
+	return in_next;
+}
+
+static NOINLINE void
+deflate_compress_lazy_tail(struct libdeflate_compressor * restrict c,
+			   struct deflate_output_bitstream *os,
+			   const u8 *in_next, const u8 *in_end,
+			   const u8 *in_cur_base, const u8 *in_block_begin,
+			   const u8 *in_max_block_end,
+			   const u8 *next_recalc_min_len, const u8 *lit_start,
+			   struct deflate_sequence *seq, u32 min_len,
+			   u32 nice_len, u32 hash3, u32 hash4,
+			   u32 cur_len, u32 cur_offset,
+			   bool have_cur_match, bool lazy2)
+{
+	u32 next_hashes[2] = { hash3, hash4 };
+
+	for (;;) {
+		in_next = deflate_compress_lazy_block(
+				c, in_next, in_end, in_max_block_end, in_end,
+				in_block_begin, &in_cur_base,
+				&next_recalc_min_len, &lit_start, &seq,
+				&min_len, nice_len, next_hashes,
+				&cur_len, &cur_offset, &have_cur_match,
+				lazy2, /*near_end=*/true);
+		have_cur_match = false;
+		seq->litrunlen_and_length = in_next - lit_start;
+		deflate_finish_block(c, os, in_block_begin,
+				     in_next - in_block_begin,
+				     c->p.g.sequences, in_next == in_end);
+		if (in_next == in_end || os->overflow)
+			return;
+		in_block_begin = in_next;
+		in_max_block_end = choose_max_block_end(
+				in_next, in_end, SOFT_MAX_BLOCK_LENGTH);
+		next_recalc_min_len = in_next + MIN(in_end - in_next, 10000);
+		lit_start = in_next;
+		seq = c->p.g.sequences;
+		init_block_split_stats(&c->split_stats);
+		deflate_reset_symbol_frequencies(c);
+		min_len = calculate_min_match_len(in_next,
+						  in_max_block_end - in_next,
+						  c->max_search_depth);
+	}
+}
+
 static forceinline void
 deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 			      const u8 *in, size_t in_nbytes,
 			      struct deflate_output_bitstream *os, bool lazy2)
 {
 	const u8 *in_next = in;
-	const u8 *in_end = in_next + in_nbytes;
+	const u8 * const in_end = in_next + in_nbytes;
+	const u8 * const in_fast_end =
+		in_nbytes > DEFLATE_MAX_MATCH_LEN + 7 ?
+		in_end - (DEFLATE_MAX_MATCH_LEN + 7) : in;
 	const u8 *in_cur_base = in_next;
-	u32 max_len = DEFLATE_MAX_MATCH_LEN;
-	u32 nice_len = MIN(c->nice_match_length, max_len);
+	const u32 nice_len = MIN(c->nice_match_length, DEFLATE_MAX_MATCH_LEN);
 	const u32 max_search_depth = c->max_search_depth;
 	u32 next_hashes[2] = {0, 0};
 
@@ -2783,204 +3058,43 @@ deflate_compress_lazy_generic(struct libdeflate_compressor * restrict c,
 		const u8 * const in_block_begin = in_next;
 		const u8 * const in_max_block_end = choose_max_block_end(
 				in_next, in_end, SOFT_MAX_BLOCK_LENGTH);
+		const u8 * const in_fast_block_end =
+			MIN(in_max_block_end, in_fast_end);
 		const u8 *next_recalc_min_len =
 			in_next + MIN(in_end - in_next, 10000);
 		const u8 *lit_start = in_next;
 		struct deflate_sequence *seq = c->p.g.sequences;
 		u32 min_len;
+		u32 cur_len = 0;
+		u32 cur_offset = 0;
+		bool have_cur_match = false;
 
 		init_block_split_stats(&c->split_stats);
 		deflate_reset_symbol_frequencies(c);
 		min_len = calculate_min_match_len(in_next,
 						  in_max_block_end - in_next,
 						  max_search_depth);
-		do {
-			u32 cur_len;
-			u32 cur_offset;
-			u32 next_len;
-			u32 next_offset;
-
-			/*
-			 * Recalculate the minimum match length if it hasn't
-			 * been done recently.
-			 */
-			if (unlikely(in_next >= next_recalc_min_len)) {
-				min_len = recalculate_min_match_len(
-						&c->freqs, max_search_depth);
-				next_recalc_min_len +=
-					MIN(in_end - next_recalc_min_len,
-					    in_next - in_block_begin);
-			}
-
-			/* Find the longest match at the current position. */
-			adjust_max_and_nice_len(&max_len, &nice_len,
-						in_end - in_next);
-			cur_len = hc_matchfinder_longest_match(
-						&c->p.g.hc_mf,
-						&in_cur_base,
-						in_next,
-						min_len - 1,
-						max_len,
-						nice_len,
-						max_search_depth,
-						next_hashes,
-						&cur_offset,
-						LAZY_MULTI_HOP);
-			if (cur_len < min_len ||
-			    (cur_len == DEFLATE_MIN_MATCH_LEN &&
-			     cur_offset > 8192)) {
-				/* No match found.  Choose a literal. */
-				u8 lit = *in_next++;
-
-				c->freqs.litlen[lit]++;
-				observe_literal(&c->split_stats, lit);
-				continue;
-			}
-			in_next++;
-
-have_cur_match:
-			/*
-			 * We have a match at the current position.
-			 * If it's very long, choose it immediately.
-			 */
-			if (cur_len >= nice_len) {
-				seq->litrunlen_and_length = (in_next - 1) - lit_start;
-				deflate_choose_match(c, cur_len, cur_offset,
-						     true, &seq);
-				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
-							  &in_cur_base,
-							  in_next,
-							  in_end,
-							  cur_len - 1,
-							  next_hashes,
-							  LAZY_MULTI_HOP);
-				in_next += cur_len - 1;
-				lit_start = in_next;
-				continue;
-			}
-
-			/*
-			 * Try to find a better match at the next position.
-			 *
-			 * Note: since we already have a match at the *current*
-			 * position, we use only half the 'max_search_depth'
-			 * when checking the *next* position.  This is a useful
-			 * trade-off because it's more worthwhile to use a
-			 * greater search depth on the initial match.
-			 *
-			 * Note: it's possible to structure the code such that
-			 * there's only one call to longest_match(), which
-			 * handles both the "find the initial match" and "try to
-			 * find a better match" cases.  However, it is faster to
-			 * have two call sites, with longest_match() inlined at
-			 * each.
-			 */
-			adjust_max_and_nice_len(&max_len, &nice_len,
-						in_end - in_next);
-			next_len = hc_matchfinder_longest_match(
-						&c->p.g.hc_mf,
-						&in_cur_base,
-						in_next++,
-						cur_len - 1,
-						max_len,
-						nice_len,
-						max_search_depth >> 1,
-						next_hashes,
-						&next_offset,
-						LAZY_MULTI_HOP);
-			if (next_len >= cur_len &&
-			    4 * (int)(next_len - cur_len) +
-			    ((int)bsr32(cur_offset) -
-			     (int)bsr32(next_offset)) > 2) {
-				/*
-				 * Found a better match at the next position.
-				 * Output a literal.  Then the next match
-				 * becomes the current match.
-				 */
-				u8 lit = *(in_next - 2);
-
-				c->freqs.litlen[lit]++;
-				observe_literal(&c->split_stats, lit);
-				cur_len = next_len;
-				cur_offset = next_offset;
-				goto have_cur_match;
-			}
-
-			if (lazy2) {
-				/* In lazy2 mode, look ahead another position */
-				adjust_max_and_nice_len(&max_len, &nice_len,
-							in_end - in_next);
-				next_len = hc_matchfinder_longest_match(
-						&c->p.g.hc_mf,
-						&in_cur_base,
-						in_next++,
-						cur_len - 1,
-						max_len,
-						nice_len,
-						max_search_depth >> 2,
-						next_hashes,
-						&next_offset,
-						LAZY_MULTI_HOP);
-				if (next_len >= cur_len &&
-				    4 * (int)(next_len - cur_len) +
-				    ((int)bsr32(cur_offset) -
-				     (int)bsr32(next_offset)) > 6) {
-					/*
-					 * There's a much better match two
-					 * positions ahead, so use two literals.
-					 */
-					u8 lit1 = *(in_next - 3);
-					u8 lit2 = *(in_next - 2);
-
-					c->freqs.litlen[lit1]++;
-					observe_literal(&c->split_stats, lit1);
-					c->freqs.litlen[lit2]++;
-					observe_literal(&c->split_stats, lit2);
-					cur_len = next_len;
-					cur_offset = next_offset;
-					goto have_cur_match;
-				}
-				/*
-				 * No better match at either of the next 2
-				 * positions.  Output the current match.
-				 */
-				seq->litrunlen_and_length = (in_next - 3) - lit_start;
-				deflate_choose_match(c, cur_len, cur_offset,
-						     true, &seq);
-				if (cur_len > 3) {
-					hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
-								  &in_cur_base,
-								  in_next,
-								  in_end,
-								  cur_len - 3,
-								  next_hashes,
-								  LAZY_MULTI_HOP);
-					in_next += cur_len - 3;
-				}
-			} else { /* !lazy2 */
-				/*
-				 * No better match at the next position.  Output
-				 * the current match.
-				 */
-				seq->litrunlen_and_length = (in_next - 2) - lit_start;
-				deflate_choose_match(c, cur_len, cur_offset,
-						     true, &seq);
-				hc_matchfinder_skip_bytes(&c->p.g.hc_mf,
-							  &in_cur_base,
-							  in_next,
-							  in_end,
-							  cur_len - 2,
-							  next_hashes,
-							  LAZY_MULTI_HOP);
-				in_next += cur_len - 2;
-			}
-			lit_start = in_next;
-			/* Check if it's time to output another block. */
-		} while (in_next < in_max_block_end &&
-			 seq < &c->p.g.sequences[SEQ_STORE_LENGTH] &&
-			 !should_end_block(&c->split_stats,
-					   in_block_begin, in_next, in_end));
-
+		in_next = deflate_compress_lazy_block(
+				c, in_next, in_end, in_fast_block_end,
+				in_fast_end, in_block_begin, &in_cur_base,
+				&next_recalc_min_len, &lit_start, &seq,
+				&min_len, nice_len, next_hashes,
+				&cur_len, &cur_offset, &have_cur_match,
+				lazy2, /*near_end=*/false);
+		if (unlikely(in_next >= in_fast_end &&
+			     (have_cur_match ||
+			      (in_next < in_max_block_end &&
+			       seq < &c->p.g.sequences[SEQ_STORE_LENGTH])))) {
+			deflate_compress_lazy_tail(
+					c, os, in_next, in_end, in_cur_base,
+					in_block_begin, in_max_block_end,
+					next_recalc_min_len, lit_start, seq,
+					min_len, nice_len,
+					next_hashes[0], next_hashes[1],
+					cur_len, cur_offset,
+					have_cur_match, lazy2);
+			return;
+		}
 		seq->litrunlen_and_length = in_next - lit_start;
 		deflate_finish_block(c, os, in_block_begin,
 				     in_next - in_block_begin,
