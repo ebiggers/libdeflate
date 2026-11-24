@@ -565,6 +565,18 @@ get_unaligned_le64(const u8 *p)
 			((u64)p[1] << 8) | p[0];
 }
 
+static forceinline u64
+get_unaligned_be64(const u8 *p)
+{
+	if (UNALIGNED_ACCESS_IS_FAST)
+		return be64_bswap(load_u64_unaligned(p));
+	else
+		return ((u64)p[0] << 56) | ((u64)p[1] << 48) |
+			((u64)p[2] << 40) | ((u64)p[3] << 32) |
+			((u64)p[4] << 24) | ((u64)p[5] << 16) |
+			((u64)p[6] << 8) | p[7];
+}
+
 static forceinline machine_word_t
 get_unaligned_leword(const u8 *p)
 {
