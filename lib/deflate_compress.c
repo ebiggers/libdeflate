@@ -1599,11 +1599,60 @@ deflate_compute_precode_items(const u8 lens[], const unsigned num_lens,
 		/* len = the length being repeated */
 		len = lens[run_start];
 
-		/* Extend the run. */
-		run_end = run_start;
-		do {
+		/*
+		 * Most lengths don't start a run that is long enough for RLE,
+		 * i.e. 3 zero lengths or 4 nonzero lengths.  Check for the
+		 * minimum run length first, by loading the first 4 lengths as a
+		 * u32 and doing bitwise operations.  If the run is shorter than
+		 * the minimum, output the length right away.  This is faster
+		 * than extending the run first, since the many short runs make
+		 * the loops below hard to predict.
+		 */
+		if (UNALIGNED_ACCESS_IS_FAST && CPU_IS_LITTLE_ENDIAN() &&
+		    num_lens - run_start >= 4) {
+			machine_word_t rep, diff;
+			u32 diff32;
+
+			rep = (machine_word_t)0x0101010101010101 * len;
+			/*
+			 * This sets 'diff32' to a u32 that has nonzero values
+			 * in bytes that differ from len.
+			 */
+			diff32 = load_u32_unaligned(&lens[run_start]) ^ (u32)rep;
+
+			/*
+			 * Branchlessly ignore the 4th length if len == 0, since
+			 * RLE of 3 zeroes is allowed.
+			 */
+			diff32 &= 0x00FFFFFFU | -(u32)len;
+
+			if (diff32 != 0) {
+				/* Run is too short to use RLE. */
+				precode_freqs[len]++;
+				*itemptr++ = len;
+				run_start++;
+				continue;
+			}
+			/*
+			 * RLE will be possible.  Now, extend the run a word at
+			 * a time, starting from the 4th length.
+			 */
+			run_end = run_start + 3;
+			while (num_lens - run_end >= WORDBYTES) {
+				diff = load_word_unaligned(&lens[run_end]) ^ rep;
+				if (diff != 0) {
+					run_end += bsfw(diff) >> 3;
+					goto run_extended;
+				}
+				run_end += WORDBYTES;
+			}
+		} else {
+			run_end = run_start + 1;
+		}
+		/* Extend the run a byte at a time. */
+		while (run_end != num_lens && len == lens[run_end])
 			run_end++;
-		} while (run_end != num_lens && len == lens[run_end]);
+run_extended:
 
 		if (len == 0) {
 			/* Run of zeroes. */
