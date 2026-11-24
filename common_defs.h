@@ -364,6 +364,16 @@ static forceinline bool CPU_IS_LITTLE_ENDIAN(void)
 }
 #endif
 
+/*
+ * MSVC compiles _byteswap_ushort(), _byteswap_ulong(), and _byteswap_uint64() to
+ * byte swap instructions only if they are intrinsic functions.  /Oi makes them
+ * intrinsic, and /O2 implies /Oi, but /O1 doesn't.  So make them intrinsic
+ * explicitly.
+ */
+#if defined(_MSC_VER) && !defined(__clang__)
+#  pragma intrinsic(_byteswap_ushort, _byteswap_ulong, _byteswap_uint64)
+#endif
+
 /* bswap16(v) - swap the bytes of a 16-bit integer */
 static forceinline u16 bswap16(u16 v)
 {
