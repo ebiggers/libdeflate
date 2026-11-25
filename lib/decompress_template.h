@@ -1401,6 +1401,10 @@ ADD_SUFFIX(decompress_fastloop_unchecked)(struct libdeflate_decompressor * restr
 						    litlen_tablemask, false);
 }
 
+#if MLSD_ENABLED
+#  include "decompress_multilane.h"
+#endif
+
 static ATTRIBUTES enum libdeflate_result
 ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 			       const void * restrict in, size_t in_nbytes,
@@ -1425,6 +1429,25 @@ ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 
 	bool is_final_block;
 	unsigned block_type;
+#if MLSD_ENABLED
+	/* output size of the previous block (huge before the first one) */
+	size_t prev_block_out = SIZE_MAX;
+	u8 *block_out_start;
+	/* input bits of the previous block, and where the current one starts */
+	size_t prev_block_bits = 0;
+	size_t block_in_pos;
+	/* multi-lane progress rate and margin, carried across blocks */
+	size_t mlsd_state[2] = { 12 * 16, MLSD_MARGIN };
+	/* whether the multi-lane decoder has been used in this stream */
+	bool mlsd_used = false;
+	/* cached QoS check, see mlsd_choose_mode() */
+	int mlsd_qos = 0;
+	/* lanes' clock, bytes, and window start of a measured comparison */
+	u64 mlsd_ev[6];
+	/* the normal decode tables were already built for this block */
+	bool mlsd_have_tables = false;
+	int mlsd_mode;
+#endif
 	unsigned num_litlen_syms;
 	unsigned num_offset_syms;
 	u32 litlen_tablemask;
@@ -1433,6 +1456,11 @@ ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 next_block:
 	/* Starting to read the next block */
 	;
+#if MLSD_ENABLED
+	block_out_start = out_next;
+	block_in_pos = (size_t)(in_next - (const u8 *)in) * 8 - (u8)bitsleft;
+	mlsd_have_tables = false;
+#endif
 
 	STATIC_ASSERT(CAN_CONSUME(1 + 2 + 5 + 5 + 4 + 3));
 	REFILL_BITS();
@@ -1696,6 +1724,226 @@ next_block:
 
 	/* Decompressing a Huffman block (either dynamic or static) */
 
+#if MLSD_ENABLED
+	if (block_type == DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN &&
+	    BITBUF_NBITS == 64 && UNALIGNED_ACCESS_IS_FAST &&
+	    prev_block_out >= MLSD_MIN_PREV_BLOCK_OUT &&
+	    in_end - in_next >= MLSD_MIN_IN_BYTES &&
+	    out_end - out_next >= (mlsd_used ? MLSD_MIN_OUT_BYTES :
+				   MAX(MLSD_MIN_START_OUT,
+				       MLSD_MIN_OUT_BYTES)) &&
+	    (mlsd_mode = mlsd_choose_mode(
+			d, &mlsd_qos, MIN(prev_block_out, 65536 * 16),
+			/* the previous block's input bits per output
+			   byte, times 64 (0 if none) */
+			prev_block_out == SIZE_MAX || prev_block_out == 0 ? 0 :
+			(u32)MIN((u64)prev_block_bits * 64 / prev_block_out,
+				 0xFFFFFFFF),
+			/* room for a measured comparison? (it needs the
+			   unchecked executor, and the fastloop to run) */
+			out_next - (u8 *)out >= DEFLATE_MAX_MATCH_OFFSET &&
+			in_next < in_fastloop_end &&
+			out_fastloop_end - out_next >=
+			(ptrdiff_t)(MIN(prev_block_out, 65536 * 16) +
+				    2 * MLSD_EVAL_MAX_BYTES +
+				    MLSD_MIN_OUT_BYTES)))
+	    != MLSD_MODE_OFF) {
+		/* where the block's data starts */
+		const size_t mlsd_pos0 = (size_t)(in_next - (const u8 *)in) * 8 -
+					 (u8)bitsleft;
+
+		/* for a measured comparison: the tables' build times */
+		u64 mlsd_tlt = mlsd_mode == MLSD_MODE_EVAL ? mlsd_now() : 0;
+		u64 mlsd_tut = 0;
+
+		/*
+		 * Build just the lane-format decode tables.  This leaves the
+		 * codeword lengths intact, so the normal tables can still be
+		 * built below if the block isn't finished here.
+		 */
+		SAFETY_CHECK(ADD_SUFFIX(build_mlsd_tables)(d, num_litlen_syms,
+							   num_offset_syms));
+		if (mlsd_mode == MLSD_MODE_EVAL)
+			mlsd_tlt = mlsd_now() - mlsd_tlt;
+		mlsd_used = true;
+		/*
+		 * A measured comparison needs the unchecked executor (which
+		 * 'can_eval' above already ensures; this is just in case).
+		 */
+		if (mlsd_mode == MLSD_MODE_EVAL &&
+		    out_next - (u8 *)out < DEFLATE_MAX_MATCH_OFFSET)
+			mlsd_mode = MLSD_MODE_LANES;
+		for (;;) {
+			size_t eval_bytes = 0;
+			size_t lanes_skip = 0;
+			struct fastloop_ctx ctx = { .out = out };
+			enum fastloop_result res;
+			bool lanes_done;
+			u8 *out0;
+			u64 tf, bf, t0;
+
+			if (mlsd_mode == MLSD_MODE_EVAL) {
+				size_t eval_skip;
+
+				/* how much to measure */
+				eval_bytes = MIN(MAX(prev_block_out / 4,
+						     MLSD_EVAL_MIN_BYTES),
+						 d->mlsd_stream_eval ?
+						 MLSD_EVAL_STREAM_BYTES :
+						 MLSD_EVAL_MAX_BYTES);
+				/*
+				 * Where in the block to start: 0, 3/8, 1/8,
+				 * 4/8, 2/8, ... of the space before the
+				 * measured part (less some for the lanes to
+				 * warm up), if the block is as long as the
+				 * previous one.  (Not further, as the block
+				 * may well be shorter.)
+				 */
+				eval_skip = prev_block_out == SIZE_MAX ||
+					    prev_block_out < eval_bytes + 4096 ?
+					    0 : (prev_block_out - eval_bytes -
+						 4096) / 8 *
+					    ((d->mlsd_attempts * 3) % 5);
+				d->mlsd_attempts++;
+				if (!(in_next < in_fastloop_end &&
+				      out_fastloop_end - out_next >=
+				      (ptrdiff_t)(eval_skip +
+						  2 * MLSD_EVAL_MAX_BYTES +
+						  MLSD_MIN_OUT_BYTES))) {
+					/* no room after all (can't happen,
+					   given the check above) */
+					if (!d->mlsd_lanes_on)
+						break;
+					mlsd_mode = MLSD_MODE_LANES;
+				} else {
+					/* the fastloop needs the normal tables */
+					mlsd_tut = mlsd_now();
+					SAFETY_CHECK(ADD_SUFFIX(build_offset_decode_table)(
+						d, num_litlen_syms,
+						num_offset_syms));
+					SAFETY_CHECK(ADD_SUFFIX(build_litlen_decode_table)(
+						d, num_litlen_syms, true));
+					mlsd_have_tables = true;
+					mlsd_tut = mlsd_now() - mlsd_tut;
+				}
+				if (mlsd_mode == MLSD_MODE_EVAL &&
+				    d->mlsd_lanes_on) {
+					/* the lanes decode up to there */
+					lanes_skip = eval_skip;
+				} else if (mlsd_mode == MLSD_MODE_EVAL &&
+					   eval_skip != 0) {
+					/* the fastloop decodes up to there */
+					ctx.in_next = in_next;
+					ctx.out_next = out_next;
+					ctx.bitbuf = bitbuf;
+					ctx.bitsleft = bitsleft;
+					res = ADD_SUFFIX(decompress_fastloop_unchecked)(
+						d, &ctx, in_fastloop_end,
+						out_next + eval_skip,
+						((u32)1 << d->litlen_tablebits) - 1);
+					in_next = ctx.in_next;
+					out_next = ctx.out_next;
+					bitbuf = ctx.bitbuf;
+					bitsleft = ctx.bitsleft;
+					if (res == FASTLOOP_BLOCK_DONE) {
+						/* try again after a block */
+						d->mlsd_countdown = 1;
+						goto block_done;
+					}
+				}
+			}
+			out0 = out_next;
+			ctx.in_next = in_next;
+			ctx.out_next = out_next;
+			ctx.bitbuf = bitbuf;
+			ctx.bitsleft = bitsleft;
+			res = ADD_SUFFIX(decompress_multilane)(
+				d, &ctx, in, in_end, out_end,
+				((u32)1 << d->mlsd_litlen_tablebits) - 1,
+				mlsd_state,
+				((size_t)(in_next - (const u8 *)in) * 8 - (u8)bitsleft -
+				 mlsd_pos0) * 16 / MAX(mlsd_state[0], 16),
+				lanes_skip, eval_bytes,
+				mlsd_mode == MLSD_MODE_EVAL ? mlsd_ev : NULL);
+			SAFETY_CHECK(res != FASTLOOP_BAD_DATA);
+			in_next = ctx.in_next;
+			out_next = ctx.out_next;
+			bitbuf = ctx.bitbuf;
+			bitsleft = ctx.bitsleft;
+			if (mlsd_mode == MLSD_MODE_EVAL &&
+			    (mlsd_ev[1] < MLSD_EVAL_MIN_BYTES / 2 ||
+			     out_fastloop_end - (out0 + mlsd_ev[2] + mlsd_ev[5]) <
+			     MLSD_EVAL_MIN_BYTES / 2)) {
+				/* no measurement; try again after a block */
+				d->mlsd_countdown = 1;
+				mlsd_mode = MLSD_MODE_LANES;
+			}
+			if (mlsd_mode != MLSD_MODE_EVAL) {
+				if (res == FASTLOOP_BLOCK_DONE)
+					goto block_done;
+				break; /* the lanes stopped; finish with the fastloop */
+			}
+
+			/*
+			 * A measured comparison: decode the window again with
+			 * the fastloop, timing its second part, and compare the
+			 * times.  (Its first part lets the fastloop warm up:
+			 * right after the lanes, it runs much slower for a
+			 * while, e.g. as its branches must be learned again.)
+			 * Then continue from where the fastloop stopped (which
+			 * also overwrites anything it wrote past that point),
+			 * even if the lanes finished the block.  The fastloop
+			 * finds the data in the cache, which flatters it
+			 * somewhat, so this errs on its side.
+			 */
+			lanes_done = res == FASTLOOP_BLOCK_DONE;
+			{
+				/* the state where the measured part starts */
+				const u8 * const ip = (const u8 *)in +
+						      (mlsd_ev[3] >> 3);
+
+				ctx.bitbuf = get_unaligned_leword(ip) >>
+					     (mlsd_ev[3] & 7);
+				ctx.in_next = ip + sizeof(bitbuf_t) - 1;
+				ctx.bitsleft = (MAX_BITSLEFT & ~7) -
+					       (mlsd_ev[3] & 7);
+				ctx.out_next = out0 + mlsd_ev[2];
+			}
+			res = ADD_SUFFIX(decompress_fastloop_unchecked)(
+				d, &ctx, in_fastloop_end,
+				out0 + mlsd_ev[2] + mlsd_ev[5],
+				((u32)1 << d->litlen_tablebits) - 1);
+			tf = bf = 0;
+			if (res != FASTLOOP_BLOCK_DONE) {
+				u8 * const f0 = ctx.out_next;
+
+				t0 = mlsd_now();
+				res = ADD_SUFFIX(decompress_fastloop_unchecked)(
+					d, &ctx, in_fastloop_end,
+					MIN(out0 + mlsd_ev[2] + mlsd_ev[5] +
+					    mlsd_ev[1], out_fastloop_end),
+					((u32)1 << d->litlen_tablebits) - 1);
+				tf = mlsd_now() - t0;
+				bf = ctx.out_next - f0;
+			}
+			in_next = ctx.in_next;
+			out_next = ctx.out_next;
+			bitbuf = ctx.bitbuf;
+			bitsleft = ctx.bitsleft;
+			mlsd_record_eval(d, mlsd_ev[0], mlsd_ev[1], tf, bf,
+					 mlsd_tlt + mlsd_ev[4] > mlsd_tut ?
+					 mlsd_tlt + mlsd_ev[4] - mlsd_tut : 0);
+			if (res == FASTLOOP_BLOCK_DONE)
+				goto block_done;
+			if (lanes_done || !d->mlsd_lanes_on)
+				break;
+			mlsd_mode = MLSD_MODE_LANES;
+		}
+	}
+	if (mlsd_have_tables)
+		goto have_decode_tables;
+#endif /* MLSD_ENABLED */
+
 	SAFETY_CHECK(ADD_SUFFIX(build_offset_decode_table)(d, num_litlen_syms,
 							   num_offset_syms));
 	/*
@@ -1856,6 +2104,15 @@ fastloop_done:
 
 block_done:
 	/* Finished decoding a block */
+#if MLSD_ENABLED
+	prev_block_out = out_next - block_out_start;
+	{
+		const size_t pos = (size_t)(in_next - (const u8 *)in) * 8 -
+				   (u8)bitsleft;
+
+		prev_block_bits = pos >= block_in_pos ? pos - block_in_pos : 0;
+	}
+#endif
 
 	if (!is_final_block)
 		goto next_block;
