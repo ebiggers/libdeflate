@@ -211,6 +211,22 @@ if(LIBDEFLATE_COMPRESSION_SUPPORT)
          lib/x86/find_min_cost_path.h
          lib/x86/matchfinder_impl.h
     )
+    # Apple clang outlines code even at -O2, which slows down the compressor.
+    # The Xcode generator doesn't support per-config per-source options.
+    if(APPLE)
+        check_c_compiler_flag(-mno-outline HAVE_MNO_OUTLINE)
+        if(HAVE_MNO_OUTLINE)
+            if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.11 AND NOT XCODE)
+                set_property(SOURCE lib/deflate_compress.c APPEND PROPERTY
+                             COMPILE_OPTIONS
+                             "$<$<NOT:$<CONFIG:MinSizeRel>>:-mno-outline>")
+            elseif(NOT CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+                set_property(SOURCE lib/deflate_compress.c
+                             APPEND_STRING PROPERTY
+                             COMPILE_FLAGS " -mno-outline")
+            endif()
+        endif()
+    endif()
 endif()
 if(LIBDEFLATE_DECOMPRESSION_SUPPORT)
     list(APPEND LIB_SOURCES
