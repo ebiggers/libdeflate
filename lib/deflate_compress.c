@@ -1186,9 +1186,7 @@ build_tree(u32 A[], unsigned sym_count)
  *	The array produced by build_tree(), containing parent index information
  *	for the non-leaf nodes of the Huffman tree.  Each entry in this array is
  *	a node; a node's parent always has a greater index than that node
- *	itself.  This function will overwrite the parent index information in
- *	this array, so essentially it will destroy the tree.  However, the data
- *	in the low NUM_SYMBOL_BITS of each entry will be preserved.
+ *	itself.
  *
  * @root_idx
  *	The 0-based index of the root node in 'A', and consequently one less
@@ -1203,11 +1201,12 @@ build_tree(u32 A[], unsigned sym_count)
  *	The maximum permissible codeword length.
  */
 static void
-compute_length_counts(u32 A[], unsigned root_idx, unsigned len_counts[],
+compute_length_counts(const u32 A[], unsigned root_idx, unsigned len_counts[],
 		      unsigned max_codeword_len)
 {
 	unsigned first_node[DEFLATE_MAX_CODEWORD_LEN] = { 0 };
 	unsigned num_parents;
+	unsigned depth;
 	unsigned len;
 	int node;
 
@@ -1216,8 +1215,7 @@ compute_length_counts(u32 A[], unsigned root_idx, unsigned len_counts[],
 	 *
 	 * (1) We can traverse the non-leaf nodes of the tree, always visiting a
 	 *     parent before its children, by simply iterating through the array
-	 *     in reverse order.  Consequently, we can compute the depth of each
-	 *     node in one pass, overwriting the parent indices with depths.
+	 *     in reverse order.
 	 *
 	 * (2) We can initially assume that in the real Huffman tree, both
 	 *     children of the root are leaves.  This corresponds to two
@@ -1236,37 +1234,21 @@ compute_length_counts(u32 A[], unsigned root_idx, unsigned len_counts[],
 	 *     them, so a node's parent never has a lower index than the parent
 	 *     of a lower-indexed node.  Therefore the depths are nondecreasing
 	 *     in the traversal order, and the nodes at each depth have
-	 *     consecutive indices.  So for the nodes shallower than
-	 *     max_codeword_len, which come first, the number at each depth
-	 *     follows from the lowest index at each depth ('first_node').  That
-	 *     avoids incrementing counters in memory, which would be slow since
+	 *     consecutive indices.  So a node is one deeper than the previous
+	 *     one exactly when its parent is below the lowest node at the
+	 *     previous one's parent depth ('first_node'), and for the nodes
+	 *     shallower than max_codeword_len, which come first, the number at
+	 *     each depth follows from 'first_node'.  That avoids storing depths
+	 *     and incrementing counters in memory, which would be slow since
 	 *     successive nodes often have the same depth.
 	 */
 
-	/* Set the root node's depth to 0. */
-	A[root_idx] &= SYMBOL_MASK;
 	first_node[0] = root_idx;
-
+	depth = 1;
 	for (node = root_idx - 1; node >= 0; node--) {
-
-		/* Calculate the depth of this node. */
-
-		unsigned parent = A[node] >> NUM_SYMBOL_BITS;
-		unsigned parent_depth = A[parent] >> NUM_SYMBOL_BITS;
-		unsigned depth = parent_depth + 1;
-
-		/* See observation (4). */
-		ASSERT(depth >= (A[node + 1] >> NUM_SYMBOL_BITS));
-
-		if (depth >= max_codeword_len)
+		if ((A[node] >> NUM_SYMBOL_BITS) < first_node[depth - 1] &&
+		    ++depth >= max_codeword_len)
 			break;
-
-		/*
-		 * Set the depth of this node so that it is available when its
-		 * children (if any) are processed.
-		 */
-		A[node] = (A[node] & SYMBOL_MASK) | (depth << NUM_SYMBOL_BITS);
-
 		first_node[depth] = node;
 	}
 
@@ -1295,8 +1277,7 @@ compute_length_counts(u32 A[], unsigned root_idx, unsigned len_counts[],
 	 * should be good enough.
 	 */
 	for (; node >= 0; node--) {
-		unsigned depth = max_codeword_len;
-
+		depth = max_codeword_len;
 		do {
 			depth--;
 		} while (len_counts[depth] == 0);
