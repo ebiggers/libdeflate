@@ -1735,14 +1735,16 @@ deflate_precompute_huffman_header(struct libdeflate_compressor *c)
 	/*
 	 * If we're not using the full set of literal/length codeword lengths,
 	 * then temporarily move the offset codeword lengths over so that the
-	 * literal/length and offset codeword lengths are contiguous.
+	 * literal/length and offset codeword lengths are contiguous.  Move all
+	 * of them, including the zeroes past num_offset_syms, since a constant
+	 * size lets the compiler inline the memmove().
 	 */
 	STATIC_ASSERT(offsetof(struct deflate_lens, offset) ==
 		      DEFLATE_NUM_LITLEN_SYMS);
 	if (c->o.precode.num_litlen_syms != DEFLATE_NUM_LITLEN_SYMS) {
 		memmove((u8 *)&c->codes.lens + c->o.precode.num_litlen_syms,
 			(u8 *)&c->codes.lens + DEFLATE_NUM_LITLEN_SYMS,
-			c->o.precode.num_offset_syms);
+			DEFLATE_NUM_OFFSET_SYMS);
 	}
 
 	/*
@@ -1774,7 +1776,7 @@ deflate_precompute_huffman_header(struct libdeflate_compressor *c)
 	if (c->o.precode.num_litlen_syms != DEFLATE_NUM_LITLEN_SYMS) {
 		memmove((u8 *)&c->codes.lens + DEFLATE_NUM_LITLEN_SYMS,
 			(u8 *)&c->codes.lens + c->o.precode.num_litlen_syms,
-			c->o.precode.num_offset_syms);
+			DEFLATE_NUM_OFFSET_SYMS);
 	}
 }
 
