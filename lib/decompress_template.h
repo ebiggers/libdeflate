@@ -1431,11 +1431,7 @@ ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 	unsigned block_type;
 #if MLSD_ENABLED
 	/* see decompress_multilane.h */
-	size_t mlsd_state[2] = { 0, 0 };
-	size_t prev_block_out = SIZE_MAX;
-	u8 *block_out_start;
-	u8 *mlsd_end = out;	/* the lanes' scratch, or out if none */
-	int mlsd_prio = 0;	/* 0 = unknown, 1 = ok, 2 = low priority */
+	struct mlsd_state mlsd = { 0, 0, 0, 0, 0, out };
 	/*
 	 * Whether the lanes get to decode this block: MLSD_FIRST from its
 	 * start, before the normal decode tables are built, or MLSD_LATER once
@@ -1460,7 +1456,7 @@ ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 		s -= (uintptr_t)s % 64;
 		if ((uintptr_t)in_end <= (uintptr_t)s ||
 		    (uintptr_t)in >= (uintptr_t)out_end)
-			mlsd_end = s;
+			mlsd.scratch = s;
 	}
 #endif
 
@@ -1468,7 +1464,9 @@ next_block:
 	/* Starting to read the next block */
 	;
 #if MLSD_ENABLED
-	block_out_start = out_next;
+	/* (the first block counts as following a large one) */
+	mlsd.prev_block_out = (uintptr_t)out_next - mlsd.block_start;
+	mlsd.block_start = (uintptr_t)out_next;
 	mlsd_block = MLSD_NO;
 #endif
 
@@ -1736,13 +1734,13 @@ next_block:
 
 #if MLSD_ENABLED
 	if (block_type == DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN &&
-	    prev_block_out >= MLSD_MIN_PREV_OUT &&
-	    mlsd_end - out_next >= MLSD_MIN_OUT_BYTES &&
+	    mlsd.prev_block_out >= MLSD_MIN_PREV_OUT &&
+	    mlsd.scratch - out_next >= MLSD_MIN_OUT_BYTES &&
 	    in_end - in_next >= MLSD_MIN_IN_BYTES &&
-	    (mlsd_prio != 0 ||
-	     (mlsd_prio = mlsd_low_priority() ? 2 : 1)) &&
-	    mlsd_prio == 1) {
-		memcpy(((struct mlsd_scratch *)mlsd_end)->lens, d->u.l.lens,
+	    (mlsd.priority != 0 ||
+	     (mlsd.priority = mlsd_low_priority() ? 2 : 1)) &&
+	    mlsd.priority == 1) {
+		memcpy(((struct mlsd_scratch *)mlsd.scratch)->lens, d->u.l.lens,
 		       num_litlen_syms + num_offset_syms);
 		mlsd_block = MLSD_LATER;
 		if (out_next - (u8 *)out >= DEFLATE_MAX_MATCH_OFFSET) {
@@ -1809,10 +1807,9 @@ have_decode_tables:
 			      MLSD_MIN_OUT_BYTES > FASTLOOP_MAX_BYTES_WRITTEN);
 		if (mlsd_block != MLSD_NO) {
 			res = FASTLOOP_BLOCK_NOT_DONE;
-			if (mlsd_end - ctx.out_next >= MLSD_MIN_OUT_BYTES)
+			if (mlsd.scratch - ctx.out_next >= MLSD_MIN_OUT_BYTES)
 				res = ADD_SUFFIX(decompress_multilane)(
-					&ctx, (struct mlsd_scratch *)mlsd_end,
-					in, in_end, mlsd_state,
+					&ctx, &mlsd, in, in_end,
 					num_litlen_syms, num_offset_syms);
 			if (res == FASTLOOP_BLOCK_DONE ||
 			    mlsd_block == MLSD_FIRST ||
@@ -1938,9 +1935,6 @@ fastloop_done:
 
 block_done:
 	/* Finished decoding a block */
-#if MLSD_ENABLED
-	prev_block_out = out_next - block_out_start;
-#endif
 
 	if (!is_final_block)
 		goto next_block;

@@ -76,19 +76,16 @@
  * - MLSD_MIN_IN_BYTES of input and MLSD_MIN_OUT_BYTES of output space before
  *   the scratch remain,
  * - the previous block produced MLSD_MIN_PREV_OUT bytes, and
- * - the length codewords take at least 1/8 of the codespace (the fastloop
- *   does better on runs of literals), or 1/4 if the literal codewords average
- *   more than MLSD_MAX_LIT_BITS bits (then few literal pairs fit in the main
- *   table; such blocks were up to 20% slower on an M1).
+ * - the length codewords take at least 7/32 of the codespace (the fastloop
+ *   does better on runs of literals).
  */
 #ifndef MLSD_MIN_PREV_OUT
 #  define MLSD_MIN_BUF_BYTES	524288
 #  define MLSD_MIN_IN_BYTES	4096
 #  define MLSD_MIN_OUT_BYTES	32768
 #  define MLSD_MIN_PREV_OUT	4096
-#  define MLSD_MIN_LEN_SPACE	(1U << (DEFLATE_MAX_CODEWORD_LEN - 3))
+#  define MLSD_MIN_LEN_SPACE	(7U << (DEFLATE_MAX_CODEWORD_LEN - 5))
 #endif
-#define MLSD_MAX_LIT_BITS	6
 
 #ifndef MLSD_SHARED_DEFINED
 #define MLSD_SHARED_DEFINED
@@ -130,37 +127,28 @@ mlsd_low_priority(void)
 }
 
 /*
- * The gate on the litlen codeword lengths: the length codewords' share of the
- * codespace if the code is complete, from the literals' codeword lengths
+ * The gate on the litlen codeword lengths: whether the length codewords take
+ * at least MLSD_MIN_LEN_SPACE of the codespace
  */
 static forceinline bool
-mlsd_gate(const u8 *lens)
+mlsd_gate(const u8 *lens, unsigned num_syms)
 {
-	uint32x4_t vspace = vdupq_n_u32(0), vbits = vdupq_n_u32(0);
-	u32 lit_space, space;	/* (in units of 1/2 codeword of maximum length) */
+	u32 space = 0;
 	unsigned sym;
 
-	for (sym = 0; sym < DEFLATE_NUM_LITERALS; sym += 8) {
-		const uint16x8_t l = vmovl_u8(vld1_u8(&lens[sym]));
-		/* 2^(16 - len) each, or 0 for an unused symbol */
-		const uint16x8_t sp = vshlq_u16(vdupq_n_u16(1),
-			vreinterpretq_s16_u16(vsubq_u16(vdupq_n_u16(16), l)));
-
-		vspace = vpadalq_u16(vspace, sp);
-		vbits = vpadalq_u16(vbits, vmulq_u16(sp, l));
-	}
-	lit_space = vaddvq_u32(vspace);
-	space = (2U << DEFLATE_MAX_CODEWORD_LEN) - lit_space -
-		(u16)((2U << DEFLATE_MAX_CODEWORD_LEN) >>
-		      lens[DEFLATE_END_OF_BLOCK]);
-	return space >= 2 * MLSD_MIN_LEN_SPACE &&
-	       (space >= 4 * MLSD_MIN_LEN_SPACE ||
-		vaddvq_u32(vbits) <= MLSD_MAX_LIT_BITS * lit_space);
+	NO_VECTORIZE_LOOP
+	for (sym = DEFLATE_END_OF_BLOCK + 1; sym < num_syms; sym++)
+		space += ((1U << DEFLATE_MAX_CODEWORD_LEN) >> lens[sym]) &
+			 ((1U << DEFLATE_MAX_CODEWORD_LEN) - 1);
+	return space >= MLSD_MIN_LEN_SPACE;
 }
 
-/* The lane-format entry for symbol 'sym' with codeword length 'len' */
+/*
+ * The lane-format entry for symbol 'sym' with codeword length 'len';
+ * 'results' is litlen_decode_results or offset_decode_results
+ */
 static forceinline u64
-mlsd_entry(unsigned sym, unsigned len, bool litlen)
+mlsd_entry(unsigned sym, unsigned len, bool litlen, const u32 *results)
 {
 	u32 res, base, mask;
 
@@ -170,7 +158,7 @@ mlsd_entry(unsigned sym, unsigned len, bool litlen)
 	if (litlen && sym == DEFLATE_END_OF_BLOCK)
 		return MLSD_NOOFF | ((u64)MLSD_EOB_LEN << 50) |
 		       (len << 16) | len;
-	res = litlen ? litlen_decode_results[sym] : offset_decode_results[sym];
+	res = results[sym];
 	base = res >> 16;
 	mask = (1U << (res & 0x1F)) - 1;
 	if (litlen)
@@ -197,6 +185,8 @@ ADD_SUFFIX(mlsd_build_table)(struct mlsd_scratch * restrict s,
 	/* (the subtables start after the main or dummy entries) */
 	unsigned sub_end = litlen ? 1U << MLSD_TABLEBITS :
 				    2U << OFFSET_TABLEBITS;
+	const u32 * const results = litlen ? litlen_decode_results :
+					     offset_decode_results;
 	u64 * const ent = s->u.tmp.ent;	/* entries, in codeword order */
 	u16 * const rc = s->u.tmp.rc;	/* codewords, bit-reversed */
 	/* end[len]: the number of codewords of at most this length */
@@ -246,7 +236,7 @@ ADD_SUFFIX(mlsd_build_table)(struct mlsd_scratch * restrict s,
 				const unsigned v = sym + (bsf64(m) >> 2);
 
 				rc[i] = rbit32(code) >> (32 - len);
-				ent[i] = mlsd_entry(v, len, litlen);
+				ent[i] = mlsd_entry(v, len, litlen, results);
 				if (len <= tb)
 					t[rc[i]] = ent[i];
 				if (v < DEFLATE_NUM_LITERALS)
@@ -365,7 +355,15 @@ do {									\
 		out += (x >> 16) & 3;					\
 		src = out - off;					\
 		if (likely(len <= 64 && len <= off)) {			\
-			MLSD_COPY64(out, src);				\
+			const uint8x16_t a = vld1q_u8(src),		\
+					 b = vld1q_u8(src + 16),	\
+					 c = vld1q_u8(src + 32),	\
+					 d = vld1q_u8(src + 48);	\
+									\
+			vst1q_u8(out, a);				\
+			vst1q_u8(out + 16, b);				\
+			vst1q_u8(out + 32, c);				\
+			vst1q_u8(out + 48, d);				\
 		} else if (len == MLSD_EOB_LEN) {			\
 			if (!(x & MLSD_JUMP)) {				\
 				res = FASTLOOP_BLOCK_DONE;		\
@@ -398,18 +396,16 @@ do {									\
  * decode as much of the block as the lanes can, leaving ctx at a symbol
  * boundary (past the end-of-block symbol if the result is
  * FASTLOOP_BLOCK_DONE).  At least DEFLATE_MAX_MATCH_OFFSET bytes must have been
- * written, and the output stops short of 's'.  state[] carries the lanes' bits
- * per step (times 16) and the margin across blocks, as differences from their
- * initial values.
+ * written, and the output stops short of the scratch.
  */
 static NOINLINE ATTRIBUTES enum fastloop_result
 ADD_SUFFIX(decompress_multilane)(struct fastloop_ctx * restrict ctx,
-				 struct mlsd_scratch * restrict s,
+				 struct mlsd_state * restrict state,
 				 const u8 * const in, const u8 * const in_end,
-				 size_t * restrict state,
 				 unsigned num_litlen_syms,
 				 unsigned num_offset_syms)
 {
+	struct mlsd_scratch * const s = (struct mlsd_scratch *)state->scratch;
 	const u64 * const lt = s->lt, * const ot = s->ot;
 	const u8 * const out_limit = (const u8 *)s - MLSD_OUT_MARGIN;
 	const size_t in_limit = (size_t)(in_end - in) * 8 - MLSD_IN_MARGIN;
@@ -418,7 +414,7 @@ ADD_SUFFIX(decompress_multilane)(struct fastloop_ctx * restrict ctx,
 	const u64 *xp = NULL;
 	size_t xbase = 0;
 	size_t end_pos = (size_t)(ctx->in_next - in) * 8 - (u8)ctx->bitsleft;
-	size_t rate16 = state[0] + 12 * 16, margin = state[1] + 256;
+	size_t rate16 = state->rate16 + 12 * 16, margin = state->margin + 256;
 	size_t nrec = 0, total = 0;
 	unsigned cur = 0;
 	enum fastloop_result res = FASTLOOP_BLOCK_NOT_DONE;
@@ -427,7 +423,7 @@ ADD_SUFFIX(decompress_multilane)(struct fastloop_ctx * restrict ctx,
 	/* (s->lt[] has LITLEN_ENOUGH entries) */
 	STATIC_ASSERT(MLSD_TABLEBITS == LITLEN_TABLEBITS);
 	/* (the offset table first: the litlen padding overwrites its lens) */
-	if (!mlsd_gate(s->lens) ||
+	if (!mlsd_gate(s->lens, num_litlen_syms) ||
 	    !ADD_SUFFIX(mlsd_build_table)(s, s->lens + num_litlen_syms,
 					  num_offset_syms, false) ||
 	    !ADD_SUFFIX(mlsd_build_table)(s, s->lens, num_litlen_syms, true))
@@ -444,21 +440,19 @@ ADD_SUFFIX(decompress_multilane)(struct fastloop_ctx * restrict ctx,
 		/* (the jump records are executed too) */
 		const size_t r = (total + MLSD_LANES) / nsteps + 1;
 		u64 (* const recs)[MLSD_LANES] = s->u.recs[cur];
-		size_t dist = MAX(rate16 * nsteps / 16, margin + 64) - margin;
-		size_t base = end_pos & ~(size_t)7, start = end_pos & 7;
+		const size_t dist = MAX(rate16 * nsteps / 16, margin + 64) -
+				    margin;
+		const size_t base = end_pos & ~(size_t)7, start = end_pos & 7;
 		size_t p[MLSD_LANES], q;
 		const u8 *rin;
 		unsigned n, cnt;
 
 		/*
-		 * Start a round of lanes.  Near the end of the input, the last
-		 * round's lanes redo the start of the input instead, unused.
+		 * Start a round of lanes, unless the end of the input is near:
+		 * then the last round's records are left unexecuted.
 		 */
-		if (end_pos + (MLSD_LANES - 1) * dist > in_limit) {
-			if (xp == NULL)
-				break;
-			base = start = dist = 0;
-		}
+		if (end_pos + (MLSD_LANES - 1) * dist > in_limit)
+			break;
 		rin = in + base / 8;
 		for (i = 0; i < MLSD_LANES; i++)
 			p[i] = start + (size_t)i * dist;
@@ -486,11 +480,10 @@ ADD_SUFFIX(decompress_multilane)(struct fastloop_ctx * restrict ctx,
 					MLSD_EXEC(r);
 			}
 			ASSERT(xp == NULL);
-			if (dist == 0)
-				goto done;
 			MLSD_UNROLL_LOOP
 			for (i = 0; i < MLSD_LANES; i++)
-				recs[cnt][i] = (u64)p[i] << 48;
+				recs[cnt][i] = ((u64)p[i] << 48) | MLSD_JUMP |
+					       ((u64)MLSD_EOB_LEN << 18);
 			/*
 			 * Chain the verified records: lane i+1 takes over where
 			 * it has a step at lane i's end.  If a lane has none,
@@ -508,8 +501,6 @@ ADD_SUFFIX(decompress_multilane)(struct fastloop_ctx * restrict ctx,
 				unsigned h = 0;
 
 				q = MLSD_POS(lane[cnt][0]);
-				lane[cnt][0] = ((u64)q << 48) | MLSD_JUMP |
-					       ((u64)MLSD_EOB_LEN << 18);
 				total += cnt - lo;
 				if (i + 1 == MLSD_LANES)
 					break;
@@ -538,13 +529,12 @@ ADD_SUFFIX(decompress_multilane)(struct fastloop_ctx * restrict ctx,
 		nrec += total;
 		cur ^= 1;
 	}
-	if (0) {
-stopped:	/* at end-of-block, or out of space */
+stopped:
+	/* (at end-of-block, out of space or near the end of the input) */
+	if (xp != NULL)
 		end_pos = xbase + MLSD_POS(*xp);
-	}
-done:
-	state[0] = rate16 - 12 * 16;
-	state[1] = margin - 256;
+	state->rate16 = rate16 - 12 * 16;
+	state->margin = margin - 256;
 	ctx->bitbuf = get_unaligned_leword(in + (end_pos >> 3)) >>
 		      (end_pos & 7);
 	ctx->in_next = in + (end_pos >> 3) + sizeof(bitbuf_t) - 1;

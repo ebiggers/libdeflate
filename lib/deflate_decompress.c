@@ -978,26 +978,43 @@ struct libdeflate_decompressor {
 };
 
 #if MLSD_ENABLED
+/*
+ * The lanes' state during a libdeflate_deflate_decompress_ex() call, kept in
+ * memory so that it takes no registers from the rest of the decompressor
+ */
+struct mlsd_state {
+	/*
+	 * The lanes' bits per step (times 16) and margin, carried across
+	 * blocks as differences from their initial values
+	 */
+	size_t rate16;
+	size_t margin;
+	uintptr_t block_start;		/* where this block's output starts */
+	size_t prev_block_out;		/* output bytes of the previous block */
+	uintptr_t priority;		/* 0 = unknown, 1 = ok, 2 = low */
+	u8 *scratch;			/* the lanes' scratch, or 'out' if none */
+};
+
 /* What mlsd_build_table() keeps for each codeword, in the records' space */
 struct mlsd_build_tmp {
-	u64 ent[DEFLATE_MAX_NUM_SYMS];
-	u16 rc[DEFLATE_MAX_NUM_SYMS];
 	u16 end[DEFLATE_MAX_CODEWORD_LEN + 1];
 	u16 lit_end[DEFLATE_MAX_CODEWORD_LEN + 1];
+	u16 rc[DEFLATE_MAX_NUM_SYMS];
+	u64 ent[DEFLATE_MAX_NUM_SYMS];
 };
 
 /*
- * The lanes' decode tables, their records for 2 rounds and the block's codeword
+ * The lanes' records for 2 rounds, their decode tables and the block's codeword
  * lengths (which the litlen decode table overwrites in the decompressor), kept
  * at the end of the output buffer
  */
 struct mlsd_scratch {
-	u64 lt[LITLEN_ENOUGH];
-	u64 ot[OFFSET_ENOUGH + 256];
 	union {
 		u64 recs[2][MLSD_NREC + 1][MLSD_LANES];
 		struct mlsd_build_tmp tmp;
 	} u;
+	u64 lt[LITLEN_ENOUGH];
+	u64 ot[OFFSET_ENOUGH + 256];
 	u8 lens[DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS + 16];
 };
 #endif
