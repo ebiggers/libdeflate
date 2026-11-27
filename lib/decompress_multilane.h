@@ -234,7 +234,7 @@ static NOINLINE ATTRIBUTES bool
 ADD_SUFFIX(mlsd_build_table)(struct mlsd_scratch * restrict s,
 			     u8 * restrict lens, unsigned num_syms, bool litlen)
 {
-	u64 * const t = litlen ? s->lt : s->ot;
+	u64 * const t = litlen ? s->lt : &MLSD_OT(s, 0);
 	const unsigned tb = litlen ? MLSD_TABLEBITS : OFFSET_TABLEBITS;
 	/* (the subtables start after the main or dummy entries) */
 	unsigned sub_end = litlen ? 1U << MLSD_TABLEBITS :
@@ -391,6 +391,13 @@ do {									\
 	eob |= (((entry) >> 50) & 0x1FF) == MLSD_EOB_LEN;		\
 } while (0)
 
+/* Keeps x86_64 clang from moving the update of p past the other lanes' steps */
+#if defined(__clang__) && defined(ARCH_X86_64)
+#  define MLSD_PIN(p)	__asm__ volatile("" : "+r" (p))
+#else
+#  define MLSD_PIN(p)	(void)0
+#endif
+
 /*
  * Decode the litlen entry (and any offset) at bit position 'p' into the record
  * *rp, branch-free except for the rare MLSD_SLOW entries; advance 'p'.
@@ -404,13 +411,15 @@ do {									\
 	if (unlikely(e1_ & MLSD_SLOW))					\
 		MLSD_RESOLVE(e1_, w_);					\
 	w1_ = w_ >> (e1_ & 63);						\
-	e2_ = s->ot[(w1_ & 0xFF) | (e1_ & MLSD_NOOFF)];			\
+	e2_ = MLSD_OT(s, (w1_ & 0xFF) | (e1_ & MLSD_NOOFF));		\
 	if (unlikely(e2_ & MLSD_SLOW))					\
-		e2_ = MLSD_SUB_ENTRY(s->ot, e2_, w1_, OFFSET_TABLEBITS);\
+		e2_ = MLSD_SUB_ENTRY(&MLSD_OT(s, 0), e2_, w1_,		\
+				     OFFSET_TABLEBITS);			\
 	e1_ += (u32)e2_;						\
 	*(rp) = e1_ + (((w1_ >> (e2_ & 63)) & (e2_ >> 32)) << 16);	\
 	put_unaligned_le16((u16)(p), (u8 *)(rp));			\
 	(p) += (e1_ >> 9) & 63;						\
+	MLSD_PIN(p);							\
 } while (0)
 
 /*

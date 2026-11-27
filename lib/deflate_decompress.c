@@ -1037,8 +1037,14 @@ struct mlsd_scratch {
 		u64 recs[1 + MLSD_INTERLEAVE][MLSD_NREC + 1][MLSD_LANES];
 		struct mlsd_build_tmp tmp;
 	} u;
+#ifdef ARCH_X86_64	/* one array: one register for both tables */
+	u64 lt[LITLEN_ENOUGH + OFFSET_ENOUGH + 256];
+#  define MLSD_OT(s, i)	((s)->lt[LITLEN_ENOUGH + (i)])
+#else
 	u64 lt[LITLEN_ENOUGH];
 	u64 ot[OFFSET_ENOUGH + 256];
+#  define MLSD_OT(s, i)	((s)->ot[i])
+#endif
 	u8 lens[DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS + 16];
 };
 #endif
