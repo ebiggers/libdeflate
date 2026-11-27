@@ -4286,7 +4286,6 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		break;
 #if SUPPORT_NEAR_OPTIMAL_PARSING
 	case 10:
-		deflate_init_near_optimal_compressor(c);
 		c->max_search_depth = 35;
 		c->nice_match_length = 75;
 		c->p.n.max_optim_passes = 2;
@@ -4295,7 +4294,6 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		c->p.n.max_len_to_optimize_static_block = 0;
 		break;
 	case 11:
-		deflate_init_near_optimal_compressor(c);
 		c->max_search_depth = 100;
 		c->nice_match_length = 150;
 		c->p.n.max_optim_passes = 4;
@@ -4305,7 +4303,6 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		break;
 	case 12:
 	default:
-		deflate_init_near_optimal_compressor(c);
 		c->max_search_depth = 300;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		c->p.n.max_optim_passes = 10;
@@ -4316,6 +4313,10 @@ libdeflate_alloc_compressor_ex(int compression_level,
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 	}
 
+#if SUPPORT_NEAR_OPTIMAL_PARSING
+	if (compression_level >= 10)
+		deflate_init_near_optimal_compressor(c);
+#endif
 	deflate_init_static_codes(c);
 
 	return c;
