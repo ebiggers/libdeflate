@@ -78,15 +78,14 @@
  *   the scratch remain,
  * - the previous block produced MLSD_MIN_PREV_OUT bytes, and
  * - the length codewords take at least MLSD_GATE32/32 of the codespace (the
- *   fastloop does better on runs of literals).
+ *   fastloop does better on runs of literals), weighted by MLSD_GATE_LEN.
  */
 #ifndef MLSD_MIN_PREV_OUT
 #  define MLSD_MIN_BUF_BYTES	524288
 #  define MLSD_MIN_IN_BYTES	4096
 #  define MLSD_MIN_OUT_BYTES	32768
 #  define MLSD_MIN_PREV_OUT	4096
-#  define MLSD_MIN_LEN_SPACE	\
-	((u32)MLSD_GATE32 << (DEFLATE_MAX_CODEWORD_LEN - 5))
+#  define MLSD_MIN_LEN_SPACE	(MLSD_GATE32 << (DEFLATE_MAX_CODEWORD_LEN - 5))
 #endif
 
 #ifndef MLSD_SHARED_DEFINED
@@ -174,19 +173,25 @@ mlsd_move(u8 *dst, const u8 *src, bool all64)
 
 /*
  * The part of the litlen codespace, in units of 2^-DEFLATE_MAX_CODEWORD_LEN,
- * that the codewords of the symbols from 'first' on take
+ * that the codewords of the length symbols from 'first' on take, each counted
+ * 1 - (its mean length) / 'max_len' times unless 'max_len' is 0
  */
-static forceinline u32
-mlsd_codespace(const u8 *lens, unsigned first, unsigned num_syms)
+static forceinline s32
+mlsd_codespace(const u8 *lens, unsigned first, unsigned num_syms, s32 max_len)
 {
-	u32 space = 0;
+	s32 space = 0;
 	unsigned sym;
 
 	NO_VECTORIZE_LOOP
-	for (sym = first; sym < num_syms; sym++)
-		space += ((1U << DEFLATE_MAX_CODEWORD_LEN) >> lens[sym]) &
-			 ((1U << DEFLATE_MAX_CODEWORD_LEN) - 1);
-	return space;
+	for (sym = first; sym < num_syms; sym++) {
+		const u32 res = litlen_decode_results[sym];
+
+		space += (s32)(((1U << DEFLATE_MAX_CODEWORD_LEN) >> lens[sym]) &
+			       ((1U << DEFLATE_MAX_CODEWORD_LEN) - 1)) *
+			 (max_len == 0 ? 1 : 2 * max_len + 1 -
+			  2 * (s32)(res >> 16) - (1 << (res & 0x1F)));
+	}
+	return max_len == 0 ? space : space / (2 * max_len);
 }
 
 /*
@@ -516,16 +521,18 @@ ADD_SUFFIX(decompress_multilane)(struct fastloop_ctx * restrict ctx,
 	bool eob = false;
 	enum fastloop_result res = FASTLOOP_BLOCK_NOT_DONE;
 	/* The gate on the litlen codeword lengths */
-	const u32 len_space = mlsd_codespace(s->lens, DEFLATE_FIRST_LEN_SYM,
-					     num_litlen_syms);
+	const s32 len_space = mlsd_codespace(s->lens, DEFLATE_FIRST_LEN_SYM,
+					     num_litlen_syms, MLSD_GATE_LEN);
 	/*
 	 * Matches of at least this length are copied 64 bytes at once instead
 	 * of 32: all are if many of the block's matches are long, so that the
-	 * branch on it is predicted.
+	 * branch on it is predicted.  (Few such blocks pass a MLSD_GATE_LEN
+	 * gate, and x86_64 clang needs the register.)
 	 */
-	const u32 copy64_len = mlsd_codespace(s->lens, MLSD_LONG_LEN_SYM,
-					      num_litlen_syms) * 8 >= len_space ?
-			       0 : 33;
+	const u32 copy64_len = !MLSD_GATE_LEN &&
+			       mlsd_codespace(s->lens, MLSD_LONG_LEN_SYM,
+					      num_litlen_syms, 0) * 8 >=
+			       len_space ? 0 : 33;
 
 	/* (s->lt[] has LITLEN_ENOUGH entries) */
 	STATIC_ASSERT(MLSD_TABLEBITS <= LITLEN_TABLEBITS);
