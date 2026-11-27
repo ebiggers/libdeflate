@@ -139,15 +139,19 @@ allow_512bit_vectors(const u32 manufacturer[3], u32 family, u32 model)
 
 /*
  * Use multi-lane decoding on the CPUs it has been measured to help on: AMD
- * Zen 5.
+ * Zen 4 and Zen 5, and Intel Granite Rapids and Emerald Rapids.
  */
 static inline bool
-allow_mlsd(const u32 manufacturer[3], u32 family)
+allow_mlsd(const u32 manufacturer[3], u32 family, u32 model)
 {
 #ifdef TEST_SUPPORT__DO_NOT_USE
 	return true;
 #endif
-	return memcmp(manufacturer, "AuthenticAMD", 12) == 0 && family >= 0x1a;
+	if (memcmp(manufacturer, "AuthenticAMD", 12) == 0)
+		return family >= 0x1a || (family == 0x19 && /* Zen 4 */
+			(model - 0x10 < 0x10 || model - 0x60 < 0x50));
+	return memcmp(manufacturer, "GenuineIntel", 12) == 0 &&
+	       family == 6 && (model == 0xad || model == 0xcf);
 }
 
 /* Initialize libdeflate_x86_cpu_features. */
@@ -217,7 +221,7 @@ void libdeflate_init_x86_cpu_features(void)
 	}
 
 	if ((features & X86_CPU_FEATURE_BMI2) &&
-	    allow_mlsd(manufacturer, family))
+	    allow_mlsd(manufacturer, family, model))
 		features |= X86_CPU_FEATURE_MLSD;
 
 	if ((xcr0 & 0x6) == 0x6) {
