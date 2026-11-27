@@ -381,13 +381,33 @@ do {									\
 
 /*
  * Multi-lane speculative decoding of Huffman blocks, see
- * decompress_multilane.h.  It needs a wide core, so it's enabled only on Apple
- * arm64; define LIBDEFLATE_NO_MLSD to disable it.
+ * decompress_multilane.h.  It's built for x86_64 and for Apple arm64, where it
+ * has been measured, and used on the CPUs that mlsd_usable() accepts; define
+ * LIBDEFLATE_NO_MLSD to leave it out.
  */
-#if defined(__APPLE__) && defined(ARCH_ARM64) && !defined(FREESTANDING) && \
+#if (defined(ARCH_X86_64) || \
+     (defined(ARCH_ARM64) && defined(__APPLE__) && !defined(FREESTANDING))) && \
+	(defined(__clang__) || GCC_PREREQ(8, 1)) && \
 	!defined(LIBDEFLATE_NO_MLSD)
 #  define MLSD_ENABLED		1
-#  define MLSD_LANES		4	/* lanes decoded at once */
+   /*
+    * MLSD_LANES is the number of lanes decoded at once.  With
+    * MLSD_INTERLEAVE, a round's records are executed during the next round's
+    * steps instead of right away, which is slower on x86_64.  The lanes
+    * decode a block if its length codewords take at least MLSD_GATE32 32nds
+    * of the codespace: the fastloop does better on runs of literals.
+    */
+#  ifndef MLSD_LANES		/* (can be overridden for testing) */
+#    ifdef ARCH_X86_64
+#      define MLSD_LANES	4
+#      define MLSD_INTERLEAVE	0
+#      define MLSD_GATE32	10
+#    else
+#      define MLSD_LANES	6
+#      define MLSD_INTERLEAVE	1
+#      define MLSD_GATE32	7
+#    endif
+#  endif
 #  ifndef MLSD_ROUND_STEPS	/* (can be overridden for testing) */
 #    define MLSD_ROUND_STEPS	256	/* max steps per lane per round */
 #    define MLSD_CATCHUP	64	/* max extra steps until the lanes meet */
@@ -991,26 +1011,30 @@ struct mlsd_state {
 	size_t margin;
 	uintptr_t block_start;		/* where this block's output starts */
 	size_t prev_block_out;		/* output bytes of the previous block */
-	uintptr_t priority;		/* 0 = unknown, 1 = ok, 2 = low */
+	uintptr_t usable;		/* mlsd_usable(): 0 = unknown, 1, 2 = no */
 	u8 *scratch;			/* the lanes' scratch, or 'out' if none */
+	/* The numbers of codeword lengths in the scratch */
+	unsigned num_litlen_syms;
+	unsigned num_offset_syms;
 };
 
 /* What mlsd_build_table() keeps for each codeword, in the records' space */
 struct mlsd_build_tmp {
 	u16 end[DEFLATE_MAX_CODEWORD_LEN + 1];
 	u16 lit_end[DEFLATE_MAX_CODEWORD_LEN + 1];
-	u16 rc[DEFLATE_MAX_NUM_SYMS];
-	u64 ent[DEFLATE_MAX_NUM_SYMS];
+	u16 slow[DEFLATE_NUM_LITLEN_SYMS - DEFLATE_FIRST_LEN_SYM];
+	u16 rc[1 + DEFLATE_MAX_NUM_SYMS];
+	u64 ent[1 + DEFLATE_MAX_NUM_SYMS];
 };
 
 /*
- * The lanes' records for 2 rounds, their decode tables and the block's codeword
- * lengths (which the litlen decode table overwrites in the decompressor), kept
- * at the end of the output buffer
+ * The lanes' records for a round (two with MLSD_INTERLEAVE), their decode
+ * tables and the block's codeword lengths (which the litlen decode table
+ * overwrites in the decompressor), kept at the end of the output buffer
  */
 struct mlsd_scratch {
 	union {
-		u64 recs[2][MLSD_NREC + 1][MLSD_LANES];
+		u64 recs[1 + MLSD_INTERLEAVE][MLSD_NREC + 1][MLSD_LANES];
 		struct mlsd_build_tmp tmp;
 	} u;
 	u64 lt[LITLEN_ENOUGH];
