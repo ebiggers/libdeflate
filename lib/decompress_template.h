@@ -1431,12 +1431,17 @@ ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 	unsigned block_type;
 #if MLSD_ENABLED
 	/* see decompress_multilane.h */
-	size_t mlsd_state[2] = { 12 * 16, 256 };
+	size_t mlsd_state[2] = { 0, 0 };
 	size_t prev_block_out = SIZE_MAX;
 	u8 *block_out_start;
 	u8 *mlsd_end = out;	/* the lanes' scratch, or out if none */
 	int mlsd_prio = 0;	/* 0 = unknown, 1 = ok, 2 = low priority */
-	bool mlsd_later;	/* use the lanes after the first 32 KiB */
+	/*
+	 * Whether the lanes get to decode this block: MLSD_FIRST from its
+	 * start, before the normal decode tables are built, or MLSD_LATER once
+	 * the checked fastloop has written the first 32 KiB.
+	 */
+	enum { MLSD_NO, MLSD_LATER, MLSD_FIRST } mlsd_block;
 	/* a copy of d->u.l.lens, which the litlen decode table overwrites */
 	u8 mlsd_lens[DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS];
 #endif
@@ -1466,7 +1471,7 @@ next_block:
 	;
 #if MLSD_ENABLED
 	block_out_start = out_next;
-	mlsd_later = false;
+	mlsd_block = MLSD_NO;
 #endif
 
 	STATIC_ASSERT(CAN_CONSUME(1 + 2 + 5 + 5 + 4 + 3));
@@ -1739,37 +1744,15 @@ next_block:
 	    (mlsd_prio != 0 ||
 	     (mlsd_prio = mlsd_low_priority() ? 2 : 1)) &&
 	    mlsd_prio == 1) {
-		/*
-		 * The lanes need DEFLATE_MAX_MATCH_OFFSET bytes of output
-		 * first, so the checked fastloop starts the block.
-		 */
-		if (out_next - (u8 *)out < DEFLATE_MAX_MATCH_OFFSET) {
-			memcpy(mlsd_lens, d->u.l.lens,
-			       num_litlen_syms + num_offset_syms);
-			mlsd_later = true;
-		} else if (ADD_SUFFIX(mlsd_build_tables)(
-				d, (struct mlsd_scratch *)mlsd_end, d->u.l.lens,
-				num_litlen_syms, num_offset_syms)) {
-			struct fastloop_ctx ctx = {
-				.out = out,
-				.in_next = in_next,
-				.out_next = out_next,
-				.bitbuf = bitbuf,
-				.bitsleft = bitsleft,
-			};
-			enum fastloop_result res;
-
-			res = ADD_SUFFIX(decompress_multilane)(
-					&ctx, (struct mlsd_scratch *)mlsd_end,
-					in, in_end, mlsd_state);
-			in_next = ctx.in_next;
-			out_next = ctx.out_next;
-			bitbuf = ctx.bitbuf;
-			bitsleft = ctx.bitsleft;
-			if (res == FASTLOOP_BLOCK_DONE)
-				goto block_done;
+		memcpy(mlsd_lens, d->u.l.lens,
+		       num_litlen_syms + num_offset_syms);
+		mlsd_block = MLSD_LATER;
+		if (out_next - (u8 *)out >= DEFLATE_MAX_MATCH_OFFSET) {
+			mlsd_block = MLSD_FIRST;
+			goto have_decode_tables;
 		}
 	}
+build_decode_tables:
 #endif
 
 	SAFETY_CHECK(ADD_SUFFIX(build_offset_decode_table)(d, num_litlen_syms,
@@ -1821,24 +1804,25 @@ have_decode_tables:
 			    ctx.in_next >= in_fastloop_end ||
 			    ctx.out_next >= out_fastloop_end)
 				goto fastloop_done;
-#if MLSD_ENABLED
-			if (mlsd_later &&
-			    mlsd_end - ctx.out_next >= MLSD_MIN_OUT_BYTES &&
-			    ADD_SUFFIX(mlsd_build_tables)(
-				    d, (struct mlsd_scratch *)mlsd_end,
-				    mlsd_lens, num_litlen_syms,
-				    num_offset_syms)) {
-				/* The rest of the block with the lanes */
-				res = ADD_SUFFIX(decompress_multilane)(
-					&ctx, (struct mlsd_scratch *)mlsd_end,
-					in, in_end, mlsd_state);
-				if (res == FASTLOOP_BLOCK_DONE ||
-				    ctx.in_next >= in_fastloop_end ||
-				    ctx.out_next >= out_fastloop_end)
-					goto fastloop_done;
-			}
-#endif
 		}
+#if MLSD_ENABLED
+		/* (an MLSD_FIRST block always gets here) */
+		STATIC_ASSERT(MLSD_MIN_IN_BYTES > FASTLOOP_MAX_BYTES_READ &&
+			      MLSD_MIN_OUT_BYTES > FASTLOOP_MAX_BYTES_WRITTEN);
+		if (mlsd_block != MLSD_NO) {
+			res = FASTLOOP_BLOCK_NOT_DONE;
+			if (mlsd_end - ctx.out_next >= MLSD_MIN_OUT_BYTES)
+				res = ADD_SUFFIX(decompress_multilane)(
+					d, &ctx, (struct mlsd_scratch *)mlsd_end,
+					in, in_end, mlsd_state, mlsd_lens,
+					num_litlen_syms, num_offset_syms);
+			if (res == FASTLOOP_BLOCK_DONE ||
+			    mlsd_block == MLSD_FIRST ||
+			    ctx.in_next >= in_fastloop_end ||
+			    ctx.out_next >= out_fastloop_end)
+				goto fastloop_done;
+		}
+#endif
 		res = ADD_SUFFIX(decompress_fastloop_unchecked)(
 				d, &ctx, in_fastloop_end, out_fastloop_end,
 				litlen_tablemask);
@@ -1850,6 +1834,13 @@ fastloop_done:
 		bitsleft = ctx.bitsleft;
 		if (res == FASTLOOP_BLOCK_DONE)
 			goto block_done;
+#if MLSD_ENABLED
+		if (mlsd_block == MLSD_FIRST) {
+			/* The normal decode tables are needed after all. */
+			mlsd_block = MLSD_NO;
+			goto build_decode_tables;
+		}
+#endif
 	}
 
 	/*
