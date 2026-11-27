@@ -416,8 +416,12 @@ ADD_SUFFIX(build_decode_table)(u32 decode_table[],
 		if (codespace_used == 0) {
 			sym = 0; /* arbitrary */
 		} else {
-			if (codespace_used != (1U << (max_codeword_len - 1)) ||
-			    len_counts[1] != 1)
+			/*
+			 * max_codeword_len is the longest length used, and an
+			 * incomplete code whose codewords all have length 1 has
+			 * exactly 1 codeword.
+			 */
+			if (max_codeword_len != 1)
 				return false;
 			sym = sorted_syms[0];
 		}
