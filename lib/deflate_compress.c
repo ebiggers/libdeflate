@@ -3139,7 +3139,7 @@ deflate_compute_true_cost(struct libdeflate_compressor *c)
 }
 
 /* Set the current cost model from the codeword lengths specified in @lens. */
-static void
+static NOINLINE void
 deflate_set_costs_from_codes(struct libdeflate_compressor *c,
 			     const struct deflate_lens *lens)
 {
