@@ -390,7 +390,8 @@ do {									\
 #  define MLSD_LANES		4	/* lanes decoded at once */
 #  ifndef MLSD_ROUND_STEPS	/* (can be overridden for testing) */
 #    define MLSD_ROUND_STEPS	256	/* max steps per lane per round */
-#    define MLSD_CATCHUP	64	/* max extra steps to catch up */
+#    define MLSD_CATCHUP	64	/* max extra steps until the lanes meet */
+#    define MLSD_EXTEND		8	/* ... this many at a time */
 #  endif
 #  define MLSD_NREC		(MLSD_ROUND_STEPS + MLSD_CATCHUP)
 #  define MLSD_TABLEBITS	12	/* litlen main table bits */
@@ -977,15 +978,27 @@ struct libdeflate_decompressor {
 };
 
 #if MLSD_ENABLED
+/* What mlsd_build_table() keeps for each codeword, in the records' space */
+struct mlsd_build_tmp {
+	u64 ent[DEFLATE_MAX_NUM_SYMS];
+	u16 rc[DEFLATE_MAX_NUM_SYMS];
+	u16 end[DEFLATE_MAX_CODEWORD_LEN + 1];
+	u16 lit_end[DEFLATE_MAX_CODEWORD_LEN + 1];
+};
+
 /*
- * The lanes' decode tables, and their records and bit positions for 2 rounds,
- * kept at the end of the output buffer
+ * The lanes' decode tables, their records for 2 rounds and the block's codeword
+ * lengths (which the litlen decode table overwrites in the decompressor), kept
+ * at the end of the output buffer
  */
 struct mlsd_scratch {
 	u64 lt[LITLEN_ENOUGH];
 	u64 ot[OFFSET_ENOUGH + 256];
-	u64 recs[2][MLSD_LANES][MLSD_NREC];
-	u16 poss[2][MLSD_LANES][MLSD_NREC + 1];
+	union {
+		u64 recs[2][MLSD_NREC + 1][MLSD_LANES];
+		struct mlsd_build_tmp tmp;
+	} u;
+	u8 lens[DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS + 16];
 };
 #endif
 

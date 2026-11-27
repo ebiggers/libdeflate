@@ -1442,8 +1442,6 @@ ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 	 * the checked fastloop has written the first 32 KiB.
 	 */
 	enum { MLSD_NO, MLSD_LATER, MLSD_FIRST } mlsd_block;
-	/* a copy of d->u.l.lens, which the litlen decode table overwrites */
-	u8 mlsd_lens[DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS];
 #endif
 	unsigned num_litlen_syms;
 	unsigned num_offset_syms;
@@ -1744,7 +1742,7 @@ next_block:
 	    (mlsd_prio != 0 ||
 	     (mlsd_prio = mlsd_low_priority() ? 2 : 1)) &&
 	    mlsd_prio == 1) {
-		memcpy(mlsd_lens, d->u.l.lens,
+		memcpy(((struct mlsd_scratch *)mlsd_end)->lens, d->u.l.lens,
 		       num_litlen_syms + num_offset_syms);
 		mlsd_block = MLSD_LATER;
 		if (out_next - (u8 *)out >= DEFLATE_MAX_MATCH_OFFSET) {
@@ -1813,8 +1811,8 @@ have_decode_tables:
 			res = FASTLOOP_BLOCK_NOT_DONE;
 			if (mlsd_end - ctx.out_next >= MLSD_MIN_OUT_BYTES)
 				res = ADD_SUFFIX(decompress_multilane)(
-					d, &ctx, (struct mlsd_scratch *)mlsd_end,
-					in, in_end, mlsd_state, mlsd_lens,
+					&ctx, (struct mlsd_scratch *)mlsd_end,
+					in, in_end, mlsd_state,
 					num_litlen_syms, num_offset_syms);
 			if (res == FASTLOOP_BLOCK_DONE ||
 			    mlsd_block == MLSD_FIRST ||
