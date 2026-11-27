@@ -1437,6 +1437,7 @@ ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 	u8 *mlsd_end = out;	/* the lanes' scratch, or out if none */
 	int mlsd_prio = 0;	/* 0 = unknown, 1 = ok, 2 = low priority */
 	bool mlsd_later;	/* use the lanes after the first 32 KiB */
+	/* a copy of d->u.l.lens, which the litlen decode table overwrites */
 	u8 mlsd_lens[DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS];
 #endif
 	unsigned num_litlen_syms;

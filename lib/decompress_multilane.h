@@ -10,28 +10,30 @@
  * step decodes a litlen entry (and the offset after a length) into a 64-bit
  * record and saves its bit position.
  *
- * Lane i+1 takes over where lane i ended if that is one of its positions
- * (found by binary search), as both then decode the same symbols; otherwise
- * lane i is extended until it is.  The verified records are executed while
- * the lanes decode the next round (the lanes are ALU-bound, the execution
- * store-bound).
+ * Lane i+1 takes over where lane i ended if it has a step at that bit position
+ * (found by binary search), as both decode the same symbols from there;
+ * otherwise lane i is extended until they meet.  The verified records are
+ * executed while the lanes decode the next round (the lanes are ALU-bound, the
+ * execution store-bound).
  *
  * The lanes' tables have 64-bit entries holding the record bits ready to be
  * added up.  They and the records live at the end of the output buffer, where
  * the lanes' output stops (struct mlsd_scratch).  Litlen entries, including
  * literal+literal and literal+length entries as in the normal table:
  *
- *	Bit 58-32:  bits 26-0 of the record, or the subtable start index
+ *	Bit 58-32:  bits 26-0 of the record
  *	Bit 31-27:  extra length bits mask
- *	Bit 21-16:  codeword length (subtable bits, if subtable pointer)
- *	Bit 14:     1 if subtable pointer (MLSD_SUB)
+ *	Bit 21-16:  codeword length
  *	Bit 8:      1 if no offset follows (MLSD_NOOFF)
- *	Bit 5-0:    codeword length + extra bits (main table bits, if pointer)
+ *	Bit 5-0:    codeword length + extra bits
  *
  * Offset entries differ in bits 47-32 (offset base), 31-19 (extra bits mask)
- * and 13-8 (codeword length).  Entries 256-511 consume no bits and give
- * MLSD_DUMMY_OFF: literal and EOB steps OR MLSD_NOOFF into the offset table
- * index instead of selecting.  Records:
+ * and 13-8 (codeword length).  Offset table entries 256-511 consume no bits and
+ * give MLSD_DUMMY_OFF: literal and EOB steps OR MLSD_NOOFF into the offset
+ * table index instead of selecting.  Subtable entries hold the full codeword
+ * length; subtable pointers have the subtable start index in bits 58-32, the
+ * index mask in bits 31-24, bit 14 set (MLSD_SUB), and the main table bits in
+ * bits 5-0.  Records:
  *
  *	Bit 47-32:  match offset (MLSD_DUMMY_OFF if none)
  *	Bit 26-18:  match length (0 if none, MLSD_EOB_LEN if EOB)
@@ -57,7 +59,7 @@
  * - the length codewords take at least 1/8 of the codespace (the fastloop
  *   does better on runs of literals), or 1/4 if the literal codewords average
  *   more than MLSD_MAX_LIT_BITS bits (then few literal pairs fit in the main
- *   table, and such blocks were up to 20% slower with the lanes on an M1).
+ *   table; such blocks were up to 20% slower on an M1).
  */
 #ifndef MLSD_MIN_PREV_OUT
 #  define MLSD_MIN_BUF_BYTES	524288
@@ -170,6 +172,7 @@ ADD_SUFFIX(mlsd_build_table)(u64 * restrict t, const u8 * restrict lens,
 	for (; sym < num_syms; sym++)
 		cnt4[0][lens[sym]]++;
 	start[1] = 0;
+	NO_UNROLL_LOOP
 	for (len = 1; len <= DEFLATE_MAX_CODEWORD_LEN; len++) {
 		count[len] = cnt4[0][len] + cnt4[1][len] + cnt4[2][len] +
 			     cnt4[3][len];
@@ -191,14 +194,17 @@ ADD_SUFFIX(mlsd_build_table)(u64 * restrict t, const u8 * restrict lens,
 			return false;
 	}
 	for (sym = 0; sym < num_syms; sym++) {
-		if (lens[sym] != 0)
-			sorted[pos[lens[sym]]++] = sym;
+		len = lens[sym];
+		if (len != 0) {
+			ent[pos[len]] = mlsd_entry(sym, len, litlen);
+			sorted[pos[len]++] = sym;
+		}
 	}
 	for (i = 0, len = 1; len <= tb; len++) {
 		memcpy(&t[1U << (len - 1)], t, sizeof(t[0]) << (len - 1));
 		for (n = count[len]; n != 0; n--, i++) {
 			rc[i] = cw;
-			ent[i] = t[cw] = mlsd_entry(sorted[i], len, litlen);
+			t[cw] = ent[i];
 			if (cw != (1U << len) - 1) {	/* next codeword */
 				sym = 1U << bsr32(cw ^ ((1U << len) - 1));
 				cw = (cw & (sym - 1)) | sym;
@@ -227,8 +233,6 @@ ADD_SUFFIX(mlsd_build_table)(u64 * restrict t, const u8 * restrict lens,
 	}
 	/* Longer codewords, in subtables (as in build_decode_table()) */
 	for (; i < start[DEFLATE_MAX_CODEWORD_LEN + 1]; i++) {
-		u64 e;
-
 		len = lens[sorted[i]];
 		if ((cw & ((1U << tb) - 1)) != prefix) {
 			unsigned bits = len - tb;
@@ -241,12 +245,11 @@ ADD_SUFFIX(mlsd_build_table)(u64 * restrict t, const u8 * restrict lens,
 			prefix = cw & ((1U << tb) - 1);
 			sub = end;
 			end += 1U << bits;
-			t[prefix] = ((u64)sub << 32) | MLSD_SUB |
-				    (bits << (litlen ? 16 : 8)) | tb;
+			t[prefix] = ((u64)sub << 32) |
+				    (((1U << bits) - 1) << 24) | MLSD_SUB | tb;
 		}
-		e = mlsd_entry(sorted[i], len - tb, litlen);
 		for (n = sub + (cw >> tb); n < end; n += 1U << (len - tb))
-			t[n] = e;
+			t[n] = ent[i];
 		if (cw != (1U << len) - 1) {
 			n = 1U << bsr32(cw ^ ((1U << len) - 1));
 			cw = (cw & (n - 1)) | n;
@@ -282,17 +285,10 @@ ADD_SUFFIX(mlsd_build_tables)(struct libdeflate_decompressor * restrict d,
 					    d->sorted_syms);
 }
 
-/* Resolve a subtable pointer into an entry that looks like a main-table one. */
-static forceinline u64
-ADD_SUFFIX(mlsd_sub)(const u64 *table, u64 entry, u64 bits, unsigned cw_shift)
-{
-	const u32 mb = entry & 63;
-	const u64 sub = table[(u32)(entry >> 32) +
-			      ((bits >> mb) &
-			       ((1U << ((entry >> cw_shift) & 63)) - 1))];
-
-	return sub + mb + ((u64)mb << cw_shift);
-}
+/* Resolve a subtable pointer to its entry, which works like a main-table one */
+#define MLSD_SUB_ENTRY(table, entry, bits)				\
+	((table)[(u32)((entry) >> 32) +					\
+		 (((bits) >> ((entry) & 63)) & ((u32)(entry) >> 24))])
 
 /*
  * Decode the litlen entry (and any offset) at bit position 'p' into the record
@@ -306,11 +302,11 @@ do {									\
 	u64 w1_, e2_, x1_, x2_;						\
 									\
 	if (unlikely(e1_ & MLSD_SUB))					\
-		e1_ = ADD_SUFFIX(mlsd_sub)(lt, e1_, w_, 16);		\
+		e1_ = MLSD_SUB_ENTRY(lt, e1_, w_);			\
 	w1_ = w_ >> (e1_ & 63);						\
 	e2_ = ot[(w1_ & 0xFF) | (e1_ & MLSD_NOOFF)];			\
 	if (unlikely(e2_ & MLSD_SUB))					\
-		e2_ = ADD_SUFFIX(mlsd_sub)(ot, e2_, w1_, 8);		\
+		e2_ = MLSD_SUB_ENTRY(ot, e2_, w1_);			\
 	x1_ = (w_ >> ((e1_ >> 16) & 63)) & ((u32)e1_ >> 27);		\
 	x2_ = (w1_ >> ((e2_ >> 8) & 63)) & ((u32)e2_ >> 19);		\
 	*(rp) = (e1_ >> 32) + (x1_ << 18) +				\
@@ -382,9 +378,9 @@ do {									\
 /*
  * Run the lanes from pos[] for 'nsteps' steps while executing the records of
  * seg[0..nseg-1], about 'r' per step, at *out_p.  Stop at an end-of-block
- * record, or at the next record once *out_p is past 'out_limit' (after which
- * 'r' more records must fit), and return a pointer to it; else return NULL.
- * At least DEFLATE_MAX_MATCH_OFFSET bytes must have been written.
+ * record, or at the next record once *out_p is past 'out_limit' (which must
+ * leave room for 'r' more records), and return a pointer to it; else return
+ * NULL.  At least DEFLATE_MAX_MATCH_OFFSET bytes must have been written.
  */
 static NOINLINE ATTRIBUTES const u64 *
 ADD_SUFFIX(mlsd_run)(const u8 * restrict in, size_t * restrict pos,
