@@ -1693,7 +1693,8 @@ run_extended:
 			}
 		}
 
-		/* Output any remaining lengths without RLE. */
+		/* Output any remaining lengths (at most 3) without RLE. */
+		NO_UNROLL_LOOP
 		while (run_start != run_end) {
 			precode_freqs[len]++;
 			*itemptr++ = len;
