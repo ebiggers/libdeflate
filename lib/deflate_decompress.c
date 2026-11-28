@@ -1041,13 +1041,17 @@ struct mlsd_scratch {
 		u64 recs[1 + MLSD_INTERLEAVE][MLSD_NREC + 1][MLSD_LANES];
 		struct mlsd_build_tmp tmp;
 	} u;
-#ifdef ARCH_X86_64	/* one array: one register for both tables */
+#ifdef ARCH_X86_64	/* one register for both tables, none for the input */
 	u64 lt[LITLEN_ENOUGH + OFFSET_ENOUGH + 256];
 #  define MLSD_OT(s, i)	((s)->lt[LITLEN_ENOUGH + (i)])
+#  define MLSD_ADDR(in, pos)	((const u8 *)(uintptr_t)((pos) >> 3))
+#  define MLSD_BITPOS(in, p)	((u64)(uintptr_t)(p) * 8)
 #else
 	u64 lt[LITLEN_ENOUGH];
 	u64 ot[OFFSET_ENOUGH + 256];
 #  define MLSD_OT(s, i)	((s)->ot[i])
+#  define MLSD_ADDR(in, pos)	((in) + ((pos) >> 3))
+#  define MLSD_BITPOS(in, p)	((u64)((p) - (in)) * 8)
 #endif
 	u8 lens[DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS + 16];
 };

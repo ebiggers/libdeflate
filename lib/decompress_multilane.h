@@ -410,7 +410,7 @@ do {									\
  */
 #define MLSD_STEP(in, p, rp)						\
 do {									\
-	const u64 w_ = get_unaligned_le64((in) + ((p) >> 3)) >> ((p) & 7);\
+	const u64 w_ = get_unaligned_le64(MLSD_ADDR(in, p)) >> ((p) & 7);\
 	u64 e1_ = s->lt[w_ & ((1U << MLSD_TABLEBITS) - 1)];		\
 	u64 w1_, e2_;							\
 									\
@@ -503,10 +503,10 @@ ADD_SUFFIX(decompress_multilane)(struct fastloop_ctx * restrict ctx,
 	struct mlsd_scratch * const s = (struct mlsd_scratch *)state->scratch;
 	const unsigned num_litlen_syms = state->num_litlen_syms;
 	const u8 * const out_limit = (const u8 *)s - MLSD_OUT_MARGIN;
-	/* (bit positions in the input are 64-bit) */
-	const u64 in_limit = (u64)(in_end - in) * 8 - MLSD_IN_MARGIN;
+	/* (bit positions are 64-bit, from address 0 on x86_64: MLSD_ADDR()) */
+	const u64 in_limit = MLSD_BITPOS(in, in_end) - MLSD_IN_MARGIN;
 	u8 *out = ctx->out_next;
-	u64 end_pos = (u64)(ctx->in_next - in) * 8 - (u8)ctx->bitsleft;
+	u64 end_pos = MLSD_BITPOS(in, ctx->in_next) - (u8)ctx->bitsleft;
 	size_t rate16 = state->rate16 + 12 * 16, margin = state->margin + 256;
 	size_t nrec = 0, total = 0;
 	/*
@@ -661,9 +661,9 @@ stopped:
 	}
 	state->rate16 = rate16 - 12 * 16;
 	state->margin = margin - 256;
-	ctx->bitbuf = get_unaligned_leword(in + (end_pos >> 3)) >>
+	ctx->bitbuf = get_unaligned_leword(MLSD_ADDR(in, end_pos)) >>
 		      (end_pos & 7);
-	ctx->in_next = in + (end_pos >> 3) + sizeof(bitbuf_t) - 1;
+	ctx->in_next = MLSD_ADDR(in, end_pos) + sizeof(bitbuf_t) - 1;
 	ctx->bitsleft = (MAX_BITSLEFT & ~7) - (end_pos & 7);
 	ctx->out_next = out;
 	return res;
