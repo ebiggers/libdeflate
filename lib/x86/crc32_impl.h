@@ -124,6 +124,10 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 #  include "crc32_pclmul_template.h"
 #endif
 
+#if defined(crc32_x86_pclmulqdq) && HAVE_PCLMULQDQ_NATIVE
+#  define DEFAULT_IMPL	crc32_x86_pclmulqdq
+#endif
+
 static inline crc32_func_t
 arch_select_crc32_func(void)
 {

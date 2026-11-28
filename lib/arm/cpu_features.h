@@ -93,8 +93,10 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 /* PMULL */
 #ifdef __ARM_FEATURE_CRYPTO
 #  define HAVE_PMULL(features)	1
+#  define HAVE_PMULL_NATIVE	1
 #else
 #  define HAVE_PMULL(features)	((features) & ARM_CPU_FEATURE_PMULL)
+#  define HAVE_PMULL_NATIVE	0
 #endif
 #if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
 	(GCC_PREREQ(7, 1) || defined(__clang__) || defined(_MSC_VER)) && \
