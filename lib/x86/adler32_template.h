@@ -58,6 +58,8 @@
 #  define VADD8(a, b)		_mm_add_epi8((a), (b))
 #  define VADD16(a, b)		_mm_add_epi16((a), (b))
 #  define VADD32(a, b)		_mm_add_epi32((a), (b))
+#  define VANDNOT(a, b)		_mm_andnot_si128((a), (b))
+#  define VCMPGT8(a, b)		_mm_cmpgt_epi8((a), (b))
 #  if USE_AVX512
 #    define VDPBUSD(a, b, c)	_mm_dpbusd_epi32((a), (b), (c))
 #  else
@@ -82,6 +84,8 @@
 #  define VADD8(a, b)		_mm256_add_epi8((a), (b))
 #  define VADD16(a, b)		_mm256_add_epi16((a), (b))
 #  define VADD32(a, b)		_mm256_add_epi32((a), (b))
+#  define VANDNOT(a, b)		_mm256_andnot_si256((a), (b))
+#  define VCMPGT8(a, b)		_mm256_cmpgt_epi8((a), (b))
 #  if USE_AVX512
 #    define VDPBUSD(a, b, c)	_mm256_dpbusd_epi32((a), (b), (c))
 #  else
@@ -224,6 +228,21 @@ ADD_SUFFIX(adler32_x86)(u32 adler, const u8 *p, size_t len)
 	const vec_t zeroes = VSETZERO();
 	u32 s1 = adler & 0xFFFF;
 	u32 s2 = adler >> 16;
+
+#if USE_VNNI && !USE_AVX512
+	/* The tail below loads the last VL bytes, so it needs len >= VL. */
+	if (len < VL) {
+		if (len) {
+			do {
+				s1 += *p++;
+				s2 += s1;
+			} while (--len);
+			s1 %= DIVISOR;
+			s2 %= DIVISOR;
+		}
+		return (s2 << 16) | s1;
+	}
+#endif
 
 	/*
 	 * If the length is large and the pointer is misaligned, align it.
@@ -373,13 +392,15 @@ ADD_SUFFIX(adler32_x86)(u32 adler, const u8 *p, size_t len)
 			}
 			/*
 			 * Process the last 0 < n <= VL bytes of the chunk.
-			 * Utilize a masked load if it's available.
+			 * Utilize a masked load if it's available.  Otherwise,
+			 * load the last VL bytes and zero those before p.
 			 */
 		#if USE_AVX512
 			data = VMASKZ_LOADU((mask_t)-1 >> (VL - n), p);
 		#else
-			data = zeroes;
-			memcpy(&data, p, n);
+			mults = VLOAD(raw_mults);
+			data = VANDNOT(VCMPGT8(mults, VSET1_8(n)),
+				       VLOADU(p + n - VL));
 		#endif
 			v_s1 = VDPBUSD(v_s1, data, ones);
 			v_s2 = VDPBUSD(v_s2, data, mults);
@@ -497,6 +518,8 @@ ADD_SUFFIX(adler32_x86)(u32 adler, const u8 *p, size_t len)
 #undef VADD8
 #undef VADD16
 #undef VADD32
+#undef VANDNOT
+#undef VCMPGT8
 #undef VDPBUSD
 #undef VLOAD
 #undef VLOADU
