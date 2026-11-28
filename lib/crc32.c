@@ -211,14 +211,7 @@ crc32_slice8(u32 crc, const u8 *p, size_t len)
  * of unaligned data at the beginning and/or end of the buffer.
  */
 static forceinline u32 MAYBE_UNUSED
-crc32_slice1(u32 crc, const u8 *p, size_t len)
-{
-	size_t i;
-
-	for (i = 0; i < len; i++)
-		crc = (crc >> 8) ^ crc32_slice1_table[(u8)crc ^ p[i]];
-	return crc;
-}
+crc32_slice1(u32 crc, const u8 *p, size_t len);
 
 /* Include architecture-specific implementation(s) if available. */
 #undef DEFAULT_IMPL
@@ -232,7 +225,18 @@ typedef u32 (*crc32_func_t)(u32 crc, const u8 *p, size_t len);
 
 #ifndef DEFAULT_IMPL
 #  define DEFAULT_IMPL crc32_slice8
+#  define crc32_slice1_table crc32_slice8_table /* same first 256 entries */
 #endif
+
+static forceinline u32
+crc32_slice1(u32 crc, const u8 *p, size_t len)
+{
+	size_t i;
+
+	for (i = 0; i < len; i++)
+		crc = (crc >> 8) ^ crc32_slice1_table[(u8)crc ^ p[i]];
+	return crc;
+}
 
 #ifdef arch_select_crc32_func
 static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len);

@@ -560,6 +560,10 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #  include "crc32_pmull_wide.h"
 #endif
 
+#if defined(crc32_arm_pmullx4) && HAVE_PMULL_NATIVE
+#  define DEFAULT_IMPL	crc32_arm_pmullx4
+#endif
+
 static inline crc32_func_t
 arch_select_crc32_func(void)
 {

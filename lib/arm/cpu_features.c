@@ -45,7 +45,7 @@
 #ifdef __linux__
 /*
  * On Linux, arm32 and arm64 CPU features can be detected by reading the
- * AT_HWCAP and AT_HWCAP2 values from /proc/self/auxv.
+ * AT_HWCAP value from /proc/self/auxv.
  *
  * Ideally we'd use the C library function getauxval(), but it's not guaranteed
  * to be available: it was only added to glibc in 2.16, and in Android it was
@@ -59,9 +59,8 @@
 #include <unistd.h>
 
 #define AT_HWCAP	16
-#define AT_HWCAP2	26
 
-static void scan_auxv(unsigned long *hwcap, unsigned long *hwcap2)
+static void scan_auxv(unsigned long *hwcap)
 {
 	int fd;
 	unsigned long auxbuf[32];
@@ -89,10 +88,10 @@ static void scan_auxv(unsigned long *hwcap, unsigned long *hwcap2)
 			unsigned long type = auxbuf[i];
 			unsigned long value = auxbuf[i + 1];
 
-			if (type == AT_HWCAP)
+			if (type == AT_HWCAP) {
 				*hwcap = value;
-			else if (type == AT_HWCAP2)
-				*hwcap2 = value;
+				goto out;
+			}
 			i += 2;
 			filled -= 2 * sizeof(long);
 		} while (filled >= 2 * sizeof(long));
@@ -107,9 +106,8 @@ static u32 query_arm_cpu_features(void)
 {
 	u32 features = 0;
 	unsigned long hwcap = 0;
-	unsigned long hwcap2 = 0;
 
-	scan_auxv(&hwcap, &hwcap2);
+	scan_auxv(&hwcap);
 
 #ifdef ARCH_ARM32
 	STATIC_ASSERT(sizeof(long) == 4);
