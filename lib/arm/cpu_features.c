@@ -259,6 +259,8 @@ static const struct cpu_feature arm_cpu_feature_table[] = {
  * via MIDR_EL1 on Linux.  Elsewhere we leave this unset, and the dispatcher
  * picks the crc32-instruction path which is the right default for most
  * other modern ARM CPUs.
+ *
+ * HAVE_PREFER_PMULL() in cpu_features.h must be kept in sync with this.
  */
 static bool arm_cpu_prefers_pmull(void)
 {

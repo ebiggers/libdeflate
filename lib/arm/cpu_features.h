@@ -44,6 +44,22 @@
 #define ARM_CPU_FEATURE_SHA3		(1 << 4)
 #define ARM_CPU_FEATURE_DOTPROD		(1 << 5)
 
+/*
+ * PREFER_PMULL is always set on macOS; see arm_cpu_prefers_pmull().  The
+ * exceptions are freestanding builds, which don't detect CPU features, and test
+ * builds, which detect it at runtime so that it can be disabled.
+ */
+#if defined(__APPLE__) && !defined(FREESTANDING)
+#  include <TargetConditionals.h>
+#endif
+#if defined(__APPLE__) && !defined(FREESTANDING) && TARGET_OS_OSX && \
+	!defined(TEST_SUPPORT__DO_NOT_USE)
+#  define HAVE_PREFER_PMULL(features)	1
+#else
+#  define HAVE_PREFER_PMULL(features)	\
+	((features) & ARM_CPU_FEATURE_PREFER_PMULL)
+#endif
+
 #if !defined(FREESTANDING) && \
     (defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)) && \
     (defined(__linux__) || \
