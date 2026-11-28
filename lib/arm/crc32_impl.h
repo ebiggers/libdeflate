@@ -566,12 +566,12 @@ arch_select_crc32_func(void)
 	const u32 features MAYBE_UNUSED = get_arm_cpu_features();
 
 #ifdef crc32_arm_pmullx12_crc_eor3
-	if ((features & ARM_CPU_FEATURE_PREFER_PMULL) &&
+	if (HAVE_PREFER_PMULL(features) &&
 	    HAVE_PMULL(features) && HAVE_CRC32(features) && HAVE_SHA3(features))
 		return crc32_arm_pmullx12_crc_eor3;
 #endif
 #ifdef crc32_arm_pmullx12_crc
-	if ((features & ARM_CPU_FEATURE_PREFER_PMULL) &&
+	if (HAVE_PREFER_PMULL(features) &&
 	    HAVE_PMULL(features) && HAVE_CRC32(features))
 		return crc32_arm_pmullx12_crc;
 #endif

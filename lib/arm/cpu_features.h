@@ -44,7 +44,36 @@
 #define ARM_CPU_FEATURE_SHA3		(1 << 4)
 #define ARM_CPU_FEATURE_DOTPROD		(1 << 5)
 
+/*
+ * PREFER_PMULL is always set on macOS, and elsewhere it can be set only on
+ * arm64 Linux; see arm_cpu_prefers_pmull().  The exceptions are freestanding
+ * builds, which don't detect CPU features, and test builds, which always detect
+ * it at runtime so that it can be disabled.
+ */
+#if defined(__APPLE__) && !defined(FREESTANDING)
+#  include <TargetConditionals.h>
+#endif
+#if defined(TEST_SUPPORT__DO_NOT_USE) || \
+	(defined(__linux__) && defined(ARCH_ARM64))
+#  define HAVE_PREFER_PMULL(features)	\
+	((features) & ARM_CPU_FEATURE_PREFER_PMULL)
+#  define HAVE_PREFER_PMULL_NATIVE	0
+#elif defined(__APPLE__) && !defined(FREESTANDING) && TARGET_OS_OSX
+#  define HAVE_PREFER_PMULL(features)	1
+#  define HAVE_PREFER_PMULL_NATIVE	1
+#else
+#  define HAVE_PREFER_PMULL(features)	0
+#  define HAVE_PREFER_PMULL_NATIVE	0
+#endif
+
+/*
+ * Runtime detection is pointless if every feature that it could find is already
+ * enabled at compile time, as with Apple clang's default target for macOS.
+ */
 #if !defined(FREESTANDING) && \
+    !(defined(__ARM_NEON) && defined(__ARM_FEATURE_CRYPTO) && \
+      defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_SHA3) && \
+      defined(__ARM_FEATURE_DOTPROD) && HAVE_PREFER_PMULL_NATIVE) && \
     (defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)) && \
     (defined(__linux__) || \
      (defined(__APPLE__) && defined(ARCH_ARM64)) || \
