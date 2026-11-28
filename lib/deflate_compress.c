@@ -1940,6 +1940,7 @@ static void
 deflate_compute_full_len_codewords(struct libdeflate_compressor *c,
 				   const struct deflate_codes *codes)
 {
+	unsigned i = codes->num_used_litlen_syms;
 	unsigned slot;
 
 	STATIC_ASSERT(MAX_LITLEN_CODEWORD_LEN +
@@ -1947,10 +1948,16 @@ deflate_compute_full_len_codewords(struct libdeflate_compressor *c,
 
 	/*
 	 * Only the lengths whose symbols are used are needed, and small blocks
-	 * use few.  Length 258, the last slot's, is also in the range of the
-	 * slot before it, so the slots go in increasing order.
+	 * use few.  The length symbols are last in the list of used symbols,
+	 * except that the static codes also use the two symbols after them.
+	 * Length 258, the last slot's, is also in the range of the slot before
+	 * it, so the slots go in increasing order.
 	 */
-	for (slot = 0; slot < ARRAY_LEN(deflate_length_slot_base); slot++) {
+	while (i > 0 && codes->used_litlen_syms[i - 1] >= DEFLATE_FIRST_LEN_SYM)
+		i--;
+	for (; i < codes->num_used_litlen_syms &&
+	       (slot = codes->used_litlen_syms[i] - DEFLATE_FIRST_LEN_SYM) <
+			ARRAY_LEN(deflate_length_slot_base); i++) {
 		unsigned litlen_sym = DEFLATE_FIRST_LEN_SYM + slot;
 		u32 codeword = codes->codewords.litlen[litlen_sym];
 		unsigned len = codes->lens.litlen[litlen_sym];
@@ -1958,8 +1965,6 @@ deflate_compute_full_len_codewords(struct libdeflate_compressor *c,
 		u32 base = deflate_length_slot_base[slot];
 		u32 extra_bits;
 
-		if (len == 0)
-			continue;
 		for (extra_bits = 0; extra_bits < (1U << num_extra_bits);
 		     extra_bits++) {
 			c->o.length.codewords[base + extra_bits] =
@@ -2047,6 +2052,7 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	u32 uncompressed_cost = 3;
 	u32 best_cost;
 	struct deflate_codes *codes;
+	const u16 *used_sym = c->codes.used_litlen_syms;
 	unsigned sym;
 
 	ASSERT(block_length >= MIN_BLOCK_LENGTH ||
@@ -2069,21 +2075,18 @@ deflate_flush_block(struct libdeflate_compressor *c,
 				(extra + c->o.precode.lens[sym]);
 	}
 
-	/* Account for the cost of encoding literals. */
-	for (sym = 0; sym < 144; sym++) {
+	/*
+	 * Account for the cost of encoding the literals and the end-of-block
+	 * symbol.  The used ones begin the list of used symbols, and the
+	 * end-of-block symbol is always used.
+	 */
+	do {
+		sym = *used_sym++;
 		dynamic_cost += c->freqs.litlen[sym] *
 				c->codes.lens.litlen[sym];
-		static_cost += c->freqs.litlen[sym] * 8;
-	}
-	for (; sym < 256; sym++) {
-		dynamic_cost += c->freqs.litlen[sym] *
-				c->codes.lens.litlen[sym];
-		static_cost += c->freqs.litlen[sym] * 9;
-	}
-
-	/* Account for the cost of encoding the end-of-block symbol. */
-	dynamic_cost += c->codes.lens.litlen[DEFLATE_END_OF_BLOCK];
-	static_cost += 7;
+		static_cost += c->freqs.litlen[sym] *
+			       c->static_codes.lens.litlen[sym];
+	} while (sym != DEFLATE_END_OF_BLOCK);
 
 	/* Account for the cost of encoding lengths. */
 	for (sym = DEFLATE_FIRST_LEN_SYM;
@@ -4483,13 +4486,6 @@ libdeflate_alloc_compressor_ex(int compression_level,
 	if (compression_level >= 10)
 		deflate_init_near_optimal_compressor(c);
 #endif
-	/*
-	 * deflate_gen_huffman_codewords() may leave the codewords of unused
-	 * symbols unset, and deflate_compute_full_len_codewords() can read
-	 * those of the length symbols.
-	 */
-	memset(&c->codes.codewords, 0, sizeof(c->codes.codewords));
-
 	deflate_init_static_codes(c);
 
 	return c;
