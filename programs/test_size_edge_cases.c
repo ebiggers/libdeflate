@@ -163,7 +163,8 @@ test_compress_bound_near_size_max(struct libdeflate_compressor *c)
 
 	for (i = 0; i < ARRAY_LEN(codecs); i++) {
 		size_t bound = codecs[i].compress_bound(c, PTRDIFF_MAX);
-		size_t prev_bound;
+		size_t universal_bound = codecs[i].compress_bound(NULL, PTRDIFF_MAX);
+		size_t prev_bound, prev_universal_bound;
 
 		/*
 		 * The bound for PTRDIFF_MAX must not be saturated, since the
@@ -171,7 +172,7 @@ test_compress_bound_near_size_max(struct libdeflate_compressor *c)
 		 * implementation that just returns SIZE_MAX for large values.
 		 */
 		ASSERT(bound > (size_t)PTRDIFF_MAX && bound < SIZE_MAX);
-		ASSERT(codecs[i].compress_bound(NULL, PTRDIFF_MAX) == bound);
+		ASSERT(universal_bound >= bound && universal_bound < SIZE_MAX);
 
 		/*
 		 * Sweep from PTRDIFF_MAX to SIZE_MAX.  The bound must never be
@@ -179,15 +180,18 @@ test_compress_bound_near_size_max(struct libdeflate_compressor *c)
 		 * property would be violated by integer wraparound.
 		 */
 		prev_bound = bound;
+		prev_universal_bound = universal_bound;
 		for (k = 1; k <= 1024; k++) {
 			size_t in_nbytes = (size_t)PTRDIFF_MAX + (k * step);
 
 			bound = codecs[i].compress_bound(c, in_nbytes);
 			ASSERT(bound >= in_nbytes);
 			ASSERT(bound >= prev_bound);
-			ASSERT(codecs[i].compress_bound(NULL, in_nbytes) ==
-			       bound);
+			universal_bound = codecs[i].compress_bound(NULL, in_nbytes);
+			ASSERT(universal_bound >= bound);
+			ASSERT(universal_bound >= prev_universal_bound);
 			prev_bound = bound;
+			prev_universal_bound = universal_bound;
 		}
 
 		/* Values very close to SIZE_MAX must saturate to SIZE_MAX. */

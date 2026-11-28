@@ -11,7 +11,7 @@ prefix="libdeflate-$(git describe HEAD | sed 's/^v//')"
 tarball="${prefix}.tar.gz"
 echo "Generating $tarball"
 git archive --format=tar --prefix="${prefix}/" HEAD \
-	| libdeflate-gzip -12 > "$tarball"
+	| libdeflate-gzip -13 > "$tarball"
 
 # Generate Windows binary release libdeflate-*-windows-x86_64-bin.zip
 dir=${prefix}-windows-x86_64-bin
