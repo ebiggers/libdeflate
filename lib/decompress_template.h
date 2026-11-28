@@ -46,6 +46,14 @@
  * of 'count', whereas the generic fallback masks 'count' by 0x1F so the shift
  * count is provably in 0..31 without an explicit mask instruction.
  */
+/* The lanes are part of the implementations that have a COPY_MATCH() only. */
+#undef USE_MLSD
+#if MLSD_ENABLED && defined(COPY_MATCH)
+#  define USE_MLSD	1
+#else
+#  define USE_MLSD	0
+#endif
+
 #ifndef EXTRACT_VARBITS
 #  define EXTRACT_VARBITS(word, count)	((u32)(word) & (((u32)1 << (count)) - 1))
 #endif
@@ -1405,6 +1413,10 @@ ADD_SUFFIX(decompress_fastloop_unchecked)(struct libdeflate_decompressor * restr
 						    litlen_tablemask, false);
 }
 
+#if USE_MLSD
+#  include "decompress_multilane.h"
+#endif
+
 static ATTRIBUTES enum libdeflate_result
 ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 			       const void * restrict in, size_t in_nbytes,
@@ -1429,14 +1441,46 @@ ADD_SUFFIX(deflate_decompress)(struct libdeflate_decompressor * restrict d,
 
 	bool is_final_block;
 	unsigned block_type;
+#if USE_MLSD
+	/* see decompress_multilane.h */
+	struct mlsd_state mlsd = { 0, 0, 0, 0, 0, out, 0, 0 };
+	/*
+	 * Whether the lanes get to decode this block: MLSD_FIRST from its
+	 * start, before the normal decode tables are built, or MLSD_LATER once
+	 * the checked fastloop has written the first 32 KiB.
+	 */
+	enum { MLSD_NO, MLSD_LATER, MLSD_FIRST } mlsd_block;
+#endif
 	unsigned num_litlen_syms;
 	unsigned num_offset_syms;
 	u32 litlen_tablemask;
 	u32 entry;
 
+#if USE_MLSD
+	/*
+	 * Put the lanes' scratch at the end of the output buffer, unless the
+	 * input is there.
+	 */
+	if (out_nbytes_avail >= MAX(MLSD_MIN_BUF_BYTES, MLSD_MIN_OUT_BYTES +
+				    sizeof(struct mlsd_scratch))) {
+		u8 *s = out_end - sizeof(struct mlsd_scratch);
+
+		s -= (uintptr_t)s % 64;
+		if ((uintptr_t)in_end <= (uintptr_t)s ||
+		    (uintptr_t)in >= (uintptr_t)out_end)
+			mlsd.scratch = s;
+	}
+#endif
+
 next_block:
 	/* Starting to read the next block */
 	;
+#if USE_MLSD
+	/* (the first block counts as following a large one) */
+	mlsd.prev_block_out = (uintptr_t)out_next - mlsd.block_start;
+	mlsd.block_start = (uintptr_t)out_next;
+	mlsd_block = MLSD_NO;
+#endif
 
 	STATIC_ASSERT(CAN_CONSUME(1 + 2 + 5 + 5 + 4 + 3));
 	REFILL_BITS();
@@ -1700,6 +1744,26 @@ next_block:
 
 	/* Decompressing a Huffman block (either dynamic or static) */
 
+#if USE_MLSD
+	if (block_type == DEFLATE_BLOCKTYPE_DYNAMIC_HUFFMAN &&
+	    mlsd.prev_block_out >= MLSD_MIN_PREV_OUT &&
+	    mlsd.scratch - out_next >= MLSD_MIN_OUT_BYTES &&
+	    in_end - in_next >= MLSD_MIN_IN_BYTES &&
+	    (mlsd.usable != 0 || (mlsd.usable = mlsd_usable() ? 1 : 2)) &&
+	    mlsd.usable == 1) {
+		memcpy(((struct mlsd_scratch *)mlsd.scratch)->lens, d->u.l.lens,
+		       num_litlen_syms + num_offset_syms);
+		mlsd.num_litlen_syms = num_litlen_syms;
+		mlsd.num_offset_syms = num_offset_syms;
+		mlsd_block = MLSD_LATER;
+		if (out_next - (u8 *)out >= DEFLATE_MAX_MATCH_OFFSET) {
+			mlsd_block = MLSD_FIRST;
+			goto have_decode_tables;
+		}
+	}
+build_decode_tables:
+#endif
+
 	SAFETY_CHECK(ADD_SUFFIX(build_offset_decode_table)(d, num_litlen_syms,
 							   num_offset_syms));
 	/*
@@ -1750,6 +1814,24 @@ have_decode_tables:
 			    ctx.out_next >= out_fastloop_end)
 				goto fastloop_done;
 		}
+#if USE_MLSD
+		/* (an MLSD_FIRST block always gets here) */
+		STATIC_ASSERT(MLSD_MIN_IN_BYTES > FASTLOOP_MAX_BYTES_READ &&
+			      MLSD_MIN_OUT_BYTES > FASTLOOP_MAX_BYTES_WRITTEN);
+		/* (an MLSD_LATER block gets here before the scratch) */
+		STATIC_ASSERT(MLSD_MIN_BUF_BYTES >= DEFLATE_MAX_MATCH_OFFSET +
+			      FASTLOOP_MAX_BYTES_WRITTEN + MLSD_MIN_OUT_BYTES +
+			      sizeof(struct mlsd_scratch) + 64);
+		if (mlsd_block != MLSD_NO) {
+			res = ADD_SUFFIX(decompress_multilane)(&ctx, &mlsd, in,
+							       in_end);
+			if (res == FASTLOOP_BLOCK_DONE ||
+			    mlsd_block == MLSD_FIRST ||
+			    ctx.in_next >= in_fastloop_end ||
+			    ctx.out_next >= out_fastloop_end)
+				goto fastloop_done;
+		}
+#endif
 		res = ADD_SUFFIX(decompress_fastloop_unchecked)(
 				d, &ctx, in_fastloop_end, out_fastloop_end,
 				litlen_tablemask);
@@ -1761,6 +1843,15 @@ fastloop_done:
 		bitsleft = ctx.bitsleft;
 		if (res == FASTLOOP_BLOCK_DONE)
 			goto block_done;
+#if USE_MLSD
+		if (mlsd_block == MLSD_FIRST) {
+			/* The normal decode tables are needed after all. */
+			mlsd_block = MLSD_NO;
+			num_litlen_syms = mlsd.num_litlen_syms;
+			num_offset_syms = mlsd.num_offset_syms;
+			goto build_decode_tables;
+		}
+#endif
 	}
 
 	/*

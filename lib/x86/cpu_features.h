@@ -50,6 +50,11 @@
 #define X86_CPU_FEATURE_VPCLMULQDQ	(1 << 8)
 #define X86_CPU_FEATURE_AVX512VNNI	(1 << 9)
 #define X86_CPU_FEATURE_AVXVNNI		(1 << 10)
+/*
+ * MLSD indicates a CPU on which multi-lane decoding (see
+ * ../decompress_multilane.h) is faster than the fastloop alone.
+ */
+#define X86_CPU_FEATURE_MLSD		(1 << 11)
 
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 /* Runtime x86 CPU feature detection is supported. */

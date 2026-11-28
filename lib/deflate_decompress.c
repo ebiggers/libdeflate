@@ -379,6 +379,51 @@ do {									\
  */
 #define COMPOUND_LITLEN_MIN_OUT_BYTES	8192
 
+/*
+ * Multi-lane speculative decoding of Huffman blocks, see
+ * decompress_multilane.h.  It's built for x86_64 and for Apple arm64, where it
+ * has been measured, and used on the CPUs that mlsd_usable() accepts; define
+ * LIBDEFLATE_NO_MLSD to leave it out.
+ */
+#if (defined(ARCH_X86_64) || \
+     (defined(ARCH_ARM64) && defined(__APPLE__) && !defined(FREESTANDING))) && \
+	(defined(__clang__) || GCC_PREREQ(8, 1)) && \
+	!defined(LIBDEFLATE_NO_MLSD)
+#  define MLSD_ENABLED		1
+   /*
+    * MLSD_LANES is the number of lanes decoded at once.  With
+    * MLSD_INTERLEAVE, a round's records are executed during the next round's
+    * steps instead of right away, which is slower on x86_64.  The lanes
+    * decode a block if its length codewords take at least MLSD_GATE32 32nds
+    * of the codespace: the fastloop does better on runs of literals.  With
+    * MLSD_GATE_LEN, each counts for 1 - (its mean length) / MLSD_GATE_LEN:
+    * the lanes gain less on long matches.
+    */
+#  ifndef MLSD_LANES		/* (can be overridden for testing) */
+#    ifdef ARCH_X86_64
+#      define MLSD_LANES	5
+#      define MLSD_INTERLEAVE	0
+#      define MLSD_GATE32	6
+#      define MLSD_GATE_LEN	18
+#    else
+#      define MLSD_LANES	6
+#      define MLSD_INTERLEAVE	1
+#      define MLSD_GATE32	7
+#      define MLSD_GATE_LEN	0
+#    endif
+#  endif
+#  ifndef MLSD_ROUND_STEPS	/* (can be overridden for testing) */
+#    define MLSD_ROUND_STEPS	256	/* max steps per lane per round */
+#    define MLSD_CATCHUP	64	/* max extra steps until the lanes meet */
+#    define MLSD_EXTEND		8	/* ... this many at a time */
+#  endif
+#  define MLSD_NREC		(MLSD_ROUND_STEPS + MLSD_CATCHUP)
+#  define MLSD_TABLEBITS	12	/* litlen main table bits */
+#  define MLSD_NDUMMY		4	/* offset entries for no offset */
+#else
+#  define MLSD_ENABLED		0
+#endif
+
 /*****************************************************************************
  *                              Huffman decoding                             *
  *****************************************************************************/
@@ -956,6 +1001,68 @@ struct libdeflate_decompressor {
 	/* The free() function for this struct, chosen at allocation time */
 	free_func_t free_func;
 };
+
+#if MLSD_ENABLED
+/*
+ * The lanes' state during a libdeflate_deflate_decompress_ex() call, kept in
+ * memory so that it takes no registers from the rest of the decompressor
+ */
+struct mlsd_state {
+	/*
+	 * The lanes' bits per step (times 16) and margin, carried across
+	 * blocks as differences from their initial values
+	 */
+	size_t rate16;
+	size_t margin;
+	uintptr_t block_start;		/* where this block's output starts */
+	size_t prev_block_out;		/* output bytes of the previous block */
+	uintptr_t usable;		/* mlsd_usable(): 0 = unknown, 1, 2 = no */
+	u8 *scratch;			/* the lanes' scratch, or 'out' if none */
+	/* The numbers of codeword lengths in the scratch */
+	unsigned num_litlen_syms;
+	unsigned num_offset_syms;
+};
+
+/*
+ * What mlsd_build_table() keeps in the records' space: the bit-reversed
+ * codeword and the entry of the codewords of each length in turn, then of the
+ * lengths that take as many bits with their extra bits (up to the table bits)
+ */
+struct mlsd_build_tmp {
+	/* [len]: where those of this length end in rc[], and its literals */
+	u16 end[DEFLATE_MAX_CODEWORD_LEN + 1];
+	u16 lit_end[DEFLATE_MAX_CODEWORD_LEN + 1];
+	/* The lengths with extra bits in rc[] */
+	u16 xlen[DEFLATE_NUM_LITLEN_SYMS - DEFLATE_FIRST_LEN_SYM];
+	u16 rc[DEFLATE_MAX_NUM_SYMS + DEFLATE_MAX_MATCH_LEN];
+	u64 ent[DEFLATE_MAX_NUM_SYMS + DEFLATE_MAX_MATCH_LEN];
+};
+
+/*
+ * The lanes' records for a round (two with MLSD_INTERLEAVE), their decode
+ * tables and the block's codeword lengths (which the litlen decode table
+ * overwrites in the decompressor), kept at the end of the output buffer
+ */
+struct mlsd_scratch {
+	union {
+		u64 recs[1 + MLSD_INTERLEAVE][MLSD_NREC + 1][MLSD_LANES];
+		struct mlsd_build_tmp tmp;
+	} u;
+#ifdef ARCH_X86_64	/* one register for both tables, none for the input */
+	u64 lt[LITLEN_ENOUGH + OFFSET_ENOUGH + MLSD_NDUMMY];
+#  define MLSD_OT(s, i)	((s)->lt[LITLEN_ENOUGH + (i)])
+#  define MLSD_ADDR(in, pos)	((const u8 *)(uintptr_t)((pos) >> 3))
+#  define MLSD_BITPOS(in, p)	((u64)(uintptr_t)(p) * 8)
+#else
+	u64 lt[LITLEN_ENOUGH];
+	u64 ot[OFFSET_ENOUGH + MLSD_NDUMMY];
+#  define MLSD_OT(s, i)	((s)->ot[i])
+#  define MLSD_ADDR(in, pos)	((in) + ((pos) >> 3))
+#  define MLSD_BITPOS(in, p)	((u64)((p) - (in)) * 8)
+#endif
+	u8 lens[DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS + 16];
+};
+#endif
 
 /*****************************************************************************
  *                         Main decompression routine

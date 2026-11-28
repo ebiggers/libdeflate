@@ -84,6 +84,7 @@ static const struct cpu_feature x86_cpu_feature_table[] = {
 	{X86_CPU_FEATURE_VPCLMULQDQ,	"vpclmulqdq"},
 	{X86_CPU_FEATURE_AVX512VNNI,	"avx512_vnni"},
 	{X86_CPU_FEATURE_AVXVNNI,	"avx_vnni"},
+	{X86_CPU_FEATURE_MLSD,		"mlsd"},
 };
 
 LIBDEFLATE_ATOMIC(u32) libdeflate_x86_cpu_features = 0;
@@ -134,6 +135,23 @@ allow_512bit_vectors(const u32 manufacturer[3], u32 family, u32 model)
 		return false;
 	}
 	return true;
+}
+
+/*
+ * Use multi-lane decoding on the CPUs it has been measured to help on: AMD
+ * Zen 4 and Zen 5, and Intel Granite Rapids and Emerald Rapids.
+ */
+static inline bool
+allow_mlsd(const u32 manufacturer[3], u32 family, u32 model)
+{
+#ifdef TEST_SUPPORT__DO_NOT_USE
+	return true;
+#endif
+	if (memcmp(manufacturer, "AuthenticAMD", 12) == 0)
+		return family >= 0x1a || (family == 0x19 && /* Zen 4 */
+			(model - 0x10 < 0x10 || model - 0x60 < 0x50));
+	return memcmp(manufacturer, "GenuineIntel", 12) == 0 &&
+	       family == 6 && (model == 0xad || model == 0xcf);
 }
 
 /* Initialize libdeflate_x86_cpu_features. */
@@ -201,6 +219,10 @@ void libdeflate_init_x86_cpu_features(void)
 				features |= X86_CPU_FEATURE_BMI2;
 		}
 	}
+
+	if ((features & X86_CPU_FEATURE_BMI2) &&
+	    allow_mlsd(manufacturer, family, model))
+		features |= X86_CPU_FEATURE_MLSD;
 
 	if ((xcr0 & 0x6) == 0x6) {
 		if (b & (1 << 5))
