@@ -3880,13 +3880,14 @@ deflate_min_packed_cost_default(const u32 *length_costs, const u32 *cost_to_end,
 	return best;
 }
 
-/* Define deflate_find_min_cost_path_default(). */
+/* Define the scalar versions of both parsers. */
 #define FUNCNAME		deflate_find_min_cost_path_default
+#define EXPANDED_FUNCNAME	deflate_find_min_cost_path_expanded
 #define ATTRIBUTES
 #define deflate_min_packed_cost	deflate_min_packed_cost_default
 #include "find_min_cost_path_template.h"
 
-/* Define deflate_find_min_cost_path_simd() if available. */
+/* Define the SIMD versions of both parsers if available. */
 #if defined(ARCH_ARM64)
 #  include "arm/find_min_cost_path.h"
 #elif defined(ARCH_X86_32) || defined(ARCH_X86_64)
@@ -3894,66 +3895,11 @@ deflate_min_packed_cost_default(const u32 *length_costs, const u32 *cost_to_end,
 #endif
 #ifdef deflate_min_packed_cost_simd
 #define FUNCNAME		deflate_find_min_cost_path_simd
+#define EXPANDED_FUNCNAME	deflate_find_min_cost_path_expanded_simd
 /* ATTRIBUTES comes from the arch header. */
 #define deflate_min_packed_cost	deflate_min_packed_cost_simd
 #include "find_min_cost_path_template.h"
 #endif
-
-static u32
-deflate_find_min_cost_path_expanded(struct libdeflate_compressor *c,
-				    u32 block_length,
-				    const struct lz_match *cache_ptr)
-{
-	u32 *cost_to_end = c->p.n.cost_to_end;
-	u32 i = block_length;
-
-	do {
-		const struct lz_match *match;
-		u32 best_cost;
-		u32 best_item;
-		u32 best_offset = 0;
-		u32 best_offset_cost = UINT32_MAX;
-
-		i--;
-		cache_ptr--;
-		best_item = cache_ptr->offset;
-		best_cost = c->p.n.costs.literal[best_item] + cost_to_end[i + 1];
-		match = cache_ptr;
-		cache_ptr -= match->length;
-
-		/* Longer matches can provide cheaper offsets for shorter lengths. */
-		while (match != cache_ptr) {
-			u32 offset, offset_cost, min_len, len;
-
-			match--;
-			offset = match->offset;
-			offset_cost = c->p.n.costs.offset_slot[
-						c->p.n.offset_slot_full[offset]];
-			if (offset_cost <= best_offset_cost) {
-				best_offset = offset;
-				best_offset_cost = offset_cost;
-			}
-			min_len = match == cache_ptr ? DEFLATE_MIN_MATCH_LEN :
-						       match[-1].length + 1;
-			for (len = MIN(match->length, block_length - i);
-			     len >= min_len; len--) {
-				u32 cost = best_offset_cost +
-					   c->p.n.costs.length[len] +
-					   cost_to_end[i + len];
-
-				if (cost < best_cost) {
-					best_cost = cost;
-					best_item = (len << OPTIMUM_LEN_SHIFT) |
-						    best_offset;
-				}
-			}
-		}
-		cost_to_end[i] = best_cost;
-		c->p.n.optimum_items[i] = best_item;
-	} while (i != 0);
-
-	return cost_to_end[0];
-}
 
 static void
 deflate_init_cost_to_end(struct libdeflate_compressor *c, u32 block_length)
@@ -4036,14 +3982,19 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 		ASSERT((sentinel & PACKED_COST_LEN_MASK) == 0);
 	}
 
+#ifdef deflate_min_packed_cost_simd
+	if (have_min_packed_cost_simd()) {
+		if (use_best_offset_for_len)
+			cost = deflate_find_min_cost_path_expanded_simd(
+						c, block_length, cache_ptr);
+		else
+			cost = deflate_find_min_cost_path_simd(
+						c, block_length, cache_ptr);
+	} else
+#endif
 	if (use_best_offset_for_len)
 		cost = deflate_find_min_cost_path_expanded(c, block_length,
 							   cache_ptr);
-#ifdef deflate_min_packed_cost_simd
-	else if (have_min_packed_cost_simd())
-		cost = deflate_find_min_cost_path_simd(c, block_length,
-						       cache_ptr);
-#endif
 	else
 		cost = deflate_find_min_cost_path_default(c, block_length,
 							  cache_ptr);
@@ -5255,7 +5206,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 					const u8 *end;
 					struct lz_match *cache_ptr;
 					struct deflate_near_optimal_state
-						prefix_state;
+						*prefix_state;
 					struct deflate_near_optimal_state
 						path_state;
 					u32 cost;
@@ -5266,63 +5217,52 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						DEVIL_BLOCK_SPLIT_HISTORIES];
 				struct deflate_optimization_strategy strategy;
 				struct deflate_near_optimal_state interval_state;
-				struct deflate_near_optimal_state path_state;
 				unsigned node_count = num_pending_splits + 1;
 				unsigned j;
 
-				for (i = 0; i < node_count; i++) {
-					if (i < num_pending_splits) {
-						tree_nodes[i].end =
-							pending_splits[i];
-						tree_nodes[i].cache_ptr =
-							deflate_rewind_match_cache(
+				for (i = 0; i < num_pending_splits; i++) {
+					tree_nodes[i].end = pending_splits[i];
+					tree_nodes[i].cache_ptr =
+						deflate_rewind_match_cache(
 							cache_ptr,
-							in_next -
-							pending_splits[i]);
-						tree_nodes[i].prefix_state =
-							pending_prefix_states[i];
-					} else {
-						tree_nodes[i].end =
-							in_decision_end;
-						tree_nodes[i].cache_ptr =
-							decision_cache_ptr;
-						tree_nodes[i].prefix_state =
-							decision_state;
-					}
-					tree_nodes[i].cost = UINT32_MAX;
-					tree_nodes[i].prev = node_count;
-					tree_nodes[i].depth = 0;
+							in_next - pending_splits[i]);
+					tree_nodes[i].prefix_state =
+						&pending_prefix_states[i];
 				}
+				tree_nodes[num_pending_splits].end = in_decision_end;
+				tree_nodes[num_pending_splits].cache_ptr =
+					decision_cache_ptr;
+				tree_nodes[num_pending_splits].prefix_state =
+					&decision_state;
+				tree_nodes[num_pending_splits].cost = best_cost;
 
 				for (j = 0; j < node_count; j++) {
-					u32 edge_cost;
-					unsigned first_pred =
-						j == node_count - 1 ? 0 :
-						j > DEVIL_TREE_MAX_PREDECESSORS ?
-						j - DEVIL_TREE_MAX_PREDECESSORS : 0;
+					struct split_tree_node *node = &tree_nodes[j];
+					unsigned first_pred = 0;
 
-					deflate_near_optimal_restore_state(
-							c,
-							&tree_nodes[j].prefix_state);
-					edge_cost = deflate_measure_optimized_block_cost(
+					node->prev = node_count;
+					node->depth = 1;
+					if (j < num_pending_splits) {
+						u32 length = node->end - in_block_begin;
+
+						if (j > DEVIL_TREE_MAX_PREDECESSORS)
+							first_pred = j - DEVIL_TREE_MAX_PREDECESSORS;
+						deflate_near_optimal_restore_state(
+							c, node->prefix_state);
+						node->cost = deflate_measure_optimized_block_cost(
 							c, in_block_begin,
-							tree_nodes[j].end -
-							in_block_begin,
-							tree_nodes[j].cache_ptr,
+							length, node->cache_ptr,
 							is_first,
 							use_devil_block_length,
 							&strategy,
 							MEASURED_SEQ_STORE_NONE);
-					deflate_near_optimal_save_stats(c);
-					deflate_near_optimal_save_state(c,
-									&path_state);
-					tree_nodes[j].cost = edge_cost;
-					tree_nodes[j].prev = node_count;
-					tree_nodes[j].depth = 1;
-					tree_nodes[j].path_state = path_state;
+						deflate_near_optimal_save_stats(c);
+						deflate_near_optimal_save_state(
+							c, &node->path_state);
+					}
 
 					for (i = first_pred; i < j; i++) {
-						u32 total_cost;
+						u32 edge_cost, total_cost;
 
 						if (tree_nodes[i].cost ==
 						    UINT32_MAX)
@@ -5330,7 +5270,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 
 						deflate_near_optimal_subtract_state(
 							&interval_state,
-							&tree_nodes[j].prefix_state,
+							node->prefix_state,
 							&pending_prefix_states[i]);
 						deflate_near_optimal_restore_state(
 							c,
@@ -5340,26 +5280,24 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						edge_cost =
 							deflate_measure_optimized_block_cost(
 							c, tree_nodes[i].end,
-							tree_nodes[j].end -
+							node->end -
 							tree_nodes[i].end,
-							tree_nodes[j].cache_ptr,
+							node->cache_ptr,
 							false,
 							use_devil_block_length,
 							&strategy,
 							MEASURED_SEQ_STORE_NONE);
 						total_cost = tree_nodes[i].cost +
 							     edge_cost + 3;
-						if (total_cost >= tree_nodes[j].cost)
+						if (total_cost >= node->cost)
 							continue;
 						deflate_near_optimal_save_stats(c);
-						deflate_near_optimal_save_state(c,
-									&path_state);
-						tree_nodes[j].cost = total_cost;
-						tree_nodes[j].prev = i;
-						tree_nodes[j].depth =
+						deflate_near_optimal_save_state(
+							c, &node->path_state);
+						node->cost = total_cost;
+						node->prev = i;
+						node->depth =
 							tree_nodes[i].depth + 1;
-						tree_nodes[j].path_state =
-							path_state;
 					}
 				}
 
