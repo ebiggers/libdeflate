@@ -225,6 +225,10 @@ ADD_SUFFIX(mlsd_build_table)(struct mlsd_scratch * restrict s,
 					     offset_decode_results;
 	unsigned sym, len, n, i = 0, code = 0, sub = 0, prefix = ~0U, nxlen = 0;
 
+#if defined(__APPLE__) && defined(ARCH_ARM64) && defined(__clang__)
+	/* A frame pointer, so that the function needs no DWARF unwind info */
+	__asm__ volatile("" : : "r" (__builtin_frame_address(0)));
+#endif
 	memset(&lens[num_syms], 0, 8);
 	if (!litlen) {
 		STATIC_ASSERT(MLSD_NDUMMY == 4);
