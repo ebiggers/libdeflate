@@ -28,6 +28,16 @@
 #include "deflate_compress.h"
 #include "zlib_constants.h"
 
+/* Only called with constants, so FCHECK is computed at compile time. */
+static forceinline u16
+zlib_header(unsigned level_hint)
+{
+	u16 hdr = (ZLIB_CM_DEFLATE << 8) | (ZLIB_CINFO_32K_WINDOW << 12) |
+		  (level_hint << 6);
+
+	return hdr | (31 - (hdr % 31));
+}
+
 LIBDEFLATEAPI size_t
 libdeflate_zlib_compress(struct libdeflate_compressor *c,
 			 const void *in, size_t in_nbytes,
@@ -36,7 +46,6 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 	u8 *out_next = out;
 	u16 hdr;
 	unsigned compression_level;
-	unsigned level_hint;
 	size_t deflate_size;
 
 	if (unlikely(out_nbytes_avail <= ZLIB_MIN_OVERHEAD))
@@ -50,18 +59,15 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 		out_nbytes_avail = PTRDIFF_MAX;
 
 	/* 2 byte header: CMF and FLG  */
-	hdr = (ZLIB_CM_DEFLATE << 8) | (ZLIB_CINFO_32K_WINDOW << 12);
 	compression_level = libdeflate_get_compression_level(c);
 	if (compression_level < 2)
-		level_hint = ZLIB_FASTEST_COMPRESSION;
+		hdr = zlib_header(ZLIB_FASTEST_COMPRESSION);
 	else if (compression_level < 6)
-		level_hint = ZLIB_FAST_COMPRESSION;
+		hdr = zlib_header(ZLIB_FAST_COMPRESSION);
 	else if (compression_level < 8)
-		level_hint = ZLIB_DEFAULT_COMPRESSION;
+		hdr = zlib_header(ZLIB_DEFAULT_COMPRESSION);
 	else
-		level_hint = ZLIB_SLOWEST_COMPRESSION;
-	hdr |= level_hint << 6;
-	hdr |= 31 - (hdr % 31);
+		hdr = zlib_header(ZLIB_SLOWEST_COMPRESSION);
 
 	put_unaligned_be16(hdr, out_next);
 	out_next += 2;
