@@ -2734,10 +2734,7 @@ deflate_compress_fastest(struct libdeflate_compressor * restrict c,
 
 /*
  * This is the "greedy" DEFLATE compressor. It always chooses the longest match.
- *
- * It's called only through c->impl, so NOINLINE changes nothing except that
- * Apple clang's hot/cold splitting pass skips it.  That pass would otherwise
- * mark the whole function cold and compile it for size, which is slower.
+ * NOINLINE keeps Apple clang from marking it cold and compiling it for size.
  */
 static NOINLINE void
 deflate_compress_greedy(struct libdeflate_compressor * restrict c,
