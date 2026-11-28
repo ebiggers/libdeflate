@@ -364,6 +364,16 @@ static forceinline bool CPU_IS_LITTLE_ENDIAN(void)
 }
 #endif
 
+/*
+ * MSVC compiles _byteswap_ushort(), _byteswap_ulong(), and _byteswap_uint64() to
+ * byte swap instructions only if they are intrinsic functions.  /Oi makes them
+ * intrinsic, and /O2 implies /Oi, but /O1 doesn't.  So make them intrinsic
+ * explicitly.
+ */
+#if defined(_MSC_VER) && !defined(__clang__)
+#  pragma intrinsic(_byteswap_ushort, _byteswap_ulong, _byteswap_uint64)
+#endif
+
 /* bswap16(v) - swap the bytes of a 16-bit integer */
 static forceinline u16 bswap16(u16 v)
 {
@@ -553,6 +563,18 @@ get_unaligned_le64(const u8 *p)
 			((u64)p[5] << 40) | ((u64)p[4] << 32) |
 			((u64)p[3] << 24) | ((u64)p[2] << 16) |
 			((u64)p[1] << 8) | p[0];
+}
+
+static forceinline u64
+get_unaligned_be64(const u8 *p)
+{
+	if (UNALIGNED_ACCESS_IS_FAST)
+		return be64_bswap(load_u64_unaligned(p));
+	else
+		return ((u64)p[0] << 56) | ((u64)p[1] << 48) |
+			((u64)p[2] << 40) | ((u64)p[3] << 32) |
+			((u64)p[4] << 24) | ((u64)p[5] << 16) |
+			((u64)p[6] << 8) | p[7];
 }
 
 static forceinline machine_word_t

@@ -135,6 +135,41 @@ bt_right_child(struct bt_matchfinder *mf, s32 node)
  * remaining to load a 32-bit integer from the *next* position.  */
 #define BT_MATCHFINDER_REQUIRED_NBYTES	5
 
+/*
+ * Given that the first @pos + 16 bytes at @matchptr and @strptr match, return
+ * the length of their common prefix (at most @max_len), and set *@lt to whether
+ * the sequence at @matchptr sorts before the one at @strptr.  If the length
+ * reaches @nice_len, then *@lt isn't needed and is just set to false.  This is
+ * only for long matches, so it doesn't need to be as fast as the common case.
+ */
+static forceinline u32
+bt_extend_long(const u8 *matchptr, const u8 *strptr, u32 pos, u32 max_len,
+	       u32 nice_len, bool *lt)
+{
+	u32 len;
+
+	pos += 16;
+	while (max_len - pos >= 16) {
+		const u64 m0 = get_unaligned_be64(matchptr + pos);
+		const u64 s0 = get_unaligned_be64(strptr + pos);
+		const u64 m1 = get_unaligned_be64(matchptr + pos + 8);
+		const u64 s1 = get_unaligned_be64(strptr + pos + 8);
+		const bool differ0 = (m0 != s0);
+		const u64 m = differ0 ? m0 : m1;
+		const u64 s = differ0 ? s0 : s1;
+
+		if (m != s) {
+			*lt = m < s;
+			return pos + (differ0 ? 0 : 8) +
+			       ((63 - bsr64(m ^ s)) >> 3);
+		}
+		pos += 16;
+	}
+	len = lz_extend(strptr, matchptr, pos, max_len);
+	*lt = len < nice_len && matchptr[len] < strptr[len];
+	return len;
+}
+
 /* Advance the binary tree matchfinder by one byte, optionally recording
  * matches.  @record_matches should be a compile-time constant.  */
 static forceinline struct lz_match *
@@ -154,14 +189,15 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const mf,
 	u32 next_hashseq;
 	u32 hash3;
 	u32 hash4;
-	s32 cur_node;
+	ptrdiff_t cur_node;
 #if BT_MATCHFINDER_HASH3_WAYS >= 2
 	s32 cur_node_2;
 #endif
 	const u8 *matchptr;
 	mf_pos_t *pending_lt_ptr, *pending_gt_ptr;
 	u32 best_lt_len, best_gt_len;
-	u32 len;
+	u32 len, prev_len, start;
+	const u8 *in_base_start, *in_next_start;
 	u32 best_len = 3;
 
 	STATIC_ASSERT(BT_MATCHFINDER_HASH3_WAYS >= 1 &&
@@ -216,42 +252,127 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const mf,
 	best_lt_len = 0;
 	best_gt_len = 0;
 	len = 0;
+	prev_len = 0;
+	start = 0;
+	in_base_start = in_base;
+	in_next_start = in_next;
 
+	/*
+	 * Walk down the tree.  At each node, which child to go to, how far the
+	 * match extends, and whether it's the longest match so far are all
+	 * hard to predict, so the loop body avoids branching on them.  On
+	 * typical data, branching on them would cause many mispredictions.
+	 * The loop is then limited by the latency of the dependency chain from
+	 * one node to the next, so it's also arranged to keep that short.
+	 */
 	for (;;) {
+		mf_pos_t * const children = bt_left_child(mf, cur_node);
+		/* (ptrdiff_t avoids a sign extension when used in addresses) */
+		const ptrdiff_t left_child = children[0];
+		const ptrdiff_t right_child = children[1];
+		/*
+		 * Whether the sequence at this node sorts before the current
+		 * sequence (i.e. is lexicographically lesser)
+		 */
+		bool lt;
+		ptrdiff_t next_node;
+
 		matchptr = &in_base[cur_node];
 
-		if (matchptr[len] == in_next[len]) {
-			len = lz_extend(in_next, matchptr, len + 1, max_len);
-			if (!record_matches || len > best_len) {
-				if (record_matches) {
-					best_len = len;
-					lz_matchptr->length = len;
-					lz_matchptr->offset = in_next - matchptr;
-					lz_matchptr++;
-				}
-				if (len >= nice_len) {
-					*pending_lt_ptr = *bt_left_child(mf, cur_node);
-					*pending_gt_ptr = *bt_right_child(mf, cur_node);
-					return lz_matchptr;
-				}
+		/*
+		 * Find the length of the common prefix of the sequence at this
+		 * node and the current sequence, set 'lt', and choose the next
+		 * node.
+		 *
+		 * The sequences usually differ within 16 bytes of the part
+		 * already known to match, so if possible, load 16 bytes from
+		 * each sequence as two big-endian words.  In such a word the
+		 * first byte is the most significant one, so the number of
+		 * matching bytes is given by the number of leading zero bits in
+		 * the XOR of the words, and 'lt' is given by comparing the
+		 * words as integers.  This avoids branching on whether each
+		 * byte matches, and 'lt' (and thus the next node) doesn't have
+		 * to wait for the length.
+		 *
+		 * The comparison begins at 'start' rather than 'len'.  'start'
+		 * is the value 'len' had one iteration earlier, so it is <= len
+		 * and the bytes between 'start' and 'len' are already known to
+		 * match.  Not depending on the latest 'len' shortens the
+		 * dependency chain, as does computing the address of the bytes
+		 * to load from 'in_base_start' = in_base + start.
+		 */
+		if (UNALIGNED_ACCESS_IS_FAST && WORDBITS == 64 &&
+		    likely(max_len - start >= 16)) {
+			const u8 * const mp = in_base_start + cur_node;
+			const u64 m0 = get_unaligned_be64(mp);
+			const u64 s0 = get_unaligned_be64(in_next_start);
+			const u64 m1 = get_unaligned_be64(mp + 8);
+			const u64 s1 = get_unaligned_be64(in_next_start + 8);
+			const bool differ0 = (m0 != s0);
+			const u64 m = differ0 ? m0 : m1;
+			const u64 s = differ0 ? s0 : s1;
+
+			if (likely(m != s)) {
+				lt = m < s;
+				next_node = lt ? right_child : left_child;
+				len = start + (differ0 ? 0 : 8) +
+				      ((63 - bsr64(m ^ s)) >> 3);
+			} else {
+				len = bt_extend_long(matchptr, in_next, start,
+						     max_len, nice_len, &lt);
+				next_node = lt ? right_child : left_child;
 			}
+		} else {
+			if (matchptr[len] == in_next[len])
+				len = lz_extend(in_next, matchptr, len + 1,
+						max_len);
+			/*
+			 * 'len' may be max_len now, in which case it's also
+			 * >= nice_len and the bytes at 'len' can't be read.
+			 */
+			lt = len < nice_len && matchptr[len] < in_next[len];
+			next_node = lt ? right_child : left_child;
 		}
 
-		if (matchptr[len] < in_next[len]) {
-			*pending_lt_ptr = cur_node;
-			pending_lt_ptr = bt_right_child(mf, cur_node);
-			cur_node = *pending_lt_ptr;
-			best_lt_len = len;
-			if (best_gt_len < len)
-				len = best_gt_len;
-		} else {
-			*pending_gt_ptr = cur_node;
-			pending_gt_ptr = bt_left_child(mf, cur_node);
-			cur_node = *pending_gt_ptr;
-			best_gt_len = len;
-			if (best_lt_len < len)
-				len = best_lt_len;
+		/*
+		 * If this is the longest match so far, record it.  To avoid a
+		 * branch, always write the match but advance lz_matchptr only
+		 * if it's the longest.  An unneeded write gets overwritten
+		 * later, if not by another match then by the match count that
+		 * the caller stores after the matches.
+		 *
+		 * Note that if the bytes at the old 'len' didn't match, then
+		 * 'len' is unchanged and is <= best_len, so nothing is recorded.
+		 */
+		if (record_matches) {
+			lz_matchptr->length = len;
+			lz_matchptr->offset = in_next - matchptr;
+			lz_matchptr += (len > best_len);
+			best_len = MAX(best_len, len);
 		}
+		if (unlikely(len >= nice_len)) {
+			*pending_lt_ptr = left_child;
+			*pending_gt_ptr = right_child;
+			return lz_matchptr;
+		}
+
+		/*
+		 * If the node's sequence sorts before the current sequence,
+		 * then link the node into the "less than" side of the new tree
+		 * and continue to its right child; otherwise link it into the
+		 * "greater than" side and continue to its left child.
+		 */
+		*(lt ? pending_lt_ptr : pending_gt_ptr) = cur_node;
+		pending_lt_ptr = lt ? &children[1] : pending_lt_ptr;
+		pending_gt_ptr = lt ? pending_gt_ptr : &children[0];
+		best_lt_len = lt ? len : best_lt_len;
+		best_gt_len = lt ? best_gt_len : len;
+		cur_node = next_node;
+		start = prev_len;
+		in_base_start = in_base + start;
+		in_next_start = in_next + start;
+		len = MIN(best_lt_len, best_gt_len);
+		prev_len = len;
 
 		if (cur_node <= cutoff || !--depth_remaining) {
 			*pending_lt_ptr = MATCHFINDER_INITVAL;
