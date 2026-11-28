@@ -401,7 +401,7 @@ do {									\
     */
 #  ifndef MLSD_LANES		/* (can be overridden for testing) */
 #    ifdef ARCH_X86_64
-#      define MLSD_LANES	4
+#      define MLSD_LANES	5
 #      define MLSD_INTERLEAVE	0
 #      define MLSD_GATE32	6
 #      define MLSD_GATE_LEN	18
