@@ -396,11 +396,12 @@ do {									\
 	eob |= (((entry) >> 50) & 0x1FF) == MLSD_EOB_LEN;		\
 } while (0)
 
-/* Keeps x86_64 clang from moving the update of p past the other lanes' steps */
+/* p += n, in place: x86_64 clang moves the update otherwise, or copies p */
 #if defined(__clang__) && defined(ARCH_X86_64)
-#  define MLSD_PIN(p)	__asm__ volatile("" : "+r" (p))
+#  define MLSD_ADVANCE(p, n)	\
+	__asm__ volatile("add {%1, %0|%0, %1}" : "+r" (p) : "r" (n))
 #else
-#  define MLSD_PIN(p)	(void)0
+#  define MLSD_ADVANCE(p, n)	((p) += (n))
 #endif
 
 /*
@@ -423,8 +424,7 @@ do {									\
 	e1_ += (u32)e2_;						\
 	*(rp) = e1_ + (((w1_ >> (e2_ & 63)) & (e2_ >> 32)) << 16);	\
 	put_unaligned_le16((u16)(p), (u8 *)(rp));			\
-	(p) += (e1_ >> 9) & 63;						\
-	MLSD_PIN(p);							\
+	MLSD_ADVANCE(p, (e1_ >> 9) & 63);				\
 } while (0)
 
 /*
