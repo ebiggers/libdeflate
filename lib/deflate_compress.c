@@ -40,10 +40,10 @@
 
 /*
  * If this parameter is defined to 1, then the near-optimal parsing algorithm
- * will be included, and compression levels 10-12 will use it.  This algorithm
+ * will be included, and compression levels 10-13 will use it.  This algorithm
  * usually produces a compression ratio significantly better than the other
  * algorithms.  However, it is slow.  If this parameter is defined to 0, then
- * levels 10-12 will be the same as level 9 and will use the lazy2 algorithm.
+ * levels 10-13 will be the same as level 9 and will use the lazy2 algorithm.
  */
 #define SUPPORT_NEAR_OPTIMAL_PARSING	1
 
@@ -64,6 +64,12 @@
  * block splitting algorithm doesn't work well on very short blocks.
  */
 #define MIN_BLOCK_LENGTH	5000
+/*
+ * Level 13 can flush split-tree middle blocks at consecutive block-check
+ * positions.  Since each observation advances at least one byte, this also
+ * lower-bounds the length of those blocks.
+ */
+#define NUM_OBSERVATIONS_PER_BLOCK_CHECK	512
 
 /*
  * For the greedy, lazy, lazy2, and near-optimal compressors: This is the soft
@@ -79,6 +85,21 @@
  * memory usage linearly.
  */
 #define SOFT_MAX_BLOCK_LENGTH	300000
+
+/*
+ * Level 13 can afford to use larger blocks for low-alphabet data where the
+ * Huffman distribution tends to remain stable for longer.
+ */
+#define DEVIL_SOFT_MAX_BLOCK_LENGTH	1000000
+/*
+ * Use the larger level 13 blocks only when a small prefix sample has a
+ * plain-text-sized byte alphabet.  The cutoff is slightly above the number of
+ * printable ASCII byte values, allowing common whitespace/control separators
+ * while still rejecting mixed or binary data whose local low-alphabet regions
+ * are less predictive of the following block.
+ */
+#define DEVIL_BLOCK_LENGTH_SAMPLE_SIZE	65536
+#define DEVIL_BLOCK_LENGTH_MAX_LITERALS	97
 
 /*
  * For the greedy, lazy, and lazy2 compressors: this is the length of the
@@ -155,7 +176,24 @@
  * near-optimal compressor will cache per block.  This behaves similarly to
  * SEQ_STORE_LENGTH for the other compressors.
  */
-#define MATCH_CACHE_LENGTH	(SOFT_MAX_BLOCK_LENGTH * 5)
+#define MATCH_CACHE_LENGTH	(MAX(SOFT_MAX_BLOCK_LENGTH, \
+				     DEVIL_SOFT_MAX_BLOCK_LENGTH) * 5)
+
+/*
+ * Level 13 can delay committing to a split while it keeps scanning the longer
+ * candidate block.  This bounds the number of saved split points and parser
+ * states that can be compared when choosing the final block boundary.
+ */
+#define DEVIL_BLOCK_SPLIT_HISTORIES	10
+/*
+ * A multi-split path changes future block state more aggressively than a
+ * one-split path, so require a clear measured win before committing to it.
+ */
+#define DEVIL_TREE_SPLIT_MIN_GAIN	512
+#define DEVIL_TREE_MAX_PREDECESSORS	3
+#define NUM_MEASURED_SEQ_STORES	1
+#define MEASURED_SEQ_STORE_NONE	((unsigned)-1)
+#define MEASURED_FULL_SEQ_STORE	0
 
 /*
  * OPTIMUM_LEN_SHIFT and OPTIMUM_OFFSET_MASK define how the match length and
@@ -260,13 +298,16 @@
 
 /*
  * The largest block length we will ever use is when the final block is of
- * length SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH - 1, or when any block is of
- * length SOFT_MAX_BLOCK_LENGTH + 1 + DEFLATE_MAX_MATCH_LEN.  The latter case
- * occurs when the lazy2 compressor chooses two literals and a maximum-length
- * match, starting at SOFT_MAX_BLOCK_LENGTH - 1.
+ * length NEAR_OPTIMAL_MAX_SOFT_BLOCK_LENGTH + MIN_BLOCK_LENGTH - 1, or when
+ * any block is of length SOFT_MAX_BLOCK_LENGTH + 1 + DEFLATE_MAX_MATCH_LEN.
+ * The latter case occurs when the lazy2 compressor chooses two literals and a
+ * maximum-length match, starting at SOFT_MAX_BLOCK_LENGTH - 1.
  */
+#define NEAR_OPTIMAL_MAX_SOFT_BLOCK_LENGTH	\
+	MAX(SOFT_MAX_BLOCK_LENGTH, DEVIL_SOFT_MAX_BLOCK_LENGTH)
+
 #define MAX_BLOCK_LENGTH	\
-	MAX(SOFT_MAX_BLOCK_LENGTH + MIN_BLOCK_LENGTH - 1,	\
+	MAX(NEAR_OPTIMAL_MAX_SOFT_BLOCK_LENGTH + MIN_BLOCK_LENGTH - 1, \
 	    SOFT_MAX_BLOCK_LENGTH + 1 + DEFLATE_MAX_MATCH_LEN)
 
 static forceinline void
@@ -313,6 +354,10 @@ check_buildtime_parameters(void)
 
 	/* The definition of MAX_BLOCK_LENGTH assumes this. */
 	STATIC_ASSERT(FAST_SOFT_MAX_BLOCK_LENGTH <= SOFT_MAX_BLOCK_LENGTH);
+	STATIC_ASSERT(SOFT_MAX_BLOCK_LENGTH <=
+		      NEAR_OPTIMAL_MAX_SOFT_BLOCK_LENGTH);
+	STATIC_ASSERT(DEVIL_SOFT_MAX_BLOCK_LENGTH <=
+		      NEAR_OPTIMAL_MAX_SOFT_BLOCK_LENGTH);
 
 	/* Verify that the sequence stores aren't uselessly large. */
 	STATIC_ASSERT(SEQ_STORE_LENGTH * DEFLATE_MIN_MATCH_LEN <=
@@ -508,13 +553,55 @@ struct deflate_costs {
 #define NUM_MATCH_OBSERVATION_TYPES 2
 #define NUM_OBSERVATION_TYPES (NUM_LITERAL_OBSERVATION_TYPES + \
 			       NUM_MATCH_OBSERVATION_TYPES)
-#define NUM_OBSERVATIONS_PER_BLOCK_CHECK 512
 struct block_split_stats {
 	u32 new_observations[NUM_OBSERVATION_TYPES];
 	u32 observations[NUM_OBSERVATION_TYPES];
 	u32 num_new_observations;
 	u32 num_observations;
 };
+
+#if SUPPORT_NEAR_OPTIMAL_PARSING
+
+struct deflate_near_optimal_state {
+	struct block_split_stats split_stats;
+	u32 prev_observations[NUM_OBSERVATION_TYPES];
+	u32 prev_num_observations;
+	u32 match_len_freqs[DEFLATE_MAX_MATCH_LEN + 1];
+	u32 new_match_len_freqs[DEFLATE_MAX_MATCH_LEN + 1];
+	struct deflate_costs costs;
+	struct deflate_costs costs_saved;
+};
+
+enum deflate_min_cost_path_strategy {
+	DEFLATE_MIN_COST_PATH_RESTRICTED,
+	DEFLATE_MIN_COST_PATH_EXPANDED,
+	DEFLATE_MIN_COST_PATH_BEST,
+};
+
+enum deflate_initial_cost_strategy {
+	DEFLATE_INITIAL_COST_DEFAULT,
+	DEFLATE_INITIAL_COST_ESTIMATED_CODES,
+	DEFLATE_INITIAL_COST_ESTIMATED_CODES_AND_OFFSETS,
+};
+
+struct deflate_optimization_strategy {
+	bool valid;
+	bool has_saved_parse;
+	bool used_only_literals;
+	enum deflate_min_cost_path_strategy path_strategy;
+	enum deflate_initial_cost_strategy cost_strategy;
+	unsigned seq_store_idx;
+	u32 static_cost;
+	u32 only_lits_cost;
+	struct deflate_sequence seq_;
+	struct deflate_freqs freqs;
+	struct deflate_costs costs;
+	struct deflate_costs baseline_costs;
+	struct deflate_costs baseline_costs_saved;
+	struct deflate_costs costs_saved;
+};
+
+#endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 
 struct deflate_output_bitstream;
 
@@ -530,6 +617,9 @@ struct libdeflate_compressor {
 
 	/* The compression level with which this compressor was created */
 	unsigned compression_level;
+
+	/* The minimum block length assumed by compress_bound(). */
+	unsigned min_block_length;
 
 	/* Anything of this size or less we won't bother trying to compress. */
 	size_t max_passthrough_size;
@@ -653,7 +743,8 @@ struct libdeflate_compressor {
 			 * of 1/BIT_COST bits and left-shifted by
 			 * PACKED_COST_SHIFT.  The left shift truncates the cost
 			 * to its low '32 - PACKED_COST_SHIFT' bits; see
-			 * find_min_cost_path_template.h.
+			 * find_min_cost_path_template.h.  The expanded scalar
+			 * search uses the same scratch space for unshifted costs.
 			 *
 			 * cost_to_end needs MAX_BLOCK_LENGTH +
 			 * DEFLATE_MAX_MATCH_LEN + COST_SIMD_PADDING entries.
@@ -681,6 +772,14 @@ struct libdeflate_compressor {
 					DEFLATE_MAX_MATCH_LEN +
 					COST_SIMD_PADDING];
 			u32 optimum_items[MAX_BLOCK_LENGTH];
+
+			/* Saved item list for avoiding selected-path reruns */
+			struct deflate_sequence saved_sequences[
+				SEQ_STORE_LENGTH + 1];
+
+			/* Saved measured item list for split scoring reuse */
+			struct deflate_sequence measured_sequences[
+				NUM_MEASURED_SEQ_STORES][SEQ_STORE_LENGTH + 1];
 
 			/* The current cost model being used */
 			struct deflate_costs costs;
@@ -1886,8 +1985,13 @@ deflate_flush_block(struct libdeflate_compressor *c,
 	struct deflate_codes *codes;
 	unsigned sym;
 
+#ifdef LIBDEFLATE_ENABLE_ASSERTIONS
+	ASSERT(block_length >= c->min_block_length ||
+	       (is_final_block && block_length > 0));
+#else
 	ASSERT(block_length >= MIN_BLOCK_LENGTH ||
 	       (is_final_block && block_length > 0));
+#endif
 	ASSERT(block_length <= MAX_BLOCK_LENGTH);
 	ASSERT(bitcount <= 7);
 	ASSERT((bitbuf & ~(((bitbuf_t)1 << bitcount) - 1)) == 0);
@@ -2584,6 +2688,33 @@ choose_max_block_end(const u8 *in_block_begin, const u8 *in_end,
 	return in_block_begin + soft_max_len;
 }
 
+static bool
+deflate_should_use_devil_block_length(const u8 *in_block_begin,
+				      const u8 *in_end)
+{
+	u64 used[4] = { 0 };
+	size_t len = MIN(in_end - in_block_begin,
+			 DEVIL_BLOCK_LENGTH_SAMPLE_SIZE);
+	unsigned num_used_literals = 0;
+	size_t i;
+
+	for (i = 0; i < len; i++) {
+		u8 lit = in_block_begin[i];
+		u64 bit = (u64)1 << (lit & 63);
+
+		if (lit == 0)
+			return false;
+
+		if (!(used[lit >> 6] & bit)) {
+			used[lit >> 6] |= bit;
+			num_used_literals++;
+			if (num_used_literals > DEVIL_BLOCK_LENGTH_MAX_LITERALS)
+				return false;
+		}
+	}
+	return true;
+}
+
 /*
  * This is the level 0 "compressor".  It always outputs uncompressed blocks.
  */
@@ -3087,9 +3218,54 @@ deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 }
 
+static struct deflate_sequence *
+deflate_save_item_list(struct libdeflate_compressor *c, u32 block_length)
+{
+	struct deflate_sequence *seq = &c->p.n.saved_sequences[0];
+	u32 i = 0;
+
+	seq->litrunlen_and_length = 0;
+	do {
+		u32 item = c->p.n.optimum_items[i];
+
+		if (item < DEFLATE_NUM_LITERALS) {
+			seq->litrunlen_and_length++;
+			i++;
+		} else {
+			u32 length = item >> OPTIMUM_LEN_SHIFT;
+			u32 offset = item & OPTIMUM_OFFSET_MASK;
+
+			if (seq == &c->p.n.saved_sequences[SEQ_STORE_LENGTH])
+				return NULL;
+			seq->litrunlen_and_length |= length << SEQ_LENGTH_SHIFT;
+			seq->offset = offset;
+			seq->offset_slot = c->p.n.offset_slot_full[offset];
+			seq++;
+			seq->litrunlen_and_length = 0;
+			i += length;
+		}
+	} while (i < block_length);
+	ASSERT(i == block_length);
+
+	return &c->p.n.saved_sequences[0];
+}
+
 static void
-deflate_choose_all_literals(struct libdeflate_compressor *c,
-			    const u8 *block, u32 block_length)
+deflate_copy_item_list(struct deflate_sequence *dst,
+		       const struct deflate_sequence *src)
+{
+	for (;;) {
+		*dst = *src;
+		if ((src->litrunlen_and_length >> SEQ_LENGTH_SHIFT) == 0)
+			return;
+		dst++;
+		src++;
+	}
+}
+
+static void
+deflate_tally_all_literals(struct libdeflate_compressor *c,
+			   const u8 *block, u32 block_length)
 {
 	u32 i;
 
@@ -3097,7 +3273,13 @@ deflate_choose_all_literals(struct libdeflate_compressor *c,
 	for (i = 0; i < block_length; i++)
 		c->freqs.litlen[block[i]]++;
 	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
+}
 
+static void
+deflate_choose_all_literals(struct libdeflate_compressor *c,
+			    const u8 *block, u32 block_length)
+{
+	deflate_tally_all_literals(c, block, block_length);
 	deflate_make_huffman_codes(&c->freqs, &c->codes);
 }
 
@@ -3138,6 +3320,19 @@ deflate_compute_true_cost(struct libdeflate_compressor *c)
 			(c->codes.lens.offset[sym] +
 			 deflate_extra_offset_bits[sym]);
 	return cost;
+}
+
+static u32
+deflate_measure_only_literals_cost(struct libdeflate_compressor *c,
+				   const u8 *block, u32 block_length)
+{
+	/*
+	 * On some data, using only literals (no matches) ends up being better
+	 * than what the iterative optimization algorithm produces.  Therefore,
+	 * consider using only literals.
+	 */
+	deflate_choose_all_literals(c, block, block_length);
+	return deflate_compute_true_cost(c);
 }
 
 /* Set the current cost model from the codeword lengths specified in @lens. */
@@ -3552,6 +3747,117 @@ deflate_set_initial_costs(struct libdeflate_compressor *c,
 		deflate_adjust_costs(c, lit_cost, len_sym_cost);
 }
 
+static bool
+deflate_estimate_offset_slot_freqs(struct libdeflate_compressor *c,
+				   const struct lz_match *cache_ptr,
+				   u32 block_length, u32 min_len)
+{
+	u32 offset_slot_freqs[ARRAY_LEN(deflate_extra_offset_bits)];
+	u32 num_observations = 0;
+	u32 i;
+
+	memset(offset_slot_freqs, 0, sizeof(offset_slot_freqs));
+	for (i = 0; i < block_length; i++) {
+		u32 num_matches;
+
+		cache_ptr--;
+		num_matches = cache_ptr->length;
+		if (num_matches != 0) {
+			const struct lz_match *match = cache_ptr - 1;
+
+			if (match->length >= min_len) {
+				u32 offset_slot =
+					c->p.n.offset_slot_full[match->offset];
+
+				offset_slot_freqs[offset_slot]++;
+				num_observations++;
+			}
+			cache_ptr -= num_matches;
+		}
+	}
+
+	if (num_observations != 0) {
+		for (i = 0; i < ARRAY_LEN(offset_slot_freqs); i++)
+			c->freqs.offset[i] = offset_slot_freqs[i];
+		return true;
+	}
+	return false;
+}
+
+static void
+deflate_set_initial_costs_from_estimated_codes(struct libdeflate_compressor *c,
+					       const u8 *block_begin,
+					       u32 block_length,
+					       const struct lz_match *cache_ptr,
+					       bool estimate_offsets)
+{
+	u32 literal_counts[DEFLATE_NUM_LITERALS];
+	u64 literal_freq = block_length;
+	u32 num_used_literals = 0;
+	u32 match_freq = 0;
+	u32 cutoff;
+	u32 min_len;
+	u32 len;
+	u32 i;
+	bool offset_freqs_estimated = false;
+
+	memset(literal_counts, 0, sizeof(literal_counts));
+	cutoff = block_length >> 11;
+	for (i = 0; i < block_length; i++)
+		literal_counts[block_begin[i]]++;
+	for (i = 0; i < DEFLATE_NUM_LITERALS; i++) {
+		if (literal_counts[i] > cutoff)
+			num_used_literals++;
+	}
+	if (num_used_literals == 0)
+		num_used_literals = 1;
+
+	min_len = choose_min_match_len(num_used_literals, c->max_search_depth);
+	for (len = min_len; len < ARRAY_LEN(c->p.n.match_len_freqs); len++) {
+		u32 freq = c->p.n.match_len_freqs[len];
+		u64 matched_bytes = (u64)len * freq;
+
+		match_freq += freq;
+		if (literal_freq > matched_bytes)
+			literal_freq -= matched_bytes;
+		else
+			literal_freq = 0;
+	}
+
+	deflate_reset_symbol_frequencies(c);
+	if (literal_freq != 0) {
+		for (i = 0; i < DEFLATE_NUM_LITERALS; i++) {
+			if (literal_counts[i] != 0) {
+				c->freqs.litlen[i] =
+					MAX(1, (u32)(((u64)literal_counts[i] *
+						      literal_freq) /
+						     block_length));
+			}
+		}
+	}
+	for (len = min_len; len < ARRAY_LEN(c->p.n.match_len_freqs); len++) {
+		u32 freq = c->p.n.match_len_freqs[len];
+
+		c->freqs.litlen[DEFLATE_FIRST_LEN_SYM +
+				deflate_length_slot[len]] += freq;
+	}
+	c->freqs.litlen[DEFLATE_END_OF_BLOCK] = 1;
+	if (estimate_offsets)
+		offset_freqs_estimated = deflate_estimate_offset_slot_freqs(
+						c, cache_ptr, block_length,
+						min_len);
+	if (match_freq != 0 && !offset_freqs_estimated) {
+		u32 freq = DIV_ROUND_UP(match_freq,
+					ARRAY_LEN(deflate_extra_offset_bits));
+
+		for (i = 0; i < ARRAY_LEN(deflate_extra_offset_bits); i++)
+			c->freqs.offset[i] = freq;
+	}
+
+	deflate_make_huffman_codes(&c->freqs, &c->codes);
+	deflate_set_costs_from_codes(c, &c->codes.lens);
+}
+
 /*
  * Return the minimum of '(length_costs[len] + cost_to_end[len]) mod 2^32' over
  * 'start_len <= len <= max_len', assuming 'start_len <= max_len'.
@@ -3593,9 +3899,91 @@ deflate_min_packed_cost_default(const u32 *length_costs, const u32 *cost_to_end,
 #include "find_min_cost_path_template.h"
 #endif
 
+static u32
+deflate_find_min_cost_path_expanded(struct libdeflate_compressor *c,
+				    u32 block_length,
+				    const struct lz_match *cache_ptr)
+{
+	u32 *cost_to_end = c->p.n.cost_to_end;
+	u32 i = block_length;
+
+	do {
+		const struct lz_match *match;
+		u32 best_cost;
+		u32 best_item;
+		u32 best_offset = 0;
+		u32 best_offset_cost = UINT32_MAX;
+
+		i--;
+		cache_ptr--;
+		best_item = cache_ptr->offset;
+		best_cost = c->p.n.costs.literal[best_item] + cost_to_end[i + 1];
+		match = cache_ptr;
+		cache_ptr -= match->length;
+
+		/* Longer matches can provide cheaper offsets for shorter lengths. */
+		while (match != cache_ptr) {
+			u32 offset, offset_cost, min_len, len;
+
+			match--;
+			offset = match->offset;
+			offset_cost = c->p.n.costs.offset_slot[
+						c->p.n.offset_slot_full[offset]];
+			if (offset_cost <= best_offset_cost) {
+				best_offset = offset;
+				best_offset_cost = offset_cost;
+			}
+			min_len = match == cache_ptr ? DEFLATE_MIN_MATCH_LEN :
+						       match[-1].length + 1;
+			for (len = MIN(match->length, block_length - i);
+			     len >= min_len; len--) {
+				u32 cost = best_offset_cost +
+					   c->p.n.costs.length[len] +
+					   cost_to_end[i + len];
+
+				if (cost < best_cost) {
+					best_cost = cost;
+					best_item = (len << OPTIMUM_LEN_SHIFT) |
+						    best_offset;
+				}
+			}
+		}
+		cost_to_end[i] = best_cost;
+		c->p.n.optimum_items[i] = best_item;
+	} while (i != 0);
+
+	return cost_to_end[0];
+}
+
+static void
+deflate_init_cost_to_end(struct libdeflate_compressor *c, u32 block_length)
+{
+	u32 i;
+
+	ASSERT(block_length >= 1 && block_length <= MAX_BLOCK_LENGTH);
+
+	/* Initialize cost_to_end to 0 for end-of-block. */
+	c->p.n.cost_to_end[block_length] = 0;
+
+	/*
+	 * Initialize sentinel values past block_length so that matches
+	 * extending past block_length aren't chosen.  Any cost that is at least
+	 * MAX_MATCH_SPAN_COST but less than REBASE_THRESHOLD, and shifted left
+	 * by PACKED_COST_SHIFT, works.
+	 *
+	 * Also initialize the COST_SIMD_PADDING entries.  Their value doesn't
+	 * matter; just set them to the sentinel value too.
+	 */
+	for (i = block_length + 1;
+	     i < block_length + DEFLATE_MAX_MATCH_LEN + COST_SIMD_PADDING; i++)
+		c->p.n.cost_to_end[i] = (REBASE_THRESHOLD / 2) <<
+					PACKED_COST_SHIFT;
+	STATIC_ASSERT(REBASE_THRESHOLD / 2 >= MAX_MATCH_SPAN_COST);
+}
+
 /*
  * Find the minimum-cost path through the graph of possible match/literal
- * choices for this block.  Then make the Huffman codes for it.
+ * choices for this block.  If need_codes is true, also make its Huffman codes.
  *
  * Inputs:
  *   - 'block_length' is the block length in bytes:
@@ -3617,8 +4005,8 @@ deflate_min_packed_cost_default(const u32 *length_costs, const u32 *cost_to_end,
  *     bits (using the cost model, not the new Huffman codes; and not counting
  *     the cost of the end-of-block symbol)
  *   - 'c->p.n.optimum_items' gives the items chosen for the minimum-cost path
- *   - 'c->freqs' gives the symbol frequencies for the found path
- *   - 'c->codes' gives the Huffman codes for the found path
+ *   - If need_codes, 'c->freqs' and 'c->codes' give the symbol frequencies
+ *     and Huffman codes for the found path
  *
  * Used as temporary space:
  *   - 'c->p.n.cost_to_end[0..block_length - 1]'
@@ -3626,7 +4014,9 @@ deflate_min_packed_cost_default(const u32 *length_costs, const u32 *cost_to_end,
 static u32
 deflate_find_min_cost_path(struct libdeflate_compressor *c,
 			   const u32 block_length,
-			   const struct lz_match *cache_ptr)
+			   const struct lz_match *cache_ptr,
+			   bool use_best_offset_for_len,
+			   bool need_codes)
 {
 	size_t i;
 	u32 cost;
@@ -3646,23 +4036,141 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
 		ASSERT((sentinel & PACKED_COST_LEN_MASK) == 0);
 	}
 
-	/* Call the function instantiated from find_min_cost_path_template.h. */
+	if (use_best_offset_for_len)
+		cost = deflate_find_min_cost_path_expanded(c, block_length,
+							   cache_ptr);
 #ifdef deflate_min_packed_cost_simd
-	if (have_min_packed_cost_simd())
+	else if (have_min_packed_cost_simd())
 		cost = deflate_find_min_cost_path_simd(c, block_length,
 						       cache_ptr);
-	else
 #endif
+	else
 		cost = deflate_find_min_cost_path_default(c, block_length,
 							  cache_ptr);
-	deflate_reset_symbol_frequencies(c);
-	deflate_tally_item_list(c, block_length);
-	deflate_make_huffman_codes(&c->freqs, &c->codes);
+	if (need_codes) {
+		deflate_reset_symbol_frequencies(c);
+		deflate_tally_item_list(c, block_length);
+		deflate_make_huffman_codes(&c->freqs, &c->codes);
+	}
 	return cost;
 }
 
+static u32
+deflate_find_min_cost_path_and_true_cost(struct libdeflate_compressor *c,
+					 const u32 block_length,
+					 const struct lz_match *cache_ptr,
+					 bool use_best_offset_for_len)
+{
+	/*
+	 * Compute the exact cost of the block if the path were to be used.
+	 * This uses the actual Huffman codes instead of c->p.n.costs.
+	 */
+	deflate_find_min_cost_path(c, block_length, cache_ptr,
+				   use_best_offset_for_len, true);
+	return deflate_compute_true_cost(c);
+}
+
+static u32
+deflate_find_min_cost_path_and_true_cost_with_strategy(
+					      struct libdeflate_compressor *c,
+					      const u32 block_length,
+					      const struct lz_match *cache_ptr,
+					      enum deflate_min_cost_path_strategy strategy,
+					      bool need_path,
+					      struct deflate_sequence **seq_ret)
+{
+	struct deflate_freqs restricted_freqs;
+	struct deflate_codes restricted_codes;
+	struct deflate_sequence *restricted_seq = NULL;
+	u32 restricted_true_cost;
+	u32 expanded_true_cost;
+
+	if (seq_ret != NULL)
+		*seq_ret = NULL;
+
+	if (strategy == DEFLATE_MIN_COST_PATH_RESTRICTED) {
+		return deflate_find_min_cost_path_and_true_cost(
+					c, block_length, cache_ptr, false);
+	}
+	if (strategy == DEFLATE_MIN_COST_PATH_EXPANDED) {
+		return deflate_find_min_cost_path_and_true_cost(
+					c, block_length, cache_ptr, true);
+	}
+
+	/* Level 13 expands the search, but keeps the restricted parse if lower. */
+	restricted_true_cost = deflate_find_min_cost_path_and_true_cost(
+					c, block_length, cache_ptr, false);
+	if (need_path && seq_ret != NULL)
+		restricted_seq = deflate_save_item_list(c, block_length);
+
+	/*
+	 * Split scoring only needs the cost and code lengths, not the
+	 * reconstructed path.
+	 */
+	restricted_freqs = c->freqs;
+	restricted_codes = c->codes;
+
+	expanded_true_cost = deflate_find_min_cost_path_and_true_cost(
+					c, block_length, cache_ptr, true);
+
+	if (restricted_true_cost <= expanded_true_cost) {
+		if (need_path) {
+			if (restricted_seq != NULL) {
+				c->freqs = restricted_freqs;
+				c->codes = restricted_codes;
+				*seq_ret = restricted_seq;
+			} else {
+				deflate_find_min_cost_path(c, block_length,
+							   cache_ptr,
+							   false, true);
+			}
+		} else {
+			c->freqs = restricted_freqs;
+			c->codes = restricted_codes;
+		}
+		return restricted_true_cost;
+	}
+	return expanded_true_cost;
+}
+
+static void
+deflate_near_optimal_save_state(struct libdeflate_compressor *c,
+				struct deflate_near_optimal_state *state);
+
+static void
+deflate_near_optimal_restore_state(
+				struct libdeflate_compressor *c,
+				const struct deflate_near_optimal_state *state);
+
 /*
- * Choose the literals and matches for the current block, then output the block.
+ * Sometimes a static Huffman block ends up being cheapest, particularly if the
+ * block is small.  So, if the block is sufficiently small, find the optimal
+ * static block solution and remember its cost.
+ */
+static u32
+deflate_measure_static_block_cost(struct libdeflate_compressor *c,
+				  u32 block_length,
+				  const struct lz_match *cache_ptr)
+{
+	struct deflate_costs costs;
+	u32 static_cost;
+
+	if (block_length > c->p.n.max_len_to_optimize_static_block)
+		return UINT32_MAX;
+
+	costs = c->p.n.costs;
+	deflate_set_costs_from_codes(c, &c->static_codes.lens);
+	static_cost = deflate_find_min_cost_path(c, block_length, cache_ptr,
+						c->compression_level >= 13,
+						false) / BIT_COST;
+	static_cost += 7; /* for the end-of-block symbol */
+
+	c->p.n.costs = costs;
+	return static_cost;
+}
+
+/*
+ * Choose the literals and matches for the current block.
  *
  * To choose the literal/match sequence, we find the minimum-cost path through
  * the block's graph of literal/match choices, given a cost model.  However, the
@@ -3676,74 +4184,37 @@ deflate_find_min_cost_path(struct libdeflate_compressor *c,
  * As an alternate strategy, also consider using only literals.  The boolean
  * returned in *used_only_literals indicates whether that strategy was best.
  */
-static void
-deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
-				 struct deflate_output_bitstream *os,
-				 const u8 *block_begin, u32 block_length,
-				 const struct lz_match *cache_ptr,
-				 bool is_first_block, bool is_final_block,
-				 bool *used_only_literals)
+static u32
+deflate_optimize_block_impl(struct libdeflate_compressor *c,
+			    const u8 *block_begin, u32 block_length,
+			    const struct lz_match *cache_ptr,
+			    bool is_first_block,
+			    struct deflate_sequence *seq_,
+			    struct deflate_sequence **seq_ret,
+			    bool *used_only_literals,
+			    u32 static_cost,
+			    u32 only_lits_cost,
+			    enum deflate_min_cost_path_strategy path_strategy,
+			    enum deflate_initial_cost_strategy cost_strategy,
+			    bool need_path)
 {
 	unsigned num_passes_remaining = c->p.n.max_optim_passes;
 	u32 best_true_cost = UINT32_MAX;
 	u32 true_cost;
-	u32 only_lits_cost;
-	u32 static_cost = UINT32_MAX;
-	struct deflate_sequence seq_;
 	struct deflate_sequence *seq = NULL;
-	u32 i;
+	u32 selected_cost;
+	bool estimate_offsets = cost_strategy ==
+			DEFLATE_INITIAL_COST_ESTIMATED_CODES_AND_OFFSETS;
 
-	ASSERT(block_length >= 1 && block_length <= MAX_BLOCK_LENGTH);
-
-	/*
-	 * On some data, using only literals (no matches) ends up being better
-	 * than what the iterative optimization algorithm produces.  Therefore,
-	 * consider using only literals.
-	 */
-	deflate_choose_all_literals(c, block_begin, block_length);
-	only_lits_cost = deflate_compute_true_cost(c);
-
-	/*
-	 * Initialize c->p.n.costs for this block.  Do this before the static
-	 * block check below, which overwrites c->freqs, so that the byte
-	 * frequencies from deflate_choose_all_literals() can be reused.
-	 */
-	deflate_set_initial_costs(c, block_length, is_first_block);
-
-	/* Initialize cost_to_end to 0 for end-of-block. */
-	c->p.n.cost_to_end[block_length] = 0;
-
-	/*
-	 * Initialize sentinel values past block_length so that matches
-	 * extending past block_length aren't chosen.  Any cost that is at least
-	 * MAX_MATCH_SPAN_COST but less than REBASE_THRESHOLD, and shifted left
-	 * by PACKED_COST_SHIFT, works.
-	 *
-	 * Also initialize the COST_SIMD_PADDING entries.  Their value doesn't
-	 * matter; just set them to the sentinel value too.
-	 */
-	for (i = block_length + 1;
-	     i < block_length + DEFLATE_MAX_MATCH_LEN + COST_SIMD_PADDING; i++)
-		c->p.n.cost_to_end[i] = (REBASE_THRESHOLD / 2) <<
-					PACKED_COST_SHIFT;
-	STATIC_ASSERT(REBASE_THRESHOLD / 2 >= MAX_MATCH_SPAN_COST);
-
-	/*
-	 * Sometimes a static Huffman block ends up being cheapest, particularly
-	 * if the block is small.  So, if the block is sufficiently small, find
-	 * the optimal static block solution and remember its cost.
-	 */
-	if (block_length <= c->p.n.max_len_to_optimize_static_block) {
-		/* Save c->p.n.costs temporarily. */
-		c->p.n.costs_saved = c->p.n.costs;
-
-		deflate_set_costs_from_codes(c, &c->static_codes.lens);
-		static_cost = deflate_find_min_cost_path(c, block_length,
-							 cache_ptr) / BIT_COST;
-		static_cost += 7; /* for the end-of-block symbol */
-
-		/* Restore c->p.n.costs. */
-		c->p.n.costs = c->p.n.costs_saved;
+	if (cost_strategy == DEFLATE_INITIAL_COST_ESTIMATED_CODES ||
+	    estimate_offsets) {
+		deflate_set_initial_costs_from_estimated_codes(c, block_begin,
+							       block_length,
+							       cache_ptr,
+							       estimate_offsets);
+	} else {
+		deflate_tally_all_literals(c, block_begin, block_length);
+		deflate_set_initial_costs(c, block_length, is_first_block);
 	}
 
 	do {
@@ -3751,15 +4222,11 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 		 * Find the minimum-cost path for this pass.
 		 * Also set c->freqs and c->codes to match the path.
 		 */
-		deflate_find_min_cost_path(c, block_length, cache_ptr);
-
-		/*
-		 * Compute the exact cost (in bits) of the block if the path
-		 * were to be used.  This is more accurate than the cost
-		 * returned by deflate_find_min_cost_path(), as this uses the
-		 * new Huffman codes instead of c->p.n.costs.
-		 */
-		true_cost = deflate_compute_true_cost(c);
+		true_cost = deflate_find_min_cost_path_and_true_cost_with_strategy(
+							c, block_length, cache_ptr,
+							path_strategy,
+							need_path,
+							need_path ? &seq : NULL);
 
 		/*
 		 * If the cost didn't improve much from the previous pass, then
@@ -3796,13 +4263,18 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 			/* Using only literals ended up being best! */
 			deflate_choose_all_literals(c, block_begin, block_length);
 			deflate_set_costs_from_codes(c, &c->codes.lens);
-			seq_.litrunlen_and_length = block_length;
-			seq = &seq_;
+			seq_->litrunlen_and_length = block_length;
+			seq = seq_;
 			*used_only_literals = true;
+			selected_cost = only_lits_cost;
 		} else {
 			/* Static block ended up being best! */
 			deflate_set_costs_from_codes(c, &c->static_codes.lens);
-			deflate_find_min_cost_path(c, block_length, cache_ptr);
+			deflate_find_min_cost_path(c, block_length, cache_ptr,
+						   c->compression_level >= 13,
+						   true);
+			seq = NULL;
+			selected_cost = static_cost;
 		}
 	} else if (true_cost >=
 		   best_true_cost + c->p.n.min_bits_to_use_nonfinal_path) {
@@ -3811,11 +4283,581 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 		 * pass, so recover and use the min-cost path from that pass.
 		 */
 		c->p.n.costs = c->p.n.costs_saved;
-		deflate_find_min_cost_path(c, block_length, cache_ptr);
+		deflate_find_min_cost_path_and_true_cost_with_strategy(
+							c, block_length, cache_ptr,
+							path_strategy,
+							need_path,
+							need_path ? &seq : NULL);
 		deflate_set_costs_from_codes(c, &c->codes.lens);
+		selected_cost = best_true_cost;
+	} else {
+		selected_cost = true_cost;
 	}
-	deflate_flush_block(c, os, block_begin, block_length, seq,
+	*seq_ret = seq;
+	return selected_cost;
+}
+
+static void
+deflate_save_optimized_block_result(struct libdeflate_compressor *c,
+				    u32 block_length,
+				    struct deflate_sequence *seq_,
+				    struct deflate_sequence *seq,
+				    bool used_only_literals,
+				    struct deflate_optimization_strategy
+					*strategy)
+{
+	strategy->has_saved_parse = false;
+	strategy->used_only_literals = used_only_literals;
+	strategy->freqs = c->freqs;
+	strategy->costs = c->p.n.costs;
+	strategy->costs_saved = c->p.n.costs_saved;
+
+	if (strategy->seq_store_idx == MEASURED_SEQ_STORE_NONE)
+		return;
+
+	if (seq == seq_) {
+		strategy->seq_ = *seq_;
+		strategy->has_saved_parse = true;
+		return;
+	}
+
+	if (seq == NULL)
+		seq = deflate_save_item_list(c, block_length);
+	if (seq == NULL)
+		return;
+
+	deflate_copy_item_list(c->p.n.measured_sequences[strategy->seq_store_idx],
+			       seq);
+	strategy->has_saved_parse = true;
+}
+
+static u32
+deflate_optimize_block_baseline(struct libdeflate_compressor *c,
+				const u8 *block_begin, u32 block_length,
+				const struct lz_match *cache_ptr,
+				bool is_first_block,
+				struct deflate_sequence *seq_,
+				struct deflate_sequence **seq_ret,
+				bool *used_only_literals,
+				u32 static_cost,
+				u32 only_lits_cost,
+				bool need_path)
+{
+	enum deflate_min_cost_path_strategy strategy =
+		c->compression_level < 13 ? DEFLATE_MIN_COST_PATH_RESTRICTED :
+					    DEFLATE_MIN_COST_PATH_BEST;
+
+	return deflate_optimize_block_impl(c, block_begin, block_length,
+					   cache_ptr, is_first_block, seq_,
+					   seq_ret, used_only_literals,
+					   static_cost,
+					   only_lits_cost,
+					   strategy,
+					   DEFLATE_INITIAL_COST_DEFAULT,
+					   need_path);
+}
+
+static u32
+deflate_optimize_block(struct libdeflate_compressor *c,
+		       const u8 *block_begin, u32 block_length,
+		       const struct lz_match *cache_ptr,
+		       bool is_first_block,
+		       struct deflate_sequence *seq_,
+		       struct deflate_sequence **seq_ret,
+		       bool *used_only_literals)
+{
+	struct deflate_near_optimal_state initial_state;
+	struct deflate_costs baseline_costs;
+	struct deflate_costs baseline_costs_saved;
+	struct deflate_sequence tmp_seq_;
+	struct deflate_sequence *tmp_seq;
+	bool tmp_used_only_literals;
+	enum deflate_min_cost_path_strategy best_path_strategy =
+							DEFLATE_MIN_COST_PATH_BEST;
+	enum deflate_initial_cost_strategy best_cost_strategy =
+							DEFLATE_INITIAL_COST_DEFAULT;
+	u32 best_cost;
+	u32 expanded_cost;
+	u32 estimated_cost;
+	u32 offset_estimated_cost;
+	u32 static_cost;
+	u32 only_lits_cost;
+
+	deflate_init_cost_to_end(c, block_length);
+	static_cost = deflate_measure_static_block_cost(c, block_length,
+							cache_ptr);
+	only_lits_cost = deflate_measure_only_literals_cost(c, block_begin,
+							    block_length);
+
+	if (c->compression_level < 13)
+		return deflate_optimize_block_baseline(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, seq_, seq_ret,
+					used_only_literals, static_cost,
+					only_lits_cost, true);
+	deflate_near_optimal_save_state(c, &initial_state);
+
+	best_cost = deflate_optimize_block_baseline(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, seq_, seq_ret,
+					used_only_literals, static_cost,
+					only_lits_cost, false);
+	baseline_costs = c->p.n.costs;
+	baseline_costs_saved = c->p.n.costs_saved;
+
+	deflate_near_optimal_restore_state(c, &initial_state);
+	expanded_cost = deflate_optimize_block_impl(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, &tmp_seq_, &tmp_seq,
+					&tmp_used_only_literals,
+					static_cost, only_lits_cost,
+					DEFLATE_MIN_COST_PATH_EXPANDED,
+					DEFLATE_INITIAL_COST_DEFAULT,
+					false);
+	if (expanded_cost < best_cost) {
+		best_cost = expanded_cost;
+		best_path_strategy = DEFLATE_MIN_COST_PATH_EXPANDED;
+	}
+
+	deflate_near_optimal_restore_state(c, &initial_state);
+	estimated_cost = deflate_optimize_block_impl(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, &tmp_seq_, &tmp_seq,
+					&tmp_used_only_literals,
+					static_cost, only_lits_cost,
+					DEFLATE_MIN_COST_PATH_BEST,
+					DEFLATE_INITIAL_COST_ESTIMATED_CODES,
+					false);
+	if (estimated_cost < best_cost) {
+		best_cost = estimated_cost;
+		best_path_strategy = DEFLATE_MIN_COST_PATH_BEST;
+		best_cost_strategy = DEFLATE_INITIAL_COST_ESTIMATED_CODES;
+	}
+
+	deflate_near_optimal_restore_state(c, &initial_state);
+	offset_estimated_cost = deflate_optimize_block_impl(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, &tmp_seq_, &tmp_seq,
+					&tmp_used_only_literals,
+					static_cost, only_lits_cost,
+					DEFLATE_MIN_COST_PATH_BEST,
+					DEFLATE_INITIAL_COST_ESTIMATED_CODES_AND_OFFSETS,
+					true);
+	if (offset_estimated_cost < best_cost) {
+		if (tmp_seq == &tmp_seq_) {
+			*seq_ = tmp_seq_;
+			*seq_ret = seq_;
+		} else {
+			*seq_ret = tmp_seq;
+		}
+		*used_only_literals = tmp_used_only_literals;
+		c->p.n.costs = baseline_costs;
+		c->p.n.costs_saved = baseline_costs_saved;
+		return offset_estimated_cost;
+	}
+
+	if (best_cost_strategy == DEFLATE_INITIAL_COST_ESTIMATED_CODES) {
+		deflate_near_optimal_restore_state(c, &initial_state);
+		best_cost = deflate_optimize_block_impl(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, seq_, seq_ret,
+					used_only_literals,
+					static_cost, only_lits_cost,
+					DEFLATE_MIN_COST_PATH_BEST,
+					DEFLATE_INITIAL_COST_ESTIMATED_CODES,
+					true);
+		c->p.n.costs = baseline_costs;
+		c->p.n.costs_saved = baseline_costs_saved;
+		return best_cost;
+	}
+
+	deflate_near_optimal_restore_state(c, &initial_state);
+	best_cost = deflate_optimize_block_impl(c, block_begin, block_length,
+						cache_ptr, is_first_block, seq_,
+						seq_ret, used_only_literals,
+						static_cost, only_lits_cost,
+						best_path_strategy,
+						best_cost_strategy,
+						true);
+	if (best_path_strategy != DEFLATE_MIN_COST_PATH_BEST) {
+		c->p.n.costs = baseline_costs;
+		c->p.n.costs_saved = baseline_costs_saved;
+	}
+	return best_cost;
+}
+
+/*
+ * This is the level 13 split scoring counterpart to deflate_optimize_block().
+ * It can save the measured parse so final flushing doesn't have to rerun the
+ * selected optimization strategy.
+ */
+static u32
+deflate_measure_full_optimized_block_cost(struct libdeflate_compressor *c,
+					  const u8 *block_begin,
+					  u32 block_length,
+					  const struct lz_match *cache_ptr,
+					  bool is_first_block,
+					  struct deflate_optimization_strategy
+						*strategy_ret,
+					  unsigned seq_store_idx)
+{
+	struct deflate_near_optimal_state initial_state;
+	struct deflate_optimization_strategy strategy;
+	struct deflate_sequence seq_;
+	struct deflate_sequence *seq;
+	struct deflate_sequence tmp_seq_;
+	struct deflate_sequence *tmp_seq;
+	bool used_only_literals;
+	bool tmp_used_only_literals;
+	u32 best_cost;
+	u32 expanded_cost;
+	u32 estimated_cost;
+	u32 offset_estimated_cost;
+	u32 static_cost;
+	u32 only_lits_cost;
+
+	deflate_init_cost_to_end(c, block_length);
+	static_cost = deflate_measure_static_block_cost(c, block_length,
+							cache_ptr);
+	only_lits_cost = deflate_measure_only_literals_cost(c, block_begin,
+							    block_length);
+
+	deflate_near_optimal_save_state(c, &initial_state);
+
+	best_cost = deflate_optimize_block_baseline(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, &seq_, &seq,
+					&used_only_literals, static_cost,
+					only_lits_cost,
+					seq_store_idx !=
+						MEASURED_SEQ_STORE_NONE);
+	strategy.valid = true;
+	strategy.has_saved_parse = false;
+	strategy.path_strategy = DEFLATE_MIN_COST_PATH_BEST;
+	strategy.cost_strategy = DEFLATE_INITIAL_COST_DEFAULT;
+	strategy.seq_store_idx = seq_store_idx;
+	strategy.static_cost = static_cost;
+	strategy.only_lits_cost = only_lits_cost;
+	strategy.baseline_costs = c->p.n.costs;
+	strategy.baseline_costs_saved = c->p.n.costs_saved;
+	deflate_save_optimized_block_result(c, block_length, &seq_, seq,
+					    used_only_literals, &strategy);
+
+	deflate_near_optimal_restore_state(c, &initial_state);
+	expanded_cost = deflate_optimize_block_impl(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, &tmp_seq_, &tmp_seq,
+					&tmp_used_only_literals,
+					static_cost, only_lits_cost,
+					DEFLATE_MIN_COST_PATH_EXPANDED,
+					DEFLATE_INITIAL_COST_DEFAULT,
+					seq_store_idx !=
+						MEASURED_SEQ_STORE_NONE);
+	if (expanded_cost < best_cost) {
+		best_cost = expanded_cost;
+		strategy.path_strategy = DEFLATE_MIN_COST_PATH_EXPANDED;
+		strategy.cost_strategy = DEFLATE_INITIAL_COST_DEFAULT;
+		deflate_save_optimized_block_result(c, block_length,
+						    &tmp_seq_, tmp_seq,
+						    tmp_used_only_literals,
+						    &strategy);
+	}
+
+	deflate_near_optimal_restore_state(c, &initial_state);
+	estimated_cost = deflate_optimize_block_impl(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, &tmp_seq_, &tmp_seq,
+					&tmp_used_only_literals,
+					static_cost, only_lits_cost,
+					DEFLATE_MIN_COST_PATH_BEST,
+					DEFLATE_INITIAL_COST_ESTIMATED_CODES,
+					seq_store_idx !=
+						MEASURED_SEQ_STORE_NONE);
+	if (estimated_cost < best_cost) {
+		best_cost = estimated_cost;
+		strategy.path_strategy = DEFLATE_MIN_COST_PATH_BEST;
+		strategy.cost_strategy = DEFLATE_INITIAL_COST_ESTIMATED_CODES;
+		deflate_save_optimized_block_result(c, block_length,
+						    &tmp_seq_, tmp_seq,
+						    tmp_used_only_literals,
+						    &strategy);
+	}
+
+	deflate_near_optimal_restore_state(c, &initial_state);
+	offset_estimated_cost = deflate_optimize_block_impl(
+					c, block_begin, block_length, cache_ptr,
+					is_first_block, &tmp_seq_, &tmp_seq,
+					&tmp_used_only_literals,
+					static_cost, only_lits_cost,
+					DEFLATE_MIN_COST_PATH_BEST,
+					DEFLATE_INITIAL_COST_ESTIMATED_CODES_AND_OFFSETS,
+					seq_store_idx !=
+						MEASURED_SEQ_STORE_NONE);
+	if (offset_estimated_cost < best_cost) {
+		best_cost = offset_estimated_cost;
+		strategy.path_strategy = DEFLATE_MIN_COST_PATH_BEST;
+		strategy.cost_strategy =
+			DEFLATE_INITIAL_COST_ESTIMATED_CODES_AND_OFFSETS;
+		deflate_save_optimized_block_result(c, block_length,
+						    &tmp_seq_, tmp_seq,
+						    tmp_used_only_literals,
+						    &strategy);
+	}
+
+	c->p.n.costs = strategy.baseline_costs;
+	c->p.n.costs_saved = strategy.baseline_costs_saved;
+	*strategy_ret = strategy;
+	return best_cost;
+}
+
+static void
+deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
+				 struct deflate_output_bitstream *os,
+				 const u8 *block_begin, u32 block_length,
+				 const struct lz_match *cache_ptr,
+				 bool is_first_block, bool is_final_block,
+				 const struct deflate_optimization_strategy
+					*strategy,
+				 bool *used_only_literals)
+{
+	struct deflate_sequence seq_;
+	struct deflate_sequence *seq;
+	const struct deflate_sequence *seq_to_flush;
+
+	if (strategy != NULL && strategy->valid) {
+		if (strategy->has_saved_parse) {
+			c->freqs = strategy->freqs;
+			deflate_make_huffman_codes(&c->freqs, &c->codes);
+			if (strategy->used_only_literals)
+				seq_to_flush = &strategy->seq_;
+			else
+				seq_to_flush = c->p.n.measured_sequences[
+						strategy->seq_store_idx];
+			*used_only_literals = strategy->used_only_literals;
+			if (strategy->path_strategy !=
+					DEFLATE_MIN_COST_PATH_BEST ||
+			    strategy->cost_strategy !=
+					DEFLATE_INITIAL_COST_DEFAULT) {
+				c->p.n.costs = strategy->baseline_costs;
+				c->p.n.costs_saved =
+					strategy->baseline_costs_saved;
+			} else {
+				c->p.n.costs = strategy->costs;
+				c->p.n.costs_saved = strategy->costs_saved;
+			}
+		} else {
+			deflate_init_cost_to_end(c, block_length);
+			deflate_optimize_block_impl(c, block_begin, block_length,
+						    cache_ptr, is_first_block,
+						    &seq_, &seq,
+						    used_only_literals,
+						    strategy->static_cost,
+						    strategy->only_lits_cost,
+						    strategy->path_strategy,
+						    strategy->cost_strategy,
+						    true);
+			if (strategy->path_strategy !=
+					DEFLATE_MIN_COST_PATH_BEST ||
+			    strategy->cost_strategy !=
+					DEFLATE_INITIAL_COST_DEFAULT) {
+				c->p.n.costs = strategy->baseline_costs;
+				c->p.n.costs_saved =
+					strategy->baseline_costs_saved;
+			}
+			seq_to_flush = seq;
+		}
+	} else {
+		deflate_optimize_block(c, block_begin, block_length, cache_ptr,
+				       is_first_block, &seq_, &seq,
+				       used_only_literals);
+		seq_to_flush = seq;
+	}
+	deflate_flush_block(c, os, block_begin, block_length, seq_to_flush,
 			    is_final_block);
+}
+
+static void
+deflate_near_optimal_save_state(struct libdeflate_compressor *c,
+				struct deflate_near_optimal_state *state)
+{
+	state->split_stats = c->split_stats;
+	memcpy(state->prev_observations, c->p.n.prev_observations,
+	       sizeof(state->prev_observations));
+	state->prev_num_observations = c->p.n.prev_num_observations;
+	memcpy(state->match_len_freqs, c->p.n.match_len_freqs,
+	       sizeof(state->match_len_freqs));
+	memcpy(state->new_match_len_freqs, c->p.n.new_match_len_freqs,
+	       sizeof(state->new_match_len_freqs));
+	state->costs = c->p.n.costs;
+	state->costs_saved = c->p.n.costs_saved;
+}
+
+static void
+deflate_near_optimal_restore_state(struct libdeflate_compressor *c,
+				   const struct deflate_near_optimal_state *state)
+{
+	c->split_stats = state->split_stats;
+	memcpy(c->p.n.prev_observations, state->prev_observations,
+	       sizeof(state->prev_observations));
+	c->p.n.prev_num_observations = state->prev_num_observations;
+	memcpy(c->p.n.match_len_freqs, state->match_len_freqs,
+	       sizeof(state->match_len_freqs));
+	memcpy(c->p.n.new_match_len_freqs, state->new_match_len_freqs,
+	       sizeof(state->new_match_len_freqs));
+	c->p.n.costs = state->costs;
+	c->p.n.costs_saved = state->costs_saved;
+}
+
+static void
+deflate_near_optimal_restore_current_stats(
+			struct libdeflate_compressor *c,
+			const struct deflate_near_optimal_state *state)
+{
+	c->split_stats = state->split_stats;
+	memcpy(c->p.n.match_len_freqs, state->match_len_freqs,
+	       sizeof(state->match_len_freqs));
+	memcpy(c->p.n.new_match_len_freqs, state->new_match_len_freqs,
+	       sizeof(state->new_match_len_freqs));
+}
+
+static void
+deflate_near_optimal_clear_new_stats(struct deflate_near_optimal_state *state)
+{
+	memset(state->split_stats.new_observations, 0,
+	       sizeof(state->split_stats.new_observations));
+	state->split_stats.num_new_observations = 0;
+	memset(state->new_match_len_freqs, 0,
+	       sizeof(state->new_match_len_freqs));
+}
+
+static void
+deflate_near_optimal_merge_state(struct deflate_near_optimal_state *state)
+{
+	unsigned i;
+
+	for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+		state->split_stats.observations[i] +=
+			state->split_stats.new_observations[i];
+		state->split_stats.new_observations[i] = 0;
+	}
+	state->split_stats.num_observations +=
+		state->split_stats.num_new_observations;
+	state->split_stats.num_new_observations = 0;
+
+	for (i = 0; i < ARRAY_LEN(state->match_len_freqs); i++) {
+		state->match_len_freqs[i] += state->new_match_len_freqs[i];
+		state->new_match_len_freqs[i] = 0;
+	}
+}
+
+static void
+deflate_near_optimal_subtract_state(
+			struct deflate_near_optimal_state *dst,
+			const struct deflate_near_optimal_state *full,
+			const struct deflate_near_optimal_state *prefix)
+{
+	unsigned i;
+
+	*dst = *full;
+	memset(dst->split_stats.new_observations, 0,
+	       sizeof(dst->split_stats.new_observations));
+	dst->split_stats.num_new_observations = 0;
+	for (i = 0; i < NUM_OBSERVATION_TYPES; i++) {
+		dst->split_stats.observations[i] =
+			full->split_stats.observations[i] -
+			prefix->split_stats.observations[i];
+	}
+	dst->split_stats.num_observations =
+		full->split_stats.num_observations -
+		prefix->split_stats.num_observations;
+	for (i = 0; i < ARRAY_LEN(dst->match_len_freqs); i++) {
+		dst->match_len_freqs[i] =
+			full->match_len_freqs[i] - prefix->match_len_freqs[i];
+		dst->new_match_len_freqs[i] = 0;
+	}
+}
+
+static u32
+deflate_measure_optimized_block_cost(struct libdeflate_compressor *c,
+				     const u8 *block_begin, u32 block_length,
+				     const struct lz_match *cache_ptr,
+				     bool is_first_block,
+				     bool use_full_optimizer,
+				     struct deflate_optimization_strategy
+					*strategy_ret,
+				     unsigned seq_store_idx)
+{
+	struct deflate_sequence seq_;
+	struct deflate_sequence *seq;
+	bool used_only_literals;
+	u32 static_cost;
+	u32 only_lits_cost;
+
+	strategy_ret->valid = false;
+	if (use_full_optimizer)
+		return deflate_measure_full_optimized_block_cost(
+					      c, block_begin, block_length,
+					      cache_ptr, is_first_block,
+					      strategy_ret, seq_store_idx);
+	deflate_init_cost_to_end(c, block_length);
+	static_cost = deflate_measure_static_block_cost(c, block_length,
+							cache_ptr);
+	only_lits_cost = deflate_measure_only_literals_cost(c, block_begin,
+							    block_length);
+	return deflate_optimize_block_baseline(c, block_begin, block_length,
+					       cache_ptr, is_first_block,
+					       &seq_, &seq,
+					       &used_only_literals,
+					       static_cost, only_lits_cost,
+					       false);
+}
+
+static struct lz_match *
+deflate_rewind_match_cache(struct lz_match *cache_ptr, u32 num_bytes)
+{
+	do {
+		cache_ptr--;
+		cache_ptr -= cache_ptr->length;
+	} while (--num_bytes);
+
+	return cache_ptr;
+}
+
+static struct lz_match *
+deflate_prune_sampled_matches(struct libdeflate_compressor *c,
+			      struct lz_match *matches,
+			      struct lz_match *matches_end)
+{
+	bool keep[MAX_MATCHES_PER_POS];
+	size_t num_matches = matches_end - matches;
+	struct lz_match *out = matches;
+	u32 best_offset_slot = UINT32_MAX;
+	u32 prev_length_slot = UINT32_MAX;
+	size_t i;
+
+	if (num_matches <= 1)
+		return matches_end;
+
+	memset(keep, 0, num_matches * sizeof(keep[0]));
+	i = num_matches;
+	do {
+		struct lz_match *match = &matches[--i];
+		u32 length_slot = deflate_length_slot[match->length];
+		u32 offset_slot = c->p.n.offset_slot_full[match->offset];
+
+		if (i == num_matches - 1 || length_slot != prev_length_slot ||
+		    offset_slot < best_offset_slot)
+			keep[i] = true;
+		if (offset_slot < best_offset_slot)
+			best_offset_slot = offset_slot;
+		prev_length_slot = length_slot;
+	} while (i != 0);
+
+	for (i = 0; i < num_matches; i++) {
+		if (keep[i])
+			*out++ = matches[i];
+	}
+	return out;
 }
 
 static void
@@ -3892,19 +4934,35 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 	u32 max_len = DEFLATE_MAX_MATCH_LEN;
 	u32 nice_len = MIN(c->nice_match_length, max_len);
 	struct lz_match *cache_ptr = c->p.n.match_cache;
+	struct lz_match * const match_cache_limit =
+		&c->p.n.match_cache[MATCH_CACHE_LENGTH];
 	u32 next_hashes[2] = {0, 0};
 	bool prev_block_used_only_literals = false;
+	bool use_devil_block_length_default =
+		c->compression_level > 12 &&
+		deflate_should_use_devil_block_length(in, in_end);
 
 	bt_matchfinder_init(&c->p.n.bt_mf);
 	deflate_near_optimal_init_stats(c);
 
 	do {
 		/* Starting a new DEFLATE block */
+		bool use_devil_block_length = use_devil_block_length_default ||
+			(c->compression_level > 12 &&
+			 deflate_should_use_devil_block_length(in_block_begin,
+							      in_end));
+		size_t soft_max_block_length = use_devil_block_length ?
+			 DEVIL_SOFT_MAX_BLOCK_LENGTH : SOFT_MAX_BLOCK_LENGTH;
 		const u8 * const in_max_block_end = choose_max_block_end(
-				in_block_begin, in_end, SOFT_MAX_BLOCK_LENGTH);
+				in_block_begin, in_end, soft_max_block_length);
 		const u8 *prev_end_block_check = NULL;
+		const u8 *pending_splits[DEVIL_BLOCK_SPLIT_HISTORIES - 1];
+		struct deflate_near_optimal_state pending_prefix_states[
+					DEVIL_BLOCK_SPLIT_HISTORIES - 1];
+		unsigned num_pending_splits = 0;
 		bool change_detected = false;
 		const u8 *next_observation = in_next;
+		u32 next_devil_split_length = SOFT_MAX_BLOCK_LENGTH;
 		u32 min_len;
 
 		/*
@@ -4025,17 +5083,39 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 					adjust_max_and_nice_len(&max_len,
 								&nice_len,
 								remaining);
+					matches = cache_ptr;
 					if (max_len >=
 					    BT_MATCHFINDER_REQUIRED_NBYTES) {
-						bt_matchfinder_skip_byte(
-							&c->p.n.bt_mf,
-							in_cur_base,
-							in_next - in_cur_base,
-							nice_len,
-							c->max_search_depth,
-							next_hashes);
+						if (c->compression_level > 12 &&
+						    (best_len & 7) == 0 &&
+						    cache_ptr + MAX_MATCHES_PER_POS <
+							match_cache_limit) {
+							cache_ptr =
+								bt_matchfinder_get_matches(
+									&c->p.n.bt_mf,
+									in_cur_base,
+									in_next - in_cur_base,
+									max_len,
+									nice_len,
+									c->max_search_depth,
+									next_hashes,
+									matches);
+							cache_ptr =
+								deflate_prune_sampled_matches(
+									c,
+									matches,
+									cache_ptr);
+						} else {
+							bt_matchfinder_skip_byte(
+								&c->p.n.bt_mf,
+								in_cur_base,
+								in_next - in_cur_base,
+								nice_len,
+								c->max_search_depth,
+								next_hashes);
+						}
 					}
-					cache_ptr->length = 0;
+					cache_ptr->length = cache_ptr - matches;
 					cache_ptr->offset = *in_next;
 					in_next++;
 					cache_ptr++;
@@ -4045,8 +5125,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			if (in_next >= in_max_block_end)
 				break;
 			/* Match cache overflowed? */
-			if (cache_ptr >=
-			    &c->p.n.match_cache[MATCH_CACHE_LENGTH])
+			if (cache_ptr >= match_cache_limit)
 				break;
 			/* Not ready to try to end the block (again)? */
 			if (!ready_to_check_block(&c->split_stats,
@@ -4056,11 +5135,58 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 			/* Check if it would be worthwhile to end the block. */
 			if (do_end_block_check(&c->split_stats,
 					       in_next - in_block_begin)) {
+				if (c->compression_level > 12 &&
+				    prev_end_block_check != NULL) {
+					if (num_pending_splits == 0 ||
+					    pending_splits[num_pending_splits - 1] !=
+							prev_end_block_check) {
+						if (num_pending_splits + 1 <
+						    DEVIL_BLOCK_SPLIT_HISTORIES) {
+							pending_splits[num_pending_splits] =
+								prev_end_block_check;
+							deflate_near_optimal_save_state(
+									c,
+									&pending_prefix_states[
+										num_pending_splits]);
+							deflate_near_optimal_clear_new_stats(
+									&pending_prefix_states[
+										num_pending_splits]);
+							num_pending_splits++;
+						} else {
+							change_detected = true;
+							break;
+						}
+					}
+					deflate_near_optimal_merge_stats(c);
+					prev_end_block_check = in_next;
+					continue;
+				}
 				change_detected = true;
 				break;
 			}
 			/* Ending the block doesn't seem worthwhile here. */
 			deflate_near_optimal_merge_stats(c);
+			if (use_devil_block_length &&
+			    in_next - in_block_begin >=
+					next_devil_split_length) {
+				if (num_pending_splits + 1 <
+				    DEVIL_BLOCK_SPLIT_HISTORIES &&
+				    (num_pending_splits == 0 ||
+				     pending_splits[num_pending_splits - 1] !=
+						in_next)) {
+					pending_splits[num_pending_splits] =
+						in_next;
+					deflate_near_optimal_save_state(
+							c,
+							&pending_prefix_states[
+								num_pending_splits]);
+					deflate_near_optimal_clear_new_stats(
+							&pending_prefix_states[
+								num_pending_splits]);
+					num_pending_splits++;
+				}
+				next_devil_split_length += SOFT_MAX_BLOCK_LENGTH;
+			}
 			prev_end_block_check = in_next;
 		}
 		/*
@@ -4068,6 +5194,365 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 		 * the precise end of the block and the sequence of items to
 		 * output to represent it, then flush the block.
 		 */
+		if (num_pending_splits > 0) {
+			struct deflate_near_optimal_state after_decision_state;
+			struct deflate_near_optimal_state decision_state;
+			struct deflate_near_optimal_state full_state;
+			struct lz_match *orig_cache_ptr = cache_ptr;
+			struct lz_match *decision_cache_ptr = cache_ptr;
+			struct lz_match *best_split_cache_ptr = NULL;
+			const u8 *in_decision_end = in_next;
+			const u8 *best_split = NULL;
+			struct deflate_optimization_strategy full_strategy;
+			struct deflate_optimization_strategy best_split_strategy;
+			unsigned best_tree_split_idxs[
+					DEVIL_BLOCK_SPLIT_HISTORIES - 1];
+			unsigned best_tree_num_splits = 0;
+			u32 num_bytes_after_decision = 0;
+			u32 full_block_length;
+			u32 best_cost;
+			unsigned best_split_idx = num_pending_splits;
+			bool is_first = (in_block_begin == in);
+			bool is_final;
+			unsigned i;
+
+			if (change_detected && prev_end_block_check != NULL) {
+				in_decision_end = prev_end_block_check;
+				num_bytes_after_decision =
+					in_next - in_decision_end;
+				decision_cache_ptr = deflate_rewind_match_cache(
+						cache_ptr,
+						num_bytes_after_decision);
+				deflate_near_optimal_save_state(
+						c, &after_decision_state);
+				decision_state = after_decision_state;
+				deflate_near_optimal_clear_new_stats(
+						&decision_state);
+			} else {
+				deflate_near_optimal_save_state(
+						c, &decision_state);
+				deflate_near_optimal_merge_state(&decision_state);
+				after_decision_state = decision_state;
+			}
+
+			deflate_near_optimal_save_state(c, &full_state);
+			deflate_near_optimal_merge_state(&full_state);
+			full_block_length = in_decision_end - in_block_begin;
+			is_final = (in_decision_end == in_end);
+
+			deflate_near_optimal_restore_state(c, &decision_state);
+			best_cost = deflate_measure_optimized_block_cost(
+						c, in_block_begin,
+						full_block_length,
+						decision_cache_ptr, is_first,
+						use_devil_block_length,
+						&full_strategy,
+						MEASURED_FULL_SEQ_STORE);
+			best_split_strategy.valid = false;
+
+			{
+				struct split_tree_node {
+					const u8 *end;
+					struct lz_match *cache_ptr;
+					struct deflate_near_optimal_state
+						prefix_state;
+					struct deflate_near_optimal_state
+						path_state;
+					u32 cost;
+					unsigned prev;
+					unsigned depth;
+				};
+				struct split_tree_node tree_nodes[
+						DEVIL_BLOCK_SPLIT_HISTORIES];
+				struct deflate_optimization_strategy strategy;
+				struct deflate_near_optimal_state interval_state;
+				struct deflate_near_optimal_state path_state;
+				unsigned node_count = num_pending_splits + 1;
+				unsigned j;
+
+				for (i = 0; i < node_count; i++) {
+					if (i < num_pending_splits) {
+						tree_nodes[i].end =
+							pending_splits[i];
+						tree_nodes[i].cache_ptr =
+							deflate_rewind_match_cache(
+							cache_ptr,
+							in_next -
+							pending_splits[i]);
+						tree_nodes[i].prefix_state =
+							pending_prefix_states[i];
+					} else {
+						tree_nodes[i].end =
+							in_decision_end;
+						tree_nodes[i].cache_ptr =
+							decision_cache_ptr;
+						tree_nodes[i].prefix_state =
+							decision_state;
+					}
+					tree_nodes[i].cost = UINT32_MAX;
+					tree_nodes[i].prev = node_count;
+					tree_nodes[i].depth = 0;
+				}
+
+				for (j = 0; j < node_count; j++) {
+					u32 edge_cost;
+					unsigned first_pred =
+						j == node_count - 1 ? 0 :
+						j > DEVIL_TREE_MAX_PREDECESSORS ?
+						j - DEVIL_TREE_MAX_PREDECESSORS : 0;
+
+					deflate_near_optimal_restore_state(
+							c,
+							&tree_nodes[j].prefix_state);
+					edge_cost = deflate_measure_optimized_block_cost(
+							c, in_block_begin,
+							tree_nodes[j].end -
+							in_block_begin,
+							tree_nodes[j].cache_ptr,
+							is_first,
+							use_devil_block_length,
+							&strategy,
+							MEASURED_SEQ_STORE_NONE);
+					deflate_near_optimal_save_stats(c);
+					deflate_near_optimal_save_state(c,
+									&path_state);
+					tree_nodes[j].cost = edge_cost;
+					tree_nodes[j].prev = node_count;
+					tree_nodes[j].depth = 1;
+					tree_nodes[j].path_state = path_state;
+
+					for (i = first_pred; i < j; i++) {
+						u32 total_cost;
+
+						if (tree_nodes[i].cost ==
+						    UINT32_MAX)
+							continue;
+
+						deflate_near_optimal_subtract_state(
+							&interval_state,
+							&tree_nodes[j].prefix_state,
+							&pending_prefix_states[i]);
+						deflate_near_optimal_restore_state(
+							c,
+							&tree_nodes[i].path_state);
+						deflate_near_optimal_restore_current_stats(
+							c, &interval_state);
+						edge_cost =
+							deflate_measure_optimized_block_cost(
+							c, tree_nodes[i].end,
+							tree_nodes[j].end -
+							tree_nodes[i].end,
+							tree_nodes[j].cache_ptr,
+							false,
+							use_devil_block_length,
+							&strategy,
+							MEASURED_SEQ_STORE_NONE);
+						total_cost = tree_nodes[i].cost +
+							     edge_cost + 3;
+						if (total_cost >= tree_nodes[j].cost)
+							continue;
+						deflate_near_optimal_save_stats(c);
+						deflate_near_optimal_save_state(c,
+									&path_state);
+						tree_nodes[j].cost = total_cost;
+						tree_nodes[j].prev = i;
+						tree_nodes[j].depth =
+							tree_nodes[i].depth + 1;
+						tree_nodes[j].path_state =
+							path_state;
+					}
+				}
+
+				if (tree_nodes[node_count - 1].depth > 2 &&
+				    tree_nodes[node_count - 1].cost +
+						DEVIL_TREE_SPLIT_MIN_GAIN <=
+				    best_cost) {
+					unsigned num_splits = 0;
+
+					i = node_count - 1;
+					do {
+						i = tree_nodes[i].prev;
+						best_tree_split_idxs[num_splits++] =
+							i;
+					} while (tree_nodes[i].prev !=
+						 node_count);
+					for (i = 0; i < num_splits / 2; i++) {
+						unsigned tmp =
+							best_tree_split_idxs[i];
+						best_tree_split_idxs[i] =
+							best_tree_split_idxs[
+								num_splits - 1 - i];
+						best_tree_split_idxs[
+							num_splits - 1 - i] =
+							tmp;
+					}
+					best_cost = tree_nodes[node_count - 1].cost;
+					best_tree_num_splits = num_splits;
+					best_split_idx = best_tree_split_idxs[0];
+					best_split = pending_splits[best_split_idx];
+					best_split_cache_ptr =
+						tree_nodes[best_split_idx].cache_ptr;
+					best_split_strategy.valid = false;
+				} else if (tree_nodes[node_count - 1].depth == 2 &&
+					   tree_nodes[node_count - 1].cost <=
+					   best_cost) {
+					unsigned split_idx =
+						tree_nodes[node_count - 1].prev;
+
+					best_cost = tree_nodes[node_count - 1].cost;
+					best_tree_split_idxs[0] = split_idx;
+					best_tree_num_splits = 1;
+					best_split_idx = split_idx;
+					best_split = pending_splits[split_idx];
+					best_split_cache_ptr =
+						tree_nodes[split_idx].cache_ptr;
+					best_split_strategy.valid = false;
+				}
+			}
+
+			if (best_split_idx != num_pending_splits) {
+				struct deflate_near_optimal_state current_tail_state;
+				u32 split_block_length = best_split - in_block_begin;
+				size_t cache_len_rewound =
+					orig_cache_ptr - best_split_cache_ptr;
+
+				deflate_near_optimal_subtract_state(
+						&current_tail_state,
+						&full_state,
+						&pending_prefix_states[
+							best_split_idx]);
+
+				deflate_near_optimal_restore_state(
+						c,
+						&pending_prefix_states[
+							best_split_idx]);
+				deflate_optimize_and_flush_block(
+						c, os, in_block_begin,
+						split_block_length,
+						best_split_cache_ptr,
+						is_first, false,
+						&best_split_strategy,
+						&prev_block_used_only_literals);
+				ASSERT(best_tree_num_splits != 0);
+				{
+					unsigned prev_split_idx = best_split_idx;
+					unsigned split_pos;
+
+					deflate_near_optimal_save_stats(c);
+					for (split_pos = 1;
+					     split_pos < best_tree_num_splits;
+					     split_pos++) {
+						struct deflate_near_optimal_state
+							middle_state;
+						unsigned split_idx =
+							best_tree_split_idxs[
+								split_pos];
+						const u8 *prev_split =
+							pending_splits[
+								prev_split_idx];
+						const u8 *split =
+							pending_splits[
+								split_idx];
+						struct lz_match *split_cache_ptr =
+							deflate_rewind_match_cache(
+								cache_ptr,
+								in_next -
+								split);
+
+						deflate_near_optimal_subtract_state(
+							&middle_state,
+							&pending_prefix_states[
+								split_idx],
+							&pending_prefix_states[
+								prev_split_idx]);
+						deflate_near_optimal_restore_current_stats(
+							c, &middle_state);
+						deflate_optimize_and_flush_block(
+							c, os, prev_split,
+							split - prev_split,
+							split_cache_ptr,
+							false, false, NULL,
+							&prev_block_used_only_literals);
+						deflate_near_optimal_save_stats(c);
+						prev_split_idx = split_idx;
+					}
+
+					deflate_near_optimal_subtract_state(
+							&current_tail_state,
+							&full_state,
+							&pending_prefix_states[
+								prev_split_idx]);
+					best_split = pending_splits[prev_split_idx];
+					best_split_cache_ptr =
+						deflate_rewind_match_cache(
+							cache_ptr,
+							in_next - best_split);
+					cache_len_rewound = orig_cache_ptr -
+							    best_split_cache_ptr;
+					memmove(c->p.n.match_cache,
+						best_split_cache_ptr,
+						cache_len_rewound *
+							sizeof(*best_split_cache_ptr));
+					cache_ptr =
+						&c->p.n.match_cache[
+							cache_len_rewound];
+					deflate_near_optimal_restore_current_stats(
+							c, &current_tail_state);
+					in_block_begin = best_split;
+					if (in_next == in_end) {
+						deflate_optimize_and_flush_block(
+							c, os, in_block_begin,
+							in_next - in_block_begin,
+							cache_ptr, false, true,
+							NULL,
+							&prev_block_used_only_literals);
+						cache_ptr = &c->p.n.match_cache[0];
+						deflate_near_optimal_save_stats(c);
+						deflate_near_optimal_init_stats(c);
+						in_block_begin = in_next;
+					}
+				}
+			} else if (num_bytes_after_decision != 0) {
+				size_t cache_len_rewound =
+					orig_cache_ptr - decision_cache_ptr;
+
+				deflate_near_optimal_restore_state(c,
+								   &decision_state);
+				deflate_optimize_and_flush_block(
+						c, os, in_block_begin,
+						full_block_length,
+						decision_cache_ptr,
+						is_first, false,
+						&full_strategy,
+						&prev_block_used_only_literals);
+				memmove(c->p.n.match_cache, decision_cache_ptr,
+					cache_len_rewound *
+						sizeof(*decision_cache_ptr));
+				cache_ptr =
+					&c->p.n.match_cache[cache_len_rewound];
+				deflate_near_optimal_restore_current_stats(
+						c, &after_decision_state);
+				deflate_near_optimal_save_stats(c);
+				deflate_near_optimal_clear_old_stats(c);
+				in_block_begin = in_decision_end;
+			} else {
+				deflate_near_optimal_restore_state(c,
+								   &decision_state);
+				deflate_optimize_and_flush_block(
+						c, os, in_block_begin,
+						full_block_length,
+						decision_cache_ptr,
+						is_first, is_final,
+						&full_strategy,
+						&prev_block_used_only_literals);
+				cache_ptr = &c->p.n.match_cache[0];
+				deflate_near_optimal_save_stats(c);
+				deflate_near_optimal_init_stats(c);
+				in_block_begin = in_next;
+			}
+			continue;
+		}
+
 		if (change_detected && prev_end_block_check != NULL) {
 			/*
 			 * The block is being ended because a recent chunk of
@@ -4102,6 +5587,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						c, os, in_block_begin,
 						block_length, cache_ptr,
 						is_first, is_final,
+						NULL,
 						&prev_block_used_only_literals);
 			memmove(c->p.n.match_cache, cache_ptr,
 				cache_len_rewound * sizeof(*cache_ptr));
@@ -4128,6 +5614,7 @@ deflate_compress_near_optimal(struct libdeflate_compressor * restrict c,
 						c, os, in_block_begin,
 						block_length, cache_ptr,
 						is_first, is_final,
+						NULL,
 						&prev_block_used_only_literals);
 			cache_ptr = &c->p.n.match_cache[0];
 			deflate_near_optimal_save_stats(c);
@@ -4168,6 +5655,7 @@ deflate_init_near_optimal_compressor(struct libdeflate_compressor *c)
 	 * so that it can be compared using memcmp() later.
 	 */
 	memset(&c->p.n.costs, 0, sizeof(c->p.n.costs));
+	c->p.n.costs_saved = c->p.n.costs;
 }
 
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
@@ -4195,7 +5683,7 @@ libdeflate_alloc_compressor_ex(int compression_level,
 	if (compression_level == -1)
 		compression_level = 6;
 
-	if (compression_level < 0 || compression_level > 12)
+	if (compression_level < 0 || compression_level > 13)
 		return NULL;
 
 #if SUPPORT_NEAR_OPTIMAL_PARSING
@@ -4226,6 +5714,13 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		       options->free_func : libdeflate_default_free_func;
 
 	c->compression_level = compression_level;
+#if SUPPORT_NEAR_OPTIMAL_PARSING
+	c->min_block_length = compression_level > 12 ?
+			      NUM_OBSERVATIONS_PER_BLOCK_CHECK :
+			      MIN_BLOCK_LENGTH;
+#else
+	c->min_block_length = MIN_BLOCK_LENGTH;
+#endif
 
 	/*
 	 * The higher the compression level, the more we should bother trying to
@@ -4304,13 +5799,21 @@ libdeflate_alloc_compressor_ex(int compression_level,
 		c->p.n.max_len_to_optimize_static_block = 1000;
 		break;
 	case 12:
-	default:
 		c->max_search_depth = 300;
 		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
 		c->p.n.max_optim_passes = 10;
 		c->p.n.min_improvement_to_continue = 1;
 		c->p.n.min_bits_to_use_nonfinal_path = 1;
 		c->p.n.max_len_to_optimize_static_block = 10000;
+		break;
+	case 13:
+	default:
+		c->max_search_depth = MATCHFINDER_WINDOW_SIZE;
+		c->nice_match_length = DEFLATE_MAX_MATCH_LEN;
+		c->p.n.max_optim_passes = 15;
+		c->p.n.min_improvement_to_continue = 1;
+		c->p.n.min_bits_to_use_nonfinal_path = 1;
+		c->p.n.max_len_to_optimize_static_block = 50000;
 		break;
 #endif /* SUPPORT_NEAR_OPTIMAL_PARSING */
 	}
@@ -4412,7 +5915,13 @@ LIBDEFLATEAPI size_t
 libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 				  size_t in_nbytes)
 {
+	unsigned min_block_length = SUPPORT_NEAR_OPTIMAL_PARSING ?
+				    NUM_OBSERVATIONS_PER_BLOCK_CHECK :
+				    MIN_BLOCK_LENGTH;
 	size_t max_blocks;
+
+	if (c)
+		min_block_length = c->min_block_length;
 
 	/*
 	 * Since the compressor never uses a compressed block when an
@@ -4431,23 +5940,28 @@ libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 	 * Calculate the maximum number of uncompressed blocks that the
 	 * compressor can use for 'in_nbytes' of data.
 	 *
-	 * The minimum length that is passed to deflate_flush_block() is
-	 * MIN_BLOCK_LENGTH bytes, except for the final block if needed.  If
-	 * deflate_flush_block() decides to use an uncompressed block, it
-	 * actually will (in general) output a series of uncompressed blocks in
-	 * order to stay within the UINT16_MAX limit of DEFLATE.  But this can
-	 * be disregarded here as long as '2 * MIN_BLOCK_LENGTH <= UINT16_MAX',
-	 * as in that case this behavior can't result in more blocks than the
-	 * case where deflate_flush_block() is called with min-length inputs.
+	 * The minimum length that is normally passed to deflate_flush_block()
+	 * is MIN_BLOCK_LENGTH bytes, except for the final block if needed.
+	 * Level 13 can also flush middle split-tree blocks at consecutive
+	 * block-check positions.  Each observation advances at least one input
+	 * byte, so these blocks are at least NUM_OBSERVATIONS_PER_BLOCK_CHECK
+	 * bytes long.  If deflate_flush_block() decides to use an uncompressed
+	 * block, it actually will (in general) output a series of uncompressed
+	 * blocks in order to stay within the UINT16_MAX limit of DEFLATE.  But
+	 * this can be disregarded here as long as '2 * min_block_length <=
+	 * UINT16_MAX', as in that case this behavior can't result in more
+	 * blocks than the case where deflate_flush_block() is called with
+	 * min-length inputs.
 	 *
 	 * So the number of uncompressed blocks needed would be bounded by
-	 * DIV_ROUND_UP(in_nbytes, MIN_BLOCK_LENGTH).  However, empty inputs
+	 * DIV_ROUND_UP(in_nbytes, min_block_length).  However, empty inputs
 	 * need 1 (empty) block, which gives the final expression below.
 	 */
 	STATIC_ASSERT(2 * MIN_BLOCK_LENGTH <= UINT16_MAX);
-	if (unlikely(in_nbytes > SIZE_MAX - (MIN_BLOCK_LENGTH - 1)))
+	STATIC_ASSERT(2 * NUM_OBSERVATIONS_PER_BLOCK_CHECK <= UINT16_MAX);
+	if (unlikely(in_nbytes > SIZE_MAX - (min_block_length - 1)))
 		return SIZE_MAX;
-	max_blocks = MAX(DIV_ROUND_UP(in_nbytes, MIN_BLOCK_LENGTH), 1);
+	max_blocks = MAX(DIV_ROUND_UP(in_nbytes, min_block_length), 1);
 
 	/*
 	 * Each uncompressed block has 5 bytes of overhead, for the BFINAL,

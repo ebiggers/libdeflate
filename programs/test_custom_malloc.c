@@ -50,7 +50,7 @@ static void do_custom_memalloc_test(bool global)
 	if (global)
 		libdeflate_set_memory_allocator(do_malloc, do_free);
 
-	for (level = 0; level <= 12; level++) {
+	for (level = 0; level <= 13; level++) {
 		malloc_count = free_count = 0;
 		if (global)
 			c = libdeflate_alloc_compressor(level);
@@ -125,7 +125,7 @@ static void do_fault_injection_test(void)
 
 	libdeflate_set_memory_allocator(do_fail_malloc, do_free);
 
-	for (level = 0; level <= 12; level++) {
+	for (level = 0; level <= 13; level++) {
 		malloc_count = free_count = 0;
 		c = libdeflate_alloc_compressor(level);
 		ASSERT(c == NULL);

@@ -205,9 +205,12 @@ levels.  Level 1 is the fastest but provides the worst compression; level 9
 provides the best compression but is the slowest.  It defaults to level 6.
 libdeflate uses this same design but is designed to improve on both zlib's
 performance *and* compression ratio at every compression level.  In addition,
-libdeflate's levels go [up to 12](https://xkcd.com/670/) to make room for a
-minimum-cost-path based algorithm (sometimes called "optimal parsing") that can
-significantly improve on zlib's compression ratio.
+libdeflate's regular levels go [up to 12](https://xkcd.com/670/) to make room
+for a minimum-cost-path based algorithm (sometimes called "optimal parsing")
+that can significantly improve on zlib's compression ratio.  Level 13 is a
+devil's aggressive and slow compression level that can push compression a bit
+further, but depending on the data it can be 10 to 100 times slower than level
+12.
 
 If you are using DEFLATE (or zlib, or gzip) in your application, you should test
 different levels to see which works best for your application.

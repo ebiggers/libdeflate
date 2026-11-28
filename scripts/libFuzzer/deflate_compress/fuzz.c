@@ -52,7 +52,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *in, size_t insize)
 	if (insize < 2)
 		return 0;
 
-	level = in[0] % 13;
+	level = in[0] % 14;
 	use_bound = in[1] % 2;
 	in += 2;
 	insize -= 2;
