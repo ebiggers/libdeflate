@@ -419,6 +419,7 @@ do {									\
 #  endif
 #  define MLSD_NREC		(MLSD_ROUND_STEPS + MLSD_CATCHUP)
 #  define MLSD_TABLEBITS	12	/* litlen main table bits */
+#  define MLSD_NDUMMY		4	/* offset entries for no offset */
 #else
 #  define MLSD_ENABLED		0
 #endif
@@ -1022,13 +1023,19 @@ struct mlsd_state {
 	unsigned num_offset_syms;
 };
 
-/* What mlsd_build_table() keeps for each codeword, in the records' space */
+/*
+ * What mlsd_build_table() keeps in the records' space: the bit-reversed
+ * codeword and the entry of the codewords of each length in turn, then of the
+ * lengths that take as many bits with their extra bits (up to the table bits)
+ */
 struct mlsd_build_tmp {
+	/* [len]: where those of this length end in rc[], and its literals */
 	u16 end[DEFLATE_MAX_CODEWORD_LEN + 1];
 	u16 lit_end[DEFLATE_MAX_CODEWORD_LEN + 1];
-	u16 slow[DEFLATE_NUM_LITLEN_SYMS - DEFLATE_FIRST_LEN_SYM];
-	u16 rc[1 + DEFLATE_MAX_NUM_SYMS];
-	u64 ent[1 + DEFLATE_MAX_NUM_SYMS];
+	/* The lengths with extra bits in rc[] */
+	u16 xlen[DEFLATE_NUM_LITLEN_SYMS - DEFLATE_FIRST_LEN_SYM];
+	u16 rc[DEFLATE_MAX_NUM_SYMS + DEFLATE_MAX_MATCH_LEN];
+	u64 ent[DEFLATE_MAX_NUM_SYMS + DEFLATE_MAX_MATCH_LEN];
 };
 
 /*
@@ -1042,13 +1049,13 @@ struct mlsd_scratch {
 		struct mlsd_build_tmp tmp;
 	} u;
 #ifdef ARCH_X86_64	/* one register for both tables, none for the input */
-	u64 lt[LITLEN_ENOUGH + OFFSET_ENOUGH + 256];
+	u64 lt[LITLEN_ENOUGH + OFFSET_ENOUGH + MLSD_NDUMMY];
 #  define MLSD_OT(s, i)	((s)->lt[LITLEN_ENOUGH + (i)])
 #  define MLSD_ADDR(in, pos)	((const u8 *)(uintptr_t)((pos) >> 3))
 #  define MLSD_BITPOS(in, p)	((u64)(uintptr_t)(p) * 8)
 #else
 	u64 lt[LITLEN_ENOUGH];
-	u64 ot[OFFSET_ENOUGH + 256];
+	u64 ot[OFFSET_ENOUGH + MLSD_NDUMMY];
 #  define MLSD_OT(s, i)	((s)->ot[i])
 #  define MLSD_ADDR(in, pos)	((in) + ((pos) >> 3))
 #  define MLSD_BITPOS(in, p)	((u64)((p) - (in)) * 8)

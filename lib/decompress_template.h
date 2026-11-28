@@ -1814,11 +1814,13 @@ have_decode_tables:
 		/* (an MLSD_FIRST block always gets here) */
 		STATIC_ASSERT(MLSD_MIN_IN_BYTES > FASTLOOP_MAX_BYTES_READ &&
 			      MLSD_MIN_OUT_BYTES > FASTLOOP_MAX_BYTES_WRITTEN);
+		/* (an MLSD_LATER block gets here before the scratch) */
+		STATIC_ASSERT(MLSD_MIN_BUF_BYTES >= DEFLATE_MAX_MATCH_OFFSET +
+			      FASTLOOP_MAX_BYTES_WRITTEN + MLSD_MIN_OUT_BYTES +
+			      sizeof(struct mlsd_scratch) + 64);
 		if (mlsd_block != MLSD_NO) {
-			res = FASTLOOP_BLOCK_NOT_DONE;
-			if (mlsd.scratch - ctx.out_next >= MLSD_MIN_OUT_BYTES)
-				res = ADD_SUFFIX(decompress_multilane)(
-					&ctx, &mlsd, in, in_end);
+			res = ADD_SUFFIX(decompress_multilane)(&ctx, &mlsd, in,
+							       in_end);
 			if (res == FASTLOOP_BLOCK_DONE ||
 			    mlsd_block == MLSD_FIRST ||
 			    ctx.in_next >= in_fastloop_end ||
